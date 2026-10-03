@@ -23,6 +23,12 @@ history, API keys, indexes — not just post bodies. The key is derived from the
 password with Argon2id (slow to brute-force) and handed to SQLCipher as a raw
 key. One encrypted file is also trivially easy to back up.
 
+The 16-byte Argon2 salt is passed to SQLCipher along with the key, and
+SQLCipher writes it as the file's first 16 bytes, so opening a vault reads
+the salt from there — no sidecar file. The Argon2 cost (64 MiB, 3 passes) is
+fixed in code: if it ever changes, keep the old values as a fallback so
+existing vaults still open.
+
 ## Full-text search with FTS5 inside the vault
 
 The search index lives in the same SQLCipher database, so it's encrypted too.

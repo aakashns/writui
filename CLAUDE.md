@@ -41,7 +41,15 @@ scripts/      ship.sh and other dev scripts
 2. Verify by running the app in tmux and reading the screen
    (`tmux capture-pane`), plus `cargo test` and `cargo clippy`.
 3. Open the PR with `gh pr create`. The description says what changed in
-   behavioural terms and how to try it.
+   behavioural terms, has a **Try it** section with exact commands
+   (`gh pr checkout <n> && cargo run` — debug builds use `.dev-data/`, never
+   the real vault), and screenshots.
+   - Screenshots: write a VHS tape (`brew install vhs`) that drives the debug
+     binary against a throwaway `--db`, with `Screenshot` steps (and a GIF
+     `Output` for flows). Push the images to the orphan `pr-assets` branch
+     under `<branch-name>/`, and embed them with
+     `https://github.com/aakashns/writui/blob/pr-assets/<branch-name>/<file>?raw=true`.
+     Never merge `pr-assets` into `main`.
 4. Aakash tries it and merges. Never merge PRs yourself.
 5. After a merge: pull `main` and ship with `scripts/ship.sh` (release build,
    install to `~/.local/bin/writui`). Tick the items in `docs/PLAN.md`.
