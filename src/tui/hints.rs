@@ -1,6 +1,8 @@
 //! The hint bar at the bottom of each screen. Every hint is also a button:
 //! clicking it does the same thing as pressing its key.
 
+use std::borrow::Cow;
+
 use ratatui::Frame;
 use ratatui::layout::{Position, Rect};
 use ratatui::style::Stylize;
@@ -9,12 +11,12 @@ use ratatui::widgets::Paragraph;
 
 pub struct Hint<C> {
     pub key: &'static str,
-    pub label: &'static str,
+    pub label: Cow<'static, str>,
     pub cmd: C,
 }
 
-pub const fn hint<C>(key: &'static str, label: &'static str, cmd: C) -> Hint<C> {
-    Hint { key, label, cmd }
+pub fn hint<C>(key: &'static str, label: impl Into<Cow<'static, str>>, cmd: C) -> Hint<C> {
+    Hint { key, label: label.into(), cmd }
 }
 
 const GAP: u16 = 3;
@@ -36,7 +38,7 @@ impl<C: Copy> HintBar<C> {
         self.hits.clear();
         let widths: Vec<u16> = hints
             .iter()
-            .map(|h| (Span::raw(h.key).width() + 1 + Span::raw(h.label).width()) as u16)
+            .map(|h| (Span::raw(h.key).width() + 1 + Span::raw(h.label.as_ref()).width()) as u16)
             .collect();
         let mut count = 0;
         let mut total = 0;
@@ -58,7 +60,7 @@ impl<C: Copy> HintBar<C> {
             }
             spans.push(Span::raw(h.key).bold());
             spans.push(Span::raw(" "));
-            spans.push(Span::raw(h.label).dim());
+            spans.push(Span::raw(h.label.clone()).dim());
             self.hits.push((Rect::new(x, area.y, widths[i], 1), h.cmd));
             x += widths[i];
         }

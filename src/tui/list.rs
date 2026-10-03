@@ -1,4 +1,5 @@
-//! The first screen: all posts, most recently updated first.
+//! The first screen: all posts, most recently updated first. The same screen
+//! also shows Recently Deleted.
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
@@ -7,12 +8,19 @@ use ratatui::crossterm::event::{Event, KeyCode, KeyModifiers, MouseButton, Mouse
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, List as ListWidget, ListItem, ListState, Paragraph};
+use ratatui::widgets::{List as ListWidget, ListItem, ListState, Paragraph};
 
 use super::Action;
+use super::dialog::{Button, Dialog};
 use super::hints::{HintBar, hint};
-use super::widgets::{COLUMN_WIDTH, centered, column, truncate};
-use crate::vault::PostSummary;
+use super::widgets::{COLUMN_WIDTH, column, truncate};
+use crate::vault::{DELETED_RETENTION_DAYS, PostSummary};
+
+pub enum Mode {
+    /// The normal list, with a "Recently Deleted" row if anything is there.
+    Posts { deleted_count: usize },
+    RecentlyDeleted,
+}
 
 #[derive(Clone, Copy)]
 enum Cmd {
@@ -20,83 +28,136 @@ enum Cmd {
     New,
     Delete,
     Quit,
+    Back,
     ConfirmDelete,
-    CancelDelete,
+    CancelDialog,
 }
 
-/// Row 0 is "New post"; row `i + 1` is `posts[i]`.
+#[derive(Clone, Copy, PartialEq)]
+enum Row {
+    New,
+    Post(usize),
+    RecentlyDeleted,
+}
+
 pub struct List {
+    mode: Mode,
     posts: Vec<PostSummary>,
+    rows: Vec<Row>,
     state: ListState,
-    /// Index into `posts` of the post waiting for delete confirmation.
-    confirm: Option<usize>,
+    dialog: Option<(usize, Dialog<Cmd>)>,
+    notice: Option<String>,
     rows_area: Rect,
-    buttons: Vec<(Rect, Cmd)>,
     hints: HintBar<Cmd>,
 }
 
 impl List {
     /// `select` is the post to highlight (e.g. the one just closed);
-    /// otherwise the most recent post, so Enter picks up where you left off.
-    pub fn new(posts: Vec<PostSummary>, select: Option<i64>) -> Self {
-        let row = select
+    /// otherwise the first post, so Enter picks up where you left off.
+    pub fn new(mode: Mode, posts: Vec<PostSummary>, select: Option<i64>) -> Self {
+        let mut rows = Vec::new();
+        if matches!(mode, Mode::Posts { .. }) {
+            rows.push(Row::New);
+        }
+        rows.extend((0..posts.len()).map(Row::Post));
+        if let Mode::Posts { deleted_count } = mode
+            && deleted_count > 0
+        {
+            rows.push(Row::RecentlyDeleted);
+        }
+        let selected = select
             .and_then(|id| posts.iter().position(|p| p.id == id))
-            .map(|i| i + 1)
-            .unwrap_or(if posts.is_empty() { 0 } else { 1 });
+            .or(if posts.is_empty() { None } else { Some(0) })
+            .and_then(|i| rows.iter().position(|r| *r == Row::Post(i)))
+            .unwrap_or(0);
         List {
+            mode,
             posts,
-            state: ListState::default().with_selected(Some(row)),
-            confirm: None,
+            rows,
+            state: ListState::default().with_selected(Some(selected)),
+            dialog: None,
+            notice: None,
             rows_area: Rect::default(),
-            buttons: Vec::new(),
             hints: HintBar::default(),
         }
     }
 
-    fn selected_row(&self) -> usize {
-        self.state.selected().unwrap_or(0)
+    /// A one-line message shown above the hint bar, e.g. after deleting.
+    pub fn with_notice(mut self, notice: String) -> Self {
+        self.notice = Some(notice);
+        self
     }
 
-    fn selected_post(&self) -> Option<&PostSummary> {
-        self.selected_row().checked_sub(1).and_then(|i| self.posts.get(i))
+    fn deleted_view(&self) -> bool {
+        matches!(self.mode, Mode::RecentlyDeleted)
     }
 
-    fn row_count(&self) -> usize {
-        self.posts.len() + 1
+    fn selected_row(&self) -> Option<Row> {
+        self.state.selected().and_then(|i| self.rows.get(i)).copied()
+    }
+
+    fn selected_post(&self) -> Option<usize> {
+        match self.selected_row() {
+            Some(Row::Post(i)) => Some(i),
+            _ => None,
+        }
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
-        let [_, header, _, rows, hint_area] = Layout::vertical([
+        let [_, header, subheader, _, rows, notice, _, hint_area] = Layout::vertical([
+            Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Fill(1),
             Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
         ])
         .areas(frame.area());
         let col = column(rows, COLUMN_WIDTH);
-        frame.render_widget(Paragraph::new("writui".bold()), column(header, COLUMN_WIDTH));
+
+        if self.deleted_view() {
+            frame.render_widget(Paragraph::new("Recently Deleted".bold()), column(header, COLUMN_WIDTH));
+            let note = format!("Posts here are deleted forever after {DELETED_RETENTION_DAYS} days.");
+            frame.render_widget(Paragraph::new(note.dim()), column(subheader, COLUMN_WIDTH));
+        } else {
+            frame.render_widget(Paragraph::new("writui".bold()), column(header, COLUMN_WIDTH));
+        }
 
         let now = Timestamp::now();
         let tz = TimeZone::system();
         let width = col.width as usize;
-        let mut items = vec![ListItem::new(Line::from("+ New post".bold()))];
-        items.extend(self.posts.iter().map(|post| {
-            let when = when(post.updated_at, now, &tz);
-            let title_width = width.saturating_sub(when.chars().count() + 2);
-            let title = if post.title.is_empty() {
-                Span::raw("Untitled").dim().italic()
-            } else {
-                Span::raw(truncate(&post.title, title_width))
-            };
-            let pad = width.saturating_sub(title.width() + when.chars().count());
-            ListItem::new(Line::from(vec![title, Span::raw(" ".repeat(pad)), Span::raw(when).dim()]))
-        }));
+        let items: Vec<ListItem> = self
+            .rows
+            .iter()
+            .map(|row| match *row {
+                Row::New => ListItem::new(Line::from("+ New post".bold())),
+                Row::RecentlyDeleted => {
+                    let Mode::Posts { deleted_count } = self.mode else { unreachable!() };
+                    ListItem::new(Line::from(format!("Recently Deleted ({deleted_count})").dim()))
+                }
+                Row::Post(i) => {
+                    let post = &self.posts[i];
+                    let right = match post.deleted_at {
+                        Some(deleted_at) => days_left(deleted_at, now),
+                        None => when(post.updated_at, now, &tz),
+                    };
+                    ListItem::new(post_line(&post.title, &right, width))
+                }
+            })
+            .collect();
+
         let mut list_area = col;
         if self.posts.is_empty() {
-            let [first, _, empty] = Layout::vertical([Constraint::Length(1); 3]).areas(col);
-            frame.render_widget(Paragraph::new("No posts yet.".dim()), empty);
-            list_area = first;
+            // Rows (if any), a blank line, then the message.
+            let text = if self.deleted_view() { "Nothing here." } else { "No posts yet." };
+            let used = items.len() as u16;
+            let y = col.y + if used == 0 { 0 } else { used + 1 };
+            if y < col.bottom() {
+                frame.render_widget(Paragraph::new(text.dim()), Rect { y, height: 1, ..col });
+            }
+            list_area.height = used.min(col.height);
         }
         self.rows_area = list_area;
         frame.render_stateful_widget(
@@ -105,63 +166,58 @@ impl List {
             &mut self.state,
         );
 
-        if let Some(index) = self.confirm {
-            self.render_confirm(frame, index);
-            self.hints.render(
-                frame,
-                hint_area,
-                &[hint("y", "delete", Cmd::ConfirmDelete), hint("n", "cancel", Cmd::CancelDelete)],
-            );
+        if let Some(text) = &self.notice {
+            let text = truncate(text, COLUMN_WIDTH as usize);
+            frame.render_widget(Paragraph::new(text.dim()), column(notice, COLUMN_WIDTH));
+        }
+
+        if let Some((_, dialog)) = &mut self.dialog {
+            dialog.render(frame);
+            let hints = dialog.hints();
+            self.hints.render(frame, hint_area, &hints);
+            return;
+        }
+        let has_post = self.selected_post().is_some();
+        let hints = if self.deleted_view() {
+            let mut hints = Vec::new();
+            if has_post {
+                hints.push(hint("Enter", "restore", Cmd::Open));
+                hints.push(hint("Ctrl+D", "delete forever", Cmd::Delete));
+            }
+            hints.push(hint("Esc", "back to posts", Cmd::Back));
+            hints.push(hint("Ctrl+Q", "quit", Cmd::Quit));
+            hints
         } else {
-            self.buttons.clear();
-            let mut hints = vec![
-                hint("Enter", "open", Cmd::Open),
-                hint("Ctrl+N", "new post", Cmd::New),
-            ];
-            if self.selected_post().is_some() {
+            let mut hints = vec![hint("Enter", "open", Cmd::Open), hint("Ctrl+N", "new post", Cmd::New)];
+            if has_post {
                 hints.push(hint("Ctrl+D", "delete", Cmd::Delete));
             }
             hints.push(hint("Ctrl+Q", "quit", Cmd::Quit));
-            self.hints.render(frame, hint_area, &hints);
-        }
-    }
-
-    fn render_confirm(&mut self, frame: &mut Frame, index: usize) {
-        let title = match self.posts[index].title.as_str() {
-            "" => "Untitled",
-            title => title,
+            hints
         };
-        let area = centered(frame.area(), 52, 6);
-        let inner = Block::bordered().title(" Delete post ").inner(area);
-        frame.render_widget(Clear, area);
-        frame.render_widget(Block::bordered().title(" Delete post "), area);
-
-        let delete = "[ Delete ]";
-        let cancel = "[ Cancel ]";
-        let lines = vec![
-            Line::from(format!("Delete “{}”?", truncate(title, inner.width as usize - 10))),
-            Line::from("This can't be undone.".dim()),
-            Line::default(),
-            Line::from(vec![Span::raw(delete).red().bold(), Span::raw("  "), Span::raw(cancel)]),
-        ];
-        let inner = Rect { x: inner.x + 1, width: inner.width.saturating_sub(2), ..inner };
-        frame.render_widget(Paragraph::new(lines), inner);
-        let y = inner.y + 3;
-        self.buttons = vec![
-            (Rect::new(inner.x, y, delete.len() as u16, 1), Cmd::ConfirmDelete),
-            (Rect::new(inner.x + delete.len() as u16 + 2, y, cancel.len() as u16, 1), Cmd::CancelDelete),
-        ];
+        self.hints.render(frame, hint_area, &hints);
     }
 
     pub fn handle(&mut self, event: Event) -> Action {
-        if self.confirm.is_some() {
-            return self.handle_confirm(event);
+        if let Some((_, dialog)) = &mut self.dialog {
+            let mut cmd = dialog.handle(event.clone());
+            if cmd.is_none()
+                && let Event::Mouse(mouse) = event
+                && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+            {
+                cmd = self.hints.hit(mouse.column, mouse.row);
+            }
+            return cmd.map_or(Action::None, |cmd| self.run(cmd));
+        }
+        if let Event::Key(_) | Event::Mouse(_) = event {
+            self.notice = None;
         }
         match event {
             Event::Key(key) => {
                 let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
                 match key.code {
                     KeyCode::Enter => self.run(Cmd::Open),
+                    KeyCode::Esc => self.run(Cmd::Back),
                     KeyCode::Char('n') if ctrl => self.run(Cmd::New),
                     KeyCode::Char('d') if ctrl => self.run(Cmd::Delete),
                     KeyCode::Delete => self.run(Cmd::Delete),
@@ -181,82 +237,134 @@ impl List {
                     if let Some(cmd) = self.hints.hit(mouse.column, mouse.row) {
                         return self.run(cmd);
                     }
-                    let pos = Position::new(mouse.column, mouse.row);
-                    if !self.rows_area.contains(pos) {
+                    if !self.rows_area.contains(Position::new(mouse.column, mouse.row)) {
                         return Action::None;
                     }
-                    let row = self.state.offset() + (mouse.row - self.rows_area.y) as usize;
-                    if row >= self.row_count() {
+                    let index = self.state.offset() + (mouse.row - self.rows_area.y) as usize;
+                    let Some(&row) = self.rows.get(index) else {
                         return Action::None;
-                    }
-                    // "New post" is a button; posts open on the second click.
-                    if row == 0 || row == self.selected_row() {
-                        self.state.select(Some(row));
-                        self.run(Cmd::Open)
-                    } else {
-                        self.state.select(Some(row));
-                        Action::None
-                    }
+                    };
+                    // Buttons act on the first click; posts open on the second.
+                    // In Recently Deleted, clicks only select (restore is Enter).
+                    let act = match row {
+                        Row::Post(_) => !self.deleted_view() && self.selected_row() == Some(row),
+                        _ => true,
+                    };
+                    self.state.select(Some(index));
+                    if act { self.run(Cmd::Open) } else { Action::None }
                 }
                 _ => Action::None,
             },
-            _ => Action::None,
-        }
-    }
-
-    fn handle_confirm(&mut self, event: Event) -> Action {
-        match event {
-            Event::Key(key) => match key.code {
-                KeyCode::Char('y') => self.run(Cmd::ConfirmDelete),
-                KeyCode::Char('n') | KeyCode::Esc => self.run(Cmd::CancelDelete),
-                _ => Action::None,
-            },
-            Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
-                let pos = Position::new(mouse.column, mouse.row);
-                let cmd = self
-                    .buttons
-                    .iter()
-                    .find(|(rect, _)| rect.contains(pos))
-                    .map(|(_, cmd)| *cmd)
-                    .or_else(|| self.hints.hit(mouse.column, mouse.row));
-                match cmd {
-                    Some(cmd) => self.run(cmd),
-                    None => Action::None,
-                }
-            }
             _ => Action::None,
         }
     }
 
     fn move_by(&mut self, delta: isize) -> Action {
-        let last = self.row_count() as isize - 1;
-        let row = (self.selected_row() as isize).saturating_add(delta).clamp(0, last);
-        self.state.select(Some(row as usize));
+        let last = self.rows.len() as isize - 1;
+        let current = self.state.selected().unwrap_or(0) as isize;
+        self.state.select(Some(current.saturating_add(delta).clamp(0, last.max(0)) as usize));
         Action::None
+    }
+
+    /// The post to highlight after `index` disappears from the list.
+    fn neighbour_of(&self, index: usize) -> Option<i64> {
+        self.posts
+            .get(index + 1)
+            .or_else(|| index.checked_sub(1).and_then(|i| self.posts.get(i)))
+            .map(|p| p.id)
     }
 
     fn run(&mut self, cmd: Cmd) -> Action {
         match cmd {
             Cmd::Quit => Action::Quit,
-            Cmd::New => Action::NewPost,
-            Cmd::Open => match self.selected_post() {
-                Some(post) => Action::OpenPost(post.id),
-                None => Action::NewPost,
+            Cmd::New if !self.deleted_view() => Action::NewPost,
+            Cmd::New => Action::None,
+            Cmd::Back if self.deleted_view() => Action::BackToList(None),
+            Cmd::Back => Action::None,
+            Cmd::Open => match (self.selected_row(), self.deleted_view()) {
+                (Some(Row::New), _) => Action::NewPost,
+                (Some(Row::RecentlyDeleted), _) => Action::ShowRecentlyDeleted,
+                (Some(Row::Post(i)), false) => Action::OpenPost(self.posts[i].id),
+                (Some(Row::Post(i)), true) => {
+                    Action::RestorePost { id: self.posts[i].id, select: self.neighbour_of(i) }
+                }
+                (None, _) => Action::None,
             },
             Cmd::Delete => {
-                self.confirm = self.selected_row().checked_sub(1);
+                if let Some(index) = self.selected_post() {
+                    self.dialog = Some((index, self.delete_dialog(index)));
+                }
                 Action::None
             }
-            Cmd::ConfirmDelete => match self.confirm.take() {
-                Some(index) => Action::DeletePost(self.posts[index].id),
+            Cmd::ConfirmDelete => match self.dialog.take() {
+                Some((index, _)) => {
+                    let id = self.posts[index].id;
+                    let select = self.neighbour_of(index);
+                    if self.deleted_view() {
+                        Action::DeletePostForever { id, select }
+                    } else {
+                        Action::DeletePost { id, select }
+                    }
+                }
                 None => Action::None,
             },
-            Cmd::CancelDelete => {
-                self.confirm = None;
+            Cmd::CancelDialog => {
+                self.dialog = None;
                 Action::None
             }
         }
     }
+
+    fn delete_dialog(&self, index: usize) -> Dialog<Cmd> {
+        let title = display_title(&self.posts[index].title);
+        let title = truncate(title, 40);
+        if self.deleted_view() {
+            Dialog::new(
+                "Delete forever",
+                vec![
+                    Line::from(format!("Delete “{title}” forever?")),
+                    Line::from("This can't be undone.".dim()),
+                ],
+                vec![
+                    Button { label: "Delete forever", key: "y", cmd: Cmd::ConfirmDelete, danger: true },
+                    Button { label: "Cancel", key: "n", cmd: Cmd::CancelDialog, danger: false },
+                ],
+                1,
+                1,
+            )
+        } else {
+            Dialog::new(
+                "Delete post",
+                vec![
+                    Line::from(format!("Move “{title}” to Recently Deleted?")),
+                    Line::from(format!("You can restore it for {DELETED_RETENTION_DAYS} days.").dim()),
+                ],
+                vec![
+                    Button { label: "Delete", key: "y", cmd: Cmd::ConfirmDelete, danger: true },
+                    Button { label: "Cancel", key: "n", cmd: Cmd::CancelDialog, danger: false },
+                ],
+                0,
+                1,
+            )
+        }
+    }
+}
+
+pub fn display_title(title: &str) -> &str {
+    if title.is_empty() { "Untitled" } else { title }
+}
+
+/// A post row: title on the left, `right` (a time) right-aligned and dim.
+fn post_line(title: &str, right: &str, width: usize) -> Line<'static> {
+    let right_width = right.chars().count();
+    let title_width = width.saturating_sub(right_width + 2);
+    let title = if title.is_empty() {
+        Span::raw("Untitled").dim().italic()
+    } else {
+        Span::raw(truncate(title, title_width))
+    };
+    let pad = width.saturating_sub(title.width() + right_width);
+    Line::from(vec![title, Span::raw(" ".repeat(pad)), Span::raw(right.to_string()).dim()])
 }
 
 /// Short, human "last updated" text: "just now", "5 min ago", "2:05 PM",
@@ -282,20 +390,41 @@ fn when(ts: Timestamp, now: Timestamp, tz: &TimeZone) -> String {
     }
 }
 
+/// How long until a deleted post is gone for good: "30 days left".
+fn days_left(deleted_at: Timestamp, now: Timestamp) -> String {
+    let days_gone = now.duration_since(deleted_at).as_secs() / (24 * 60 * 60);
+    match (DELETED_RETENTION_DAYS - days_gone).max(1) {
+        1 => "1 day left".into(),
+        n => format!("{n} days left"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn at(s: &str) -> Timestamp {
+        s.parse().unwrap()
+    }
+
     #[test]
     fn when_reads_naturally() {
         let tz = TimeZone::UTC;
-        let now: Timestamp = "2026-10-03T14:30:00Z".parse().unwrap();
-        let at = |s: &str| s.parse::<Timestamp>().unwrap();
+        let now = at("2026-10-03T14:30:00Z");
         assert_eq!(when(at("2026-10-03T14:29:30Z"), now, &tz), "just now");
         assert_eq!(when(at("2026-10-03T14:05:00Z"), now, &tz), "25 min ago");
         assert_eq!(when(at("2026-10-03T09:05:00Z"), now, &tz), "9:05 AM");
         assert_eq!(when(at("2026-10-02T23:00:00Z"), now, &tz), "Yesterday");
         assert_eq!(when(at("2026-03-14T10:00:00Z"), now, &tz), "Mar 14");
         assert_eq!(when(at("2025-03-14T10:00:00Z"), now, &tz), "Mar 14, 2025");
+    }
+
+    #[test]
+    fn days_left_counts_down() {
+        let now = at("2026-10-03T14:30:00Z");
+        assert_eq!(days_left(at("2026-10-03T14:00:00Z"), now), "30 days left");
+        assert_eq!(days_left(at("2026-10-01T14:00:00Z"), now), "28 days left");
+        assert_eq!(days_left(at("2026-09-04T15:00:00Z"), now), "2 days left");
+        assert_eq!(days_left(at("2026-09-03T15:00:00Z"), now), "1 day left");
     }
 }

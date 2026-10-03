@@ -48,8 +48,10 @@ scripts/      ship.sh and other dev scripts
 ## Rules
 
 - **Aakash's real writing is sacred.** Debug builds use `./.dev-data/`, never
-  the real vault. Every schema change is a migration; never drop or rewrite
-  user data destructively. Back up the vault before migrating.
+  the real vault. Dev and throwaway vaults always use the shared password
+  **`writui-dev`** (debug builds show it on the unlock screen). Every schema
+  change is a migration; never drop or rewrite user data destructively. Back
+  up the vault before migrating.
 - Aakash doesn't know Rust. Explain changes in terms of behaviour, not code.
 - Terminal agnostic: test assumptions against Alacritty, Ghostty, iTerm2. Use
   only the 16 standard terminal colours.
@@ -66,11 +68,17 @@ scripts/      ship.sh and other dev scripts
 1. Branch off `main` for each PR. Keep PRs small and reviewable; split a
    milestone into several PRs whenever it grows.
 2. Verify with `cargo test`, `cargo clippy --all-targets`, and by driving the
-   real app in tmux against a throwaway vault
-   (`tmux new-session -d -s w -x 100 -y 30 "target/debug/writui --db /tmp/x/writui.db"`,
-   `tmux send-keys`, `tmux capture-pane -p`; add `-e` to see styles). Mouse
-   clicks can be sent as SGR sequences:
-   `tmux send-keys -t w -l $'\e[<0;COL;ROWM\e[<0;COL;ROWm'` (1-based).
+   real app in tmux against a throwaway vault:
+   - `tmux new-session -d -s w -x 100 -y 30 "target/debug/writui --db /tmp/x/writui.db"`,
+     wait ~1.5s for it to start, then `tmux send-keys` and
+     `tmux capture-pane -p` (add `-e` to see styles).
+   - Mouse clicks can be sent as SGR sequences (1-based):
+     `tmux send-keys -t w -l $'\e[<0;COL;ROWM\e[<0;COL;ROWm'`.
+   - When a PR adds a migration, check it against a vault made by the
+     previous build: the backup file appears and the data survives.
+   - Don't build an old commit into the shared `target/` (e.g. from a
+     worktree): cargo then leaves the stale binary in `target/debug/`. Use a
+     separate `CARGO_TARGET_DIR`, or `touch src/main.rs` before rebuilding.
 3. Open the PR with `gh pr create`. The description says what changed in
    behavioural terms, has a **Try it** section with exact commands
    (`gh pr checkout <n> && cargo run` — debug builds use `.dev-data/`, never
@@ -78,9 +86,13 @@ scripts/      ship.sh and other dev scripts
    - Screenshots: write a VHS tape (`brew install vhs`) that drives the debug
      binary against a throwaway `--db`, with `Screenshot` steps (and a GIF
      `Output` for flows). VHS gotchas: one command per line, quote file
-     paths, wrap the launch command in `Hide` / `Show`. Push the images to the orphan `pr-assets` branch
-     under `<branch-name>/`, and embed them with
-     `https://github.com/aakashns/writui/blob/pr-assets/<branch-name>/<file>?raw=true`.
+     paths, wrap the launch command in `Hide` / `Show`.
+   - Upload images with the `gh attach` extension
+     (`gh attach <files> -R aakashns/writui --markdown`), which prints
+     Markdown to paste into the PR body. It uses Aakash's browser GitHub
+     login; if it can't find one, fall back to the orphan `pr-assets` branch:
+     push images under `<branch-name>/` via a `git worktree` and embed them
+     with `https://github.com/aakashns/writui/blob/pr-assets/<branch-name>/<file>?raw=true`.
      Never merge `pr-assets` into `main`.
 4. Aakash tries it locally and merges. Never merge PRs yourself.
 5. After a merge: pull `main` and ship with `scripts/ship.sh` (release build,

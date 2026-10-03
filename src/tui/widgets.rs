@@ -8,6 +8,12 @@ use zeroize::Zeroizing;
 /// The comfortable reading/writing width, in columns.
 pub const COLUMN_WIDTH: u16 = 68;
 
+/// Shown on the setup and unlock screens of debug builds, so the shared
+/// password for `.dev-data/` vaults is never forgotten.
+pub fn dev_password_note() -> Option<&'static str> {
+    cfg!(debug_assertions).then_some("Dev build · dev vault password: writui-dev")
+}
+
 /// A column of at most `width`, horizontally centred in `area`.
 pub fn column(area: Rect, width: u16) -> Rect {
     let width = width.min(area.width);

@@ -9,7 +9,7 @@ use ratatui::widgets::Paragraph;
 
 use super::Action;
 use super::hints::{HintBar, hint};
-use super::widgets::{COLUMN_WIDTH, PasswordField, centered};
+use super::widgets::{COLUMN_WIDTH, PasswordField, centered, dev_password_note};
 
 const LABEL: &str = "Password  ";
 
@@ -55,6 +55,8 @@ impl Unlock {
             Line::from(vec![Span::raw(LABEL).bold(), Span::raw(self.field.masked())]),
             Line::default(),
             status,
+            Line::default(),
+            Line::from(dev_password_note().unwrap_or_default().dim()),
         ];
         let area = centered(body, COLUMN_WIDTH, lines.len() as u16);
         if !self.busy {

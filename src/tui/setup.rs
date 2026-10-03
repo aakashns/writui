@@ -11,7 +11,7 @@ use ratatui::widgets::Paragraph;
 
 use super::Action;
 use super::hints::{HintBar, hint};
-use super::widgets::{COLUMN_WIDTH, PasswordField, centered, truncate};
+use super::widgets::{COLUMN_WIDTH, PasswordField, centered, dev_password_note, truncate};
 
 const MIN_PASSWORD_LEN: usize = 8;
 const LABEL_WIDTH: usize = 18;
@@ -77,6 +77,8 @@ impl Setup {
             status,
             Line::default(),
             Line::from(truncate(&path, COLUMN_WIDTH as usize).dim()),
+            Line::default(),
+            Line::from(dev_password_note().unwrap_or_default().dim()),
         ];
         const FIRST_FIELD_LINE: u16 = 8;
 

@@ -1,5 +1,6 @@
 //! The terminal UI: terminal setup, the event loop, and switching screens.
 
+mod dialog;
 mod editor;
 mod hints;
 mod list;
@@ -19,7 +20,7 @@ use ratatui::crossterm::execute;
 use ratatui::{DefaultTerminal, Frame};
 use zeroize::Zeroizing;
 
-use crate::vault::{OpenError, Vault};
+use crate::vault::{OpenError, Vault, title_from_first_line};
 
 /// What a screen asks the app to do in response to an event.
 pub enum Action {
@@ -29,7 +30,11 @@ pub enum Action {
     Unlock(Zeroizing<String>),
     NewPost,
     OpenPost(i64),
-    DeletePost(i64),
+    /// Move to Recently Deleted, then highlight `select` in the list.
+    DeletePost { id: i64, select: Option<i64> },
+    ShowRecentlyDeleted,
+    RestorePost { id: i64, select: Option<i64> },
+    DeletePostForever { id: i64, select: Option<i64> },
     /// Go back to the list, highlighting this post.
     BackToList(Option<i64>),
 }
@@ -138,11 +143,23 @@ impl App {
                 self.open_post(id)?;
             }
             Action::OpenPost(id) => self.open_post(id)?,
-            Action::DeletePost(id) => {
+            Action::DeletePost { id, select } => {
+                let title = self.title_of(id)?;
                 self.vault()?.delete_post(id)?;
-                self.show_list(None)?;
+                self.show_list(select, Some(format!("Moved “{title}” to Recently Deleted.")))?;
             }
-            Action::BackToList(select) => self.show_list(select)?,
+            Action::ShowRecentlyDeleted => self.show_recently_deleted(None, None)?,
+            Action::RestorePost { id, select } => {
+                let title = self.title_of(id)?;
+                self.vault()?.restore_post(id)?;
+                self.show_recently_deleted(select, Some(format!("Restored “{title}”.")))?;
+            }
+            Action::DeletePostForever { id, select } => {
+                let title = self.title_of(id)?;
+                self.vault()?.delete_post_forever(id)?;
+                self.show_recently_deleted(select, Some(format!("Deleted “{title}” forever.")))?;
+            }
+            Action::BackToList(select) => self.show_list(select, None)?,
         }
         Ok(())
     }
@@ -151,12 +168,12 @@ impl App {
         match action {
             Action::CreateVault(password) => {
                 self.vault = Some(Vault::create(&self.vault_path, &password)?);
-                self.show_list(None)
+                self.show_list(None, None)
             }
             Action::Unlock(password) => match Vault::open(&self.vault_path, &password) {
                 Ok(vault) => {
                     self.vault = Some(vault);
-                    self.show_list(None)
+                    self.show_list(None, None)
                 }
                 Err(OpenError::WrongPassword) => {
                     if let Screen::Unlock(screen) = &mut self.screen {
@@ -174,10 +191,30 @@ impl App {
         self.vault.as_ref().context("the vault is locked")
     }
 
-    fn show_list(&mut self, select: Option<i64>) -> Result<()> {
-        let posts = self.vault()?.list_posts()?;
-        self.screen = Screen::List(list::List::new(posts, select));
+    fn title_of(&self, id: i64) -> Result<String> {
+        let post = self.vault()?.post(id)?;
+        let title = title_from_first_line(post.body.lines().next().unwrap_or_default());
+        Ok(list::display_title(&title).to_string())
+    }
+
+    fn show_list(&mut self, select: Option<i64>, notice: Option<String>) -> Result<()> {
+        let vault = self.vault()?;
+        let mode = list::Mode::Posts { deleted_count: vault.count_deleted()? };
+        self.show(list::List::new(mode, vault.list_posts()?, select), notice);
         Ok(())
+    }
+
+    fn show_recently_deleted(&mut self, select: Option<i64>, notice: Option<String>) -> Result<()> {
+        let posts = self.vault()?.list_deleted()?;
+        self.show(list::List::new(list::Mode::RecentlyDeleted, posts, select), notice);
+        Ok(())
+    }
+
+    fn show(&mut self, list: list::List, notice: Option<String>) {
+        self.screen = Screen::List(match notice {
+            Some(notice) => list.with_notice(notice),
+            None => list,
+        });
     }
 
     fn open_post(&mut self, id: i64) -> Result<()> {

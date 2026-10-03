@@ -33,6 +33,9 @@ const KDF_COST: (u32, u32, u32) = (8, 1, 1);
 /// Every post starts with this: its first line is always the `# ` title.
 pub const TITLE_PREFIX: &str = "# ";
 
+/// Deleted posts stay in Recently Deleted for this long.
+pub const DELETED_RETENTION_DAYS: i64 = 30;
+
 pub struct Vault {
     conn: Connection,
 }
@@ -71,6 +74,8 @@ pub struct PostSummary {
     pub id: i64,
     pub title: String,
     pub updated_at: Timestamp,
+    /// Set for posts in Recently Deleted.
+    pub deleted_at: Option<Timestamp>,
 }
 
 #[derive(Debug, Clone)]
@@ -112,25 +117,48 @@ impl Vault {
             Err(err) => return Err(err.into()),
         }
         migrations::run(&mut conn, path)?;
-        Ok(Vault { conn })
+        let vault = Vault { conn };
+        vault.purge_expired()?;
+        Ok(vault)
     }
 
-    /// All posts, most recently updated first.
+    /// All posts (not counting Recently Deleted), most recently updated first.
     pub fn list_posts(&self) -> Result<Vec<PostSummary>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT id, substr(body, 1, instr(body || char(10), char(10)) - 1), updated_at
-             FROM posts ORDER BY updated_at DESC, id DESC",
+        self.summaries("deleted_at IS NULL ORDER BY updated_at DESC, id DESC")
+    }
+
+    /// Posts in Recently Deleted, most recently deleted first.
+    pub fn list_deleted(&self) -> Result<Vec<PostSummary>> {
+        self.summaries("deleted_at IS NOT NULL ORDER BY deleted_at DESC, id DESC")
+    }
+
+    pub fn count_deleted(&self) -> Result<usize> {
+        let count: i64 = self.conn.query_row(
+            "SELECT count(*) FROM posts WHERE deleted_at IS NOT NULL",
+            [],
+            |row| row.get(0),
         )?;
+        Ok(count as usize)
+    }
+
+    fn summaries(&self, filter_and_order: &str) -> Result<Vec<PostSummary>> {
+        let mut stmt = self.conn.prepare(&format!(
+            "SELECT id, substr(body, 1, instr(body || char(10), char(10)) - 1),
+                    updated_at, deleted_at
+             FROM posts WHERE {filter_and_order}"
+        ))?;
         let rows = stmt.query_map([], |row| {
             let first_line: String = row.get(1)?;
-            Ok((row.get(0)?, first_line, row.get(2)?))
+            let deleted_at: Option<i64> = row.get(3)?;
+            Ok((row.get(0)?, first_line, row.get(2)?, deleted_at))
         })?;
         rows.map(|row| {
-            let (id, first_line, updated_at) = row?;
+            let (id, first_line, updated_at, deleted_at) = row?;
             Ok(PostSummary {
                 id,
                 title: title_from_first_line(&first_line),
                 updated_at: from_millis(updated_at)?,
+                deleted_at: deleted_at.map(from_millis).transpose()?,
             })
         })
         .collect()
@@ -168,9 +196,31 @@ impl Vault {
         Ok(())
     }
 
+    /// Move a post to Recently Deleted.
     pub fn delete_post(&self, id: i64) -> Result<()> {
-        self.conn.execute("DELETE FROM posts WHERE id = ?1", [id])?;
+        self.conn.execute(
+            "UPDATE posts SET deleted_at = ?1 WHERE id = ?2",
+            params![now_millis(), id],
+        )?;
         Ok(())
+    }
+
+    /// Bring a post back from Recently Deleted.
+    pub fn restore_post(&self, id: i64) -> Result<()> {
+        self.conn.execute("UPDATE posts SET deleted_at = NULL WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Permanently delete a post that's in Recently Deleted.
+    pub fn delete_post_forever(&self, id: i64) -> Result<()> {
+        self.conn.execute("DELETE FROM posts WHERE id = ?1 AND deleted_at IS NOT NULL", [id])?;
+        Ok(())
+    }
+
+    /// Permanently delete posts that have been in Recently Deleted too long.
+    fn purge_expired(&self) -> Result<usize> {
+        let cutoff = now_millis() - DELETED_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+        Ok(self.conn.execute("DELETE FROM posts WHERE deleted_at < ?1", [cutoff])?)
     }
 }
 
@@ -310,19 +360,67 @@ mod tests {
         assert!(Vault::create(&path, "correct horse").is_err());
     }
 
+    fn ids(posts: Vec<PostSummary>) -> Vec<i64> {
+        posts.iter().map(|p| p.id).collect()
+    }
+
     #[test]
-    fn posts_list_most_recent_first_and_delete() {
+    fn posts_list_most_recent_first() {
         let (_dir, path) = temp_vault();
         let vault = Vault::create(&path, "pw").unwrap();
         let first = vault.create_post().unwrap();
         let second = vault.create_post().unwrap();
         vault.update_post_body(first, "# First, edited later").unwrap();
-        let ids: Vec<_> = vault.list_posts().unwrap().iter().map(|p| p.id).collect();
-        assert_eq!(ids, [first, second]);
+        assert_eq!(ids(vault.list_posts().unwrap()), [first, second]);
+    }
+
+    #[test]
+    fn delete_restore_and_delete_forever() {
+        let (_dir, path) = temp_vault();
+        let vault = Vault::create(&path, "pw").unwrap();
+        let first = vault.create_post().unwrap();
+        let second = vault.create_post().unwrap();
 
         vault.delete_post(first).unwrap();
-        let ids: Vec<_> = vault.list_posts().unwrap().iter().map(|p| p.id).collect();
-        assert_eq!(ids, [second]);
+        assert_eq!(ids(vault.list_posts().unwrap()), [second]);
+        assert_eq!(ids(vault.list_deleted().unwrap()), [first]);
+        assert_eq!(vault.count_deleted().unwrap(), 1);
+
+        vault.restore_post(first).unwrap();
+        assert_eq!(vault.list_posts().unwrap().len(), 2);
+        assert_eq!(vault.count_deleted().unwrap(), 0);
+
+        // Only posts already in Recently Deleted can be deleted forever.
+        vault.delete_post_forever(second).unwrap();
+        assert_eq!(vault.list_posts().unwrap().len(), 2);
+        vault.delete_post(second).unwrap();
+        vault.delete_post_forever(second).unwrap();
+        assert_eq!(ids(vault.list_posts().unwrap()), [first]);
+        assert_eq!(vault.count_deleted().unwrap(), 0);
+    }
+
+    #[test]
+    fn old_deleted_posts_are_purged_on_open() {
+        let (_dir, path) = temp_vault();
+        let vault = Vault::create(&path, "pw").unwrap();
+        let old = vault.create_post().unwrap();
+        let recent = vault.create_post().unwrap();
+        let day = 24 * 60 * 60 * 1000;
+        let set_deleted = |id: i64, days_ago: i64| {
+            vault
+                .conn
+                .execute(
+                    "UPDATE posts SET deleted_at = ?1 WHERE id = ?2",
+                    params![now_millis() - days_ago * day, id],
+                )
+                .unwrap();
+        };
+        set_deleted(old, DELETED_RETENTION_DAYS + 1);
+        set_deleted(recent, DELETED_RETENTION_DAYS - 1);
+        drop(vault);
+
+        let vault = Vault::open(&path, "pw").unwrap();
+        assert_eq!(ids(vault.list_deleted().unwrap()), [recent]);
     }
 
     #[test]
