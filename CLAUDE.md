@@ -87,13 +87,11 @@ scripts/      ship.sh and other dev scripts
      binary against a throwaway `--db`, with `Screenshot` steps (and a GIF
      `Output` for flows). VHS gotchas: one command per line, quote file
      paths, wrap the launch command in `Hide` / `Show`.
-   - Upload images with the `gh attach` extension
-     (`gh attach <files> -R aakashns/writui --markdown`), which prints
-     Markdown to paste into the PR body. It uses Aakash's browser GitHub
-     login; if it can't find one, fall back to the orphan `pr-assets` branch:
-     push images under `<branch-name>/` via a `git worktree` and embed them
-     with `https://github.com/aakashns/writui/blob/pr-assets/<branch-name>/<file>?raw=true`.
-     Never merge `pr-assets` into `main`.
+   - Attach images with gh's built-in `--attach` (on `gh pr create`,
+     `pr edit`, `pr comment`): put the images and a body file in one folder,
+     reference them as `![alt](./name.png)` in the body, and run e.g.
+     `gh pr edit <n> --body-file body.md --attach ./name.png --attach ./flow.gif`
+     from that folder. gh uploads them and rewrites the references.
 4. Aakash tries it locally and merges. Never merge PRs yourself.
 5. After a merge: pull `main` and ship with `scripts/ship.sh` (release build,
    install to `~/.local/bin/writui`). Tick the items in `docs/PLAN.md`.
