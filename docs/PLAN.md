@@ -9,6 +9,20 @@ usable. Order can change; this file is the source of truth for what's next.
 > out as soon as it's doing something. And let's bring in LLM chat sidebar
 > right after the open source release.
 
+## Next up
+
+M0 is split into three PRs:
+
+1. ~~Vault create/unlock + post list~~ — PR #2
+2. **The editor** — centred 68-char column, soft wrap, cursor movement,
+   scrolling, mouse click to place the cursor, scroll wheel; the `# ` title
+   prefix can't be deleted. Saves the draft on leaving the editor (proper
+   autosave comes in 3).
+3. Autosave, undo/redo, editor hint bar, first ship.
+
+Shipping to `~/.local/bin` starts after PR 3; until then, don't run
+`scripts/ship.sh` after merges.
+
 ## M0 — Writing core
 
 The smallest thing that can replace another writing app.
