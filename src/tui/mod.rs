@@ -30,9 +30,9 @@ pub enum Action {
     Unlock(Zeroizing<String>),
     NewPost,
     OpenPost(i64),
-    /// Move to Recently Deleted, then highlight `select` in the list.
+    /// Move to the Trash, then highlight `select` in the list.
     DeletePost { id: i64, select: Option<i64> },
-    ShowRecentlyDeleted,
+    ShowTrash,
     RestorePost { id: i64, select: Option<i64> },
     DeletePostForever { id: i64, select: Option<i64> },
     /// Go back to the list, highlighting this post.
@@ -146,18 +146,18 @@ impl App {
             Action::DeletePost { id, select } => {
                 let title = self.title_of(id)?;
                 self.vault()?.delete_post(id)?;
-                self.show_list(select, Some(format!("Moved “{title}” to Recently Deleted.")))?;
+                self.show_list(select, Some(format!("Moved “{title}” to the Trash.")))?;
             }
-            Action::ShowRecentlyDeleted => self.show_recently_deleted(None, None)?,
+            Action::ShowTrash => self.show_trash(None, None)?,
             Action::RestorePost { id, select } => {
                 let title = self.title_of(id)?;
                 self.vault()?.restore_post(id)?;
-                self.show_recently_deleted(select, Some(format!("Restored “{title}”.")))?;
+                self.show_trash(select, Some(format!("Restored “{title}”.")))?;
             }
             Action::DeletePostForever { id, select } => {
                 let title = self.title_of(id)?;
                 self.vault()?.delete_post_forever(id)?;
-                self.show_recently_deleted(select, Some(format!("Deleted “{title}” forever.")))?;
+                self.show_trash(select, Some(format!("Deleted “{title}” forever.")))?;
             }
             Action::BackToList(select) => self.show_list(select, None)?,
         }
@@ -204,9 +204,9 @@ impl App {
         Ok(())
     }
 
-    fn show_recently_deleted(&mut self, select: Option<i64>, notice: Option<String>) -> Result<()> {
+    fn show_trash(&mut self, select: Option<i64>, notice: Option<String>) -> Result<()> {
         let posts = self.vault()?.list_deleted()?;
-        self.show(list::List::new(list::Mode::RecentlyDeleted, posts, select), notice);
+        self.show(list::List::new(list::Mode::Trash, posts, select), notice);
         Ok(())
     }
 

@@ -16,7 +16,7 @@ const MIGRATIONS: &[&str] = &[
         updated_at INTEGER NOT NULL
     );
     CREATE INDEX posts_updated_at ON posts (updated_at);",
-    // 2: Recently Deleted. Set when a post is deleted; cleared on restore.
+    // 2: Trash. Set when a post is deleted; cleared on restore.
     "ALTER TABLE posts ADD COLUMN deleted_at INTEGER;",
 ];
 

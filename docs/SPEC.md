@@ -72,17 +72,19 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - A "New post" action, always visible.
 - Search on the main screen, matching against the full post body (not just
   titles).
-- Delete a post (with confirmation). Deleted posts go to Recently Deleted.
+- Delete a post (with confirmation). Deleted posts go to the Trash.
 
   > Let's keep a "Recently Deleted".
 
   > Actually, keep the confirmation still, for deletion.
 
-### Recently Deleted
+  > Okay, change of mind, rename "Recently Deleted" to "Trash".
+
+### Trash
 
 **Details**
 
-- Reached from a "Recently Deleted (n)" row at the end of the post list
+- Reached from a "Trash (n)" row at the end of the post list
   (only shown when something's in there).
 - Each row shows how long until the post is gone for good. Posts are deleted
   forever 30 days after being deleted.
@@ -96,7 +98,7 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - ←/→/Tab move between buttons, Enter presses the selected one, each button
   also has a key (e.g. `y`), Esc cancels, and buttons can be clicked.
 - The selected button starts on the sensible choice: Delete for moving to
-  Recently Deleted (it can be undone), Cancel for anything permanent.
+  the Trash (it can be undone), Cancel for anything permanent.
 
 ### Posts
 

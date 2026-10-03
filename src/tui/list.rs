@@ -1,5 +1,5 @@
 //! The first screen: all posts, most recently updated first. The same screen
-//! also shows Recently Deleted.
+//! also shows the Trash.
 
 use jiff::Timestamp;
 use jiff::tz::TimeZone;
@@ -17,9 +17,9 @@ use super::widgets::{COLUMN_WIDTH, column, truncate};
 use crate::vault::{DELETED_RETENTION_DAYS, PostSummary};
 
 pub enum Mode {
-    /// The normal list, with a "Recently Deleted" row if anything is there.
+    /// The normal list, with a "Trash" row if anything is there.
     Posts { deleted_count: usize },
-    RecentlyDeleted,
+    Trash,
 }
 
 #[derive(Clone, Copy)]
@@ -37,7 +37,7 @@ enum Cmd {
 enum Row {
     New,
     Post(usize),
-    RecentlyDeleted,
+    Trash,
 }
 
 pub struct List {
@@ -63,7 +63,7 @@ impl List {
         if let Mode::Posts { deleted_count } = mode
             && deleted_count > 0
         {
-            rows.push(Row::RecentlyDeleted);
+            rows.push(Row::Trash);
         }
         let selected = select
             .and_then(|id| posts.iter().position(|p| p.id == id))
@@ -88,8 +88,8 @@ impl List {
         self
     }
 
-    fn deleted_view(&self) -> bool {
-        matches!(self.mode, Mode::RecentlyDeleted)
+    fn trash_view(&self) -> bool {
+        matches!(self.mode, Mode::Trash)
     }
 
     fn selected_row(&self) -> Option<Row> {
@@ -117,8 +117,8 @@ impl List {
         .areas(frame.area());
         let col = column(rows, COLUMN_WIDTH);
 
-        if self.deleted_view() {
-            frame.render_widget(Paragraph::new("Recently Deleted".bold()), column(header, COLUMN_WIDTH));
+        if self.trash_view() {
+            frame.render_widget(Paragraph::new("Trash".bold()), column(header, COLUMN_WIDTH));
             let note = format!("Posts here are deleted forever after {DELETED_RETENTION_DAYS} days.");
             frame.render_widget(Paragraph::new(note.dim()), column(subheader, COLUMN_WIDTH));
         } else {
@@ -133,9 +133,9 @@ impl List {
             .iter()
             .map(|row| match *row {
                 Row::New => ListItem::new(Line::from("+ New post".bold())),
-                Row::RecentlyDeleted => {
+                Row::Trash => {
                     let Mode::Posts { deleted_count } = self.mode else { unreachable!() };
-                    ListItem::new(Line::from(format!("Recently Deleted ({deleted_count})").dim()))
+                    ListItem::new(Line::from(format!("Trash ({deleted_count})").dim()))
                 }
                 Row::Post(i) => {
                     let post = &self.posts[i];
@@ -151,7 +151,7 @@ impl List {
         let mut list_area = col;
         if self.posts.is_empty() {
             // Rows (if any), a blank line, then the message.
-            let text = if self.deleted_view() { "Nothing here." } else { "No posts yet." };
+            let text = if self.trash_view() { "Nothing here." } else { "No posts yet." };
             let used = items.len() as u16;
             let y = col.y + if used == 0 { 0 } else { used + 1 };
             if y < col.bottom() {
@@ -178,7 +178,7 @@ impl List {
             return;
         }
         let has_post = self.selected_post().is_some();
-        let hints = if self.deleted_view() {
+        let hints = if self.trash_view() {
             let mut hints = Vec::new();
             if has_post {
                 hints.push(hint("Enter", "restore", Cmd::Open));
@@ -245,9 +245,9 @@ impl List {
                         return Action::None;
                     };
                     // Buttons act on the first click; posts open on the second.
-                    // In Recently Deleted, clicks only select (restore is Enter).
+                    // In the Trash, clicks only select (restore is Enter).
                     let act = match row {
-                        Row::Post(_) => !self.deleted_view() && self.selected_row() == Some(row),
+                        Row::Post(_) => !self.trash_view() && self.selected_row() == Some(row),
                         _ => true,
                     };
                     self.state.select(Some(index));
@@ -277,13 +277,13 @@ impl List {
     fn run(&mut self, cmd: Cmd) -> Action {
         match cmd {
             Cmd::Quit => Action::Quit,
-            Cmd::New if !self.deleted_view() => Action::NewPost,
+            Cmd::New if !self.trash_view() => Action::NewPost,
             Cmd::New => Action::None,
-            Cmd::Back if self.deleted_view() => Action::BackToList(None),
+            Cmd::Back if self.trash_view() => Action::BackToList(None),
             Cmd::Back => Action::None,
-            Cmd::Open => match (self.selected_row(), self.deleted_view()) {
+            Cmd::Open => match (self.selected_row(), self.trash_view()) {
                 (Some(Row::New), _) => Action::NewPost,
-                (Some(Row::RecentlyDeleted), _) => Action::ShowRecentlyDeleted,
+                (Some(Row::Trash), _) => Action::ShowTrash,
                 (Some(Row::Post(i)), false) => Action::OpenPost(self.posts[i].id),
                 (Some(Row::Post(i)), true) => {
                     Action::RestorePost { id: self.posts[i].id, select: self.neighbour_of(i) }
@@ -300,7 +300,7 @@ impl List {
                 Some((index, _)) => {
                     let id = self.posts[index].id;
                     let select = self.neighbour_of(index);
-                    if self.deleted_view() {
+                    if self.trash_view() {
                         Action::DeletePostForever { id, select }
                     } else {
                         Action::DeletePost { id, select }
@@ -318,7 +318,7 @@ impl List {
     fn delete_dialog(&self, index: usize) -> Dialog<Cmd> {
         let title = display_title(&self.posts[index].title);
         let title = truncate(title, 40);
-        if self.deleted_view() {
+        if self.trash_view() {
             Dialog::new(
                 "Delete forever",
                 vec![
@@ -336,7 +336,7 @@ impl List {
             Dialog::new(
                 "Delete post",
                 vec![
-                    Line::from(format!("Move “{title}” to Recently Deleted?")),
+                    Line::from(format!("Move “{title}” to the Trash?")),
                     Line::from(format!("You can restore it for {DELETED_RETENTION_DAYS} days.").dim()),
                 ],
                 vec![

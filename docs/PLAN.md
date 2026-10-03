@@ -32,7 +32,7 @@ The smallest thing that can replace another writing app.
 - [ ] Vault: create on first run (password twice, no-recovery warning), unlock on later runs
 - [ ] Schema migrations from day one, with a backup of the vault before migrating
 - [ ] List screen: posts sorted by last updated, "New post", open with click or Enter
-- [ ] Delete post (with confirmation) → Recently Deleted (restore, delete forever, purged after 30 days)
+- [ ] Delete post (with confirmation) → Trash (restore, delete forever, purged after 30 days)
 - [ ] Dialogs: arrow keys / Enter / shortcut keys / mouse
 - [ ] Posts: first line fixed as `# ` title; created / updated times tracked
 - [ ] Editor: centred 68-char column, soft wrap, cursor movement, scrolling

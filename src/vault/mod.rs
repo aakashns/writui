@@ -33,7 +33,7 @@ const KDF_COST: (u32, u32, u32) = (8, 1, 1);
 /// Every post starts with this: its first line is always the `# ` title.
 pub const TITLE_PREFIX: &str = "# ";
 
-/// Deleted posts stay in Recently Deleted for this long.
+/// Deleted posts stay in the Trash for this long.
 pub const DELETED_RETENTION_DAYS: i64 = 30;
 
 pub struct Vault {
@@ -74,7 +74,7 @@ pub struct PostSummary {
     pub id: i64,
     pub title: String,
     pub updated_at: Timestamp,
-    /// Set for posts in Recently Deleted.
+    /// Set for posts in the Trash.
     pub deleted_at: Option<Timestamp>,
 }
 
@@ -122,12 +122,12 @@ impl Vault {
         Ok(vault)
     }
 
-    /// All posts (not counting Recently Deleted), most recently updated first.
+    /// All posts (not counting the Trash), most recently updated first.
     pub fn list_posts(&self) -> Result<Vec<PostSummary>> {
         self.summaries("deleted_at IS NULL ORDER BY updated_at DESC, id DESC")
     }
 
-    /// Posts in Recently Deleted, most recently deleted first.
+    /// Posts in the Trash, most recently deleted first.
     pub fn list_deleted(&self) -> Result<Vec<PostSummary>> {
         self.summaries("deleted_at IS NOT NULL ORDER BY deleted_at DESC, id DESC")
     }
@@ -196,7 +196,7 @@ impl Vault {
         Ok(())
     }
 
-    /// Move a post to Recently Deleted.
+    /// Move a post to the Trash.
     pub fn delete_post(&self, id: i64) -> Result<()> {
         self.conn.execute(
             "UPDATE posts SET deleted_at = ?1 WHERE id = ?2",
@@ -205,19 +205,19 @@ impl Vault {
         Ok(())
     }
 
-    /// Bring a post back from Recently Deleted.
+    /// Bring a post back from the Trash.
     pub fn restore_post(&self, id: i64) -> Result<()> {
         self.conn.execute("UPDATE posts SET deleted_at = NULL WHERE id = ?1", [id])?;
         Ok(())
     }
 
-    /// Permanently delete a post that's in Recently Deleted.
+    /// Permanently delete a post that's in the Trash.
     pub fn delete_post_forever(&self, id: i64) -> Result<()> {
         self.conn.execute("DELETE FROM posts WHERE id = ?1 AND deleted_at IS NOT NULL", [id])?;
         Ok(())
     }
 
-    /// Permanently delete posts that have been in Recently Deleted too long.
+    /// Permanently delete posts that have been in the Trash too long.
     fn purge_expired(&self) -> Result<usize> {
         let cutoff = now_millis() - DELETED_RETENTION_DAYS * 24 * 60 * 60 * 1000;
         Ok(self.conn.execute("DELETE FROM posts WHERE deleted_at < ?1", [cutoff])?)
@@ -390,7 +390,7 @@ mod tests {
         assert_eq!(vault.list_posts().unwrap().len(), 2);
         assert_eq!(vault.count_deleted().unwrap(), 0);
 
-        // Only posts already in Recently Deleted can be deleted forever.
+        // Only posts already in the Trash can be deleted forever.
         vault.delete_post_forever(second).unwrap();
         assert_eq!(vault.list_posts().unwrap().len(), 2);
         vault.delete_post(second).unwrap();
