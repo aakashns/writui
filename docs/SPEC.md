@@ -245,6 +245,18 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 - License: MIT OR Apache-2.0 (dual, the Rust convention).
 
+## Command line
+
+> I want the binary to also be usable as a CLI, like to list posts, show a
+> post, export a post etc. That can come much later.
+
+**Details**
+
+- Plain `writui` opens the app; subcommands (e.g. `writui list`,
+  `writui show`, `writui export`) do one thing and exit.
+- The CLI still needs the vault unlocked, so it asks for the password. How
+  that works for scripting is to be decided when we get there.
+
 ## Not now
 
 - Full vim mode.

@@ -101,3 +101,4 @@ Needed before the chat sidebar, so the LLM can see what's selected.
 - [ ] Diffs between versions
 - [ ] Preview follows the cursor
 - [ ] Command palette
+- [ ] CLI subcommands: list posts, show a post, export a post, …

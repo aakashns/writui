@@ -77,3 +77,10 @@ node_modules. Fits the "light and fast" spirit; deploys to GitHub Pages.
 ## License: MIT OR Apache-2.0
 
 The Rust ecosystem convention. Permissive, and Apache-2.0 adds a patent grant.
+
+## Vault logic kept separate from the TUI
+
+Everything about the vault (unlocking, posts, drafts, saves, export) lives in
+its own module with no TUI dependencies, so the planned CLI subcommands can
+reuse it directly. `clap` for argument parsing from M0, since `--db` already
+needs it; subcommands slot in later.
