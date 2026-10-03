@@ -48,8 +48,9 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 - Everything lives in the encrypted vault: posts, drafts, saves, chat
   history, preview presets, settings, API keys.
-- First run creates the vault and asks for the password twice, with a clear
-  warning: there is no recovery. Forgotten password = lost writing.
+- First run creates the vault and asks for the password twice (at least 8
+  characters), with a clear warning: there is no recovery. Forgotten
+  password = lost writing.
 - One machine for now, but the vault file location is configurable. Default:
   `~/Library/Application Support/writui/writui.db` (platform equivalent
   elsewhere).
@@ -71,7 +72,33 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - A "New post" action, always visible.
 - Search on the main screen, matching against the full post body (not just
   titles).
-- Delete a post (with confirmation).
+- Delete a post (with confirmation). Deleted posts go to the Trash.
+
+  > Let's keep a "Recently Deleted".
+
+  > Actually, keep the confirmation still, for deletion.
+
+  > Okay, change of mind, rename "Recently Deleted" to "Trash".
+
+### Trash
+
+**Details**
+
+- Reached from a "Trash (n)" row at the end of the post list
+  (only shown when something's in there).
+- Each row shows how long until the post is gone for good. Posts are deleted
+  forever 30 days after being deleted.
+- Restore a post, or delete it forever (with a "can't be undone"
+  confirmation).
+
+### Dialogs
+
+**Details**
+
+- ←/→/Tab move between buttons, Enter presses the selected one, each button
+  also has a key (e.g. `y`), Esc cancels, and buttons can be clicked.
+- The selected button starts on the sensible choice: Delete for moving to
+  the Trash (it can be undone), Cancel for anything permanent.
 
 ### Posts
 
@@ -82,6 +109,8 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   title; the editor won't let the leading `# ` (hash *and* space) be
   removed.
 - Created and updated times are tracked automatically for every post.
+- Times read naturally: "just now", "25 min ago", "9:05 AM", "Yesterday",
+  "Mar 14", "Mar 14, 2025" (12-hour clock).
 
 ## Editing
 

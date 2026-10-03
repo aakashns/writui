@@ -9,6 +9,20 @@ usable. Order can change; this file is the source of truth for what's next.
 > out as soon as it's doing something. And let's bring in LLM chat sidebar
 > right after the open source release.
 
+## Next up
+
+M0 is split into three PRs:
+
+1. ~~Vault create/unlock + post list~~ — PR #2
+2. **The editor** — centred 68-char column, soft wrap, cursor movement,
+   scrolling, mouse click to place the cursor, scroll wheel; the `# ` title
+   prefix can't be deleted. Saves the draft on leaving the editor (proper
+   autosave comes in 3).
+3. Autosave, undo/redo, editor hint bar, first ship.
+
+Shipping to `~/.local/bin` starts after PR 3; until then, don't run
+`scripts/ship.sh` after merges.
+
 ## M0 — Writing core
 
 The smallest thing that can replace another writing app.
@@ -18,7 +32,8 @@ The smallest thing that can replace another writing app.
 - [ ] Vault: create on first run (password twice, no-recovery warning), unlock on later runs
 - [ ] Schema migrations from day one, with a backup of the vault before migrating
 - [ ] List screen: posts sorted by last updated, "New post", open with click or Enter
-- [ ] Delete post (with confirmation)
+- [ ] Delete post (with confirmation) → Trash (restore, delete forever, purged after 30 days)
+- [ ] Dialogs: arrow keys / Enter / shortcut keys / mouse
 - [ ] Posts: first line fixed as `# ` title; created / updated times tracked
 - [ ] Editor: centred 68-char column, soft wrap, cursor movement, scrolling
 - [ ] Editor: mouse click to place cursor, scroll wheel
