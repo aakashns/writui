@@ -123,9 +123,19 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   configurable in settings.
 - Soft wrap: lines wrap on screen at the column width, but the stored
   markdown keeps paragraphs as single lines (so it pastes cleanly anywhere).
+- Narrower terminals wrap at the terminal's width instead.
 - Mouse: click to place the cursor, drag to select, scroll wheel to scroll.
+  The scroll wheel moves the view, not the cursor.
 - Keyboard: the usual arrows, word / line / paragraph movement, Home/End,
   undo/redo, select with Shift.
+  - Up/Down move by row on screen and keep the cursor's column.
+  - Home/End go to the start/end of the row on screen; Ctrl+Home/Ctrl+End
+    to the start/end of the post. PageUp/PageDown move a screenful.
+  - Tab types four spaces.
+- Opening a post puts the cursor at the end of it.
+- The cursor is a blinking bar in the editor.
+- If the draft can't be stored when leaving the editor, the editor stays
+  open and says so (a second Ctrl+Q quits anyway).
 - Copy / cut / paste with the system clipboard.
 
 ## Drafts and saves

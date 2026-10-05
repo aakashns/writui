@@ -183,7 +183,6 @@ impl Vault {
     }
 
     /// Replace a post's draft. Keeps the `# ` title prefix in place.
-    #[allow(dead_code)] // used by the editor in the next PR
     pub fn update_post_body(&self, id: i64, body: &str) -> Result<()> {
         let body = with_title_prefix(body);
         let changed = self.conn.execute(
@@ -229,7 +228,8 @@ pub fn title_from_first_line(line: &str) -> String {
     line.strip_prefix('#').unwrap_or(line).trim().to_string()
 }
 
-fn with_title_prefix(body: &str) -> String {
+/// `body`, made to start with the `# ` title prefix.
+pub fn with_title_prefix(body: &str) -> String {
     if body.starts_with(TITLE_PREFIX) {
         return body.to_string();
     }
