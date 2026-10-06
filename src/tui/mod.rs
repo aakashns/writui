@@ -16,6 +16,7 @@ use ratatui::crossterm::event::{
     self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
     Event, KeyCode, KeyEventKind, KeyModifiers,
 };
+use ratatui::crossterm::cursor::SetCursorStyle;
 use ratatui::crossterm::execute;
 use ratatui::{DefaultTerminal, Frame};
 use zeroize::Zeroizing;
@@ -53,11 +54,21 @@ pub fn run(vault_path: PathBuf) -> Result<()> {
     // its mouse back.
     let hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let _ = execute!(stdout(), DisableMouseCapture, DisableBracketedPaste);
+        let _ = execute!(
+            stdout(),
+            DisableMouseCapture,
+            DisableBracketedPaste,
+            SetCursorStyle::DefaultUserShape
+        );
         hook(info);
     }));
     let result = App::new(vault_path).run(&mut terminal);
-    let _ = execute!(stdout(), DisableMouseCapture, DisableBracketedPaste);
+    let _ = execute!(
+        stdout(),
+        DisableMouseCapture,
+        DisableBracketedPaste,
+        SetCursorStyle::DefaultUserShape
+    );
     ratatui::restore();
     result
 }
@@ -69,6 +80,11 @@ struct App {
     /// Slow work (key derivation) to do right after the next draw, so the
     /// screen can say "Unlocking…" first.
     pending: Option<Action>,
+    /// Storing the draft failed on the last Ctrl+Q; the next one quits anyway.
+    quit_unsaved: bool,
+    /// The cursor is currently a bar (in the editor) rather than the
+    /// terminal's own shape.
+    bar_cursor: bool,
     quit: bool,
 }
 
@@ -79,12 +95,27 @@ impl App {
         } else {
             Screen::Setup(setup::Setup::new(vault_path.clone()))
         };
-        App { vault_path, vault: None, screen, pending: None, quit: false }
+        App {
+            vault_path,
+            vault: None,
+            screen,
+            pending: None,
+            quit_unsaved: false,
+            bar_cursor: false,
+            quit: false,
+        }
     }
 
     fn run(mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         while !self.quit {
             terminal.draw(|frame| self.render(frame))?;
+            let bar = matches!(self.screen, Screen::Editor(_));
+            if bar != self.bar_cursor {
+                let style =
+                    if bar { SetCursorStyle::BlinkingBar } else { SetCursorStyle::DefaultUserShape };
+                execute!(stdout(), style)?;
+                self.bar_cursor = bar;
+            }
             if let Some(action) = self.pending.take() {
                 self.perform(action)?;
                 continue;
@@ -129,7 +160,13 @@ impl App {
     fn apply(&mut self, action: Action) -> Result<()> {
         match action {
             Action::None => {}
-            Action::Quit => self.quit = true,
+            Action::Quit => {
+                if self.store_draft() || self.quit_unsaved {
+                    self.quit = true;
+                } else {
+                    self.quit_unsaved = true;
+                }
+            }
             Action::CreateVault(_) | Action::Unlock(_) => {
                 match &mut self.screen {
                     Screen::Setup(screen) => screen.set_busy(true),
@@ -159,7 +196,11 @@ impl App {
                 self.vault()?.delete_post_forever(id)?;
                 self.show_trash(select, Some(format!("Deleted “{title}” forever.")))?;
             }
-            Action::BackToList(select) => self.show_list(select, None)?,
+            Action::BackToList(select) => {
+                if self.store_draft() {
+                    self.show_list(select, None)?;
+                }
+            }
         }
         Ok(())
     }
@@ -215,6 +256,35 @@ impl App {
             Some(notice) => list.with_notice(notice),
             None => list,
         });
+    }
+
+    /// Store the open post's draft in the vault, if it changed, and where
+    /// the cursor is. If storing the draft fails, the editor stays open and
+    /// says so, so no writing is lost. Returns whether it's safe to leave
+    /// the editor.
+    fn store_draft(&mut self) -> bool {
+        let Screen::Editor(editor) = &mut self.screen else {
+            return true;
+        };
+        let vault = self.vault.as_ref().context("the vault is locked");
+        if editor.changed() {
+            let text = editor.text();
+            match vault.and_then(|vault| vault.update_post_body(editor.post_id(), &text)) {
+                Ok(()) => editor.mark_stored(text),
+                Err(err) => {
+                    editor.set_error(format!(
+                        "Couldn't save the draft: {err:#}. Ctrl+Q again quits without saving."
+                    ));
+                    return false;
+                }
+            }
+        }
+        // Only a convenience: failing to remember it shouldn't keep you in
+        // the editor.
+        if let Some(vault) = &self.vault {
+            let _ = vault.set_post_cursor(editor.post_id(), editor.cursor());
+        }
+        true
     }
 
     fn open_post(&mut self, id: i64) -> Result<()> {

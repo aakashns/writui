@@ -14,11 +14,9 @@ usable. Order can change; this file is the source of truth for what's next.
 M0 is split into three PRs:
 
 1. ~~Vault create/unlock + post list~~ — PR #2
-2. **The editor** — centred 68-char column, soft wrap, cursor movement,
-   scrolling, mouse click to place the cursor, scroll wheel; the `# ` title
-   prefix can't be deleted. Saves the draft on leaving the editor (proper
-   autosave comes in 3).
-3. Autosave, undo/redo, editor hint bar, first ship.
+2. ~~The editor~~ — PR #3
+3. **Autosave, undo/redo, editor hint bar, first ship.** Autosave needs the
+   event loop to wake up on a timer (it currently blocks waiting for input).
 
 Shipping to `~/.local/bin` starts after PR 3; until then, don't run
 `scripts/ship.sh` after merges.
@@ -27,16 +25,17 @@ Shipping to `~/.local/bin` starts after PR 3; until then, don't run
 
 The smallest thing that can replace another writing app.
 
-- [ ] Project scaffold: Cargo crate, `scripts/ship.sh`, dev data dir kept apart from real data
-- [ ] Config file (vault location) + `--db` flag
-- [ ] Vault: create on first run (password twice, no-recovery warning), unlock on later runs
-- [ ] Schema migrations from day one, with a backup of the vault before migrating
-- [ ] List screen: posts sorted by last updated, "New post", open with click or Enter
-- [ ] Delete post (with confirmation) → Trash (restore, delete forever, purged after 30 days)
-- [ ] Dialogs: arrow keys / Enter / shortcut keys / mouse
-- [ ] Posts: first line fixed as `# ` title; created / updated times tracked
-- [ ] Editor: centred 68-char column, soft wrap, cursor movement, scrolling
-- [ ] Editor: mouse click to place cursor, scroll wheel
+- [x] Project scaffold: Cargo crate, `scripts/ship.sh`, dev data dir kept apart from real data
+- [x] Config file (vault location) + `--db` flag
+- [x] Vault: create on first run (password twice, no-recovery warning), unlock on later runs
+- [x] Schema migrations from day one, with a backup of the vault before migrating
+- [x] List screen: posts sorted by last updated, "New post", open with click or Enter
+- [x] Delete post (with confirmation) → Trash (restore, delete forever, purged after 30 days)
+- [x] Dialogs: arrow keys / Enter / shortcut keys / mouse
+- [x] Posts: first line fixed as `# ` title; created / updated times tracked
+- [x] Editor: centred 68-char column, soft wrap, cursor movement, scrolling
+- [x] Editor: mouse click to place cursor, scroll wheel
+- [x] Editor: reopening a post puts the cursor back where it was left
 - [ ] Undo / redo
 - [ ] Draft autosave (debounced + on quit)
 - [ ] Hint bar with the shortcuts for the current screen
@@ -80,7 +79,9 @@ Needed before the chat sidebar, so the LLM can see what's selected.
 
 ## M6 — LLM chat sidebar
 
-- [ ] Settings screen; API keys for OpenAI + Anthropic (or prompt on first open)
+- [ ] Settings screen, stored in the vault: line width, what Tab types, and
+      the rest listed in the spec
+- [ ] API keys for OpenAI + Anthropic in settings (or prompt on first open)
 - [ ] Sidebar that fits next to the editor (or takes over on narrow terminals)
 - [ ] Context sent automatically: post, selection, cursor position
 - [ ] Streaming replies, model picker

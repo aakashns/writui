@@ -82,6 +82,9 @@ pub struct PostSummary {
 pub struct Post {
     pub id: i64,
     pub body: String,
+    /// Where the cursor was when the post was last closed (a character
+    /// index into `body`). `None` means the end.
+    pub cursor: Option<usize>,
 }
 
 impl Vault {
@@ -165,11 +168,14 @@ impl Vault {
     }
 
     pub fn post(&self, id: i64) -> Result<Post> {
-        let body = self
+        let (body, cursor): (String, Option<i64>) = self
             .conn
-            .query_row("SELECT body FROM posts WHERE id = ?1", [id], |row| row.get(0))
+            .query_row("SELECT body, cursor FROM posts WHERE id = ?1", [id], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
             .with_context(|| format!("loading post {id}"))?;
-        Ok(Post { id, body })
+        let cursor = cursor.and_then(|pos| usize::try_from(pos).ok());
+        Ok(Post { id, body, cursor })
     }
 
     /// Create an empty post (just the `# ` title prefix). Returns its id.
@@ -183,7 +189,6 @@ impl Vault {
     }
 
     /// Replace a post's draft. Keeps the `# ` title prefix in place.
-    #[allow(dead_code)] // used by the editor in the next PR
     pub fn update_post_body(&self, id: i64, body: &str) -> Result<()> {
         let body = with_title_prefix(body);
         let changed = self.conn.execute(
@@ -193,6 +198,15 @@ impl Vault {
         if changed == 0 {
             bail!("post {id} doesn't exist");
         }
+        Ok(())
+    }
+
+    /// Remember where the cursor was in a post. Doesn't count as an update.
+    pub fn set_post_cursor(&self, id: i64, cursor: usize) -> Result<()> {
+        self.conn.execute(
+            "UPDATE posts SET cursor = ?1 WHERE id = ?2",
+            params![i64::try_from(cursor)?, id],
+        )?;
         Ok(())
     }
 
@@ -229,7 +243,8 @@ pub fn title_from_first_line(line: &str) -> String {
     line.strip_prefix('#').unwrap_or(line).trim().to_string()
 }
 
-fn with_title_prefix(body: &str) -> String {
+/// `body`, made to start with the `# ` title prefix.
+pub fn with_title_prefix(body: &str) -> String {
     if body.starts_with(TITLE_PREFIX) {
         return body.to_string();
     }
@@ -372,6 +387,20 @@ mod tests {
         let second = vault.create_post().unwrap();
         vault.update_post_body(first, "# First, edited later").unwrap();
         assert_eq!(ids(vault.list_posts().unwrap()), [first, second]);
+    }
+
+    #[test]
+    fn the_cursor_is_remembered_without_counting_as_an_update() {
+        let (_dir, path) = temp_vault();
+        let vault = Vault::create(&path, "pw").unwrap();
+        let first = vault.create_post().unwrap();
+        let second = vault.create_post().unwrap();
+        assert_eq!(vault.post(first).unwrap().cursor, None);
+        vault.update_post_body(first, "# Hello").unwrap();
+        vault.update_post_body(second, "# There").unwrap();
+        vault.set_post_cursor(first, 4).unwrap();
+        assert_eq!(vault.post(first).unwrap().cursor, Some(4));
+        assert_eq!(ids(vault.list_posts().unwrap()), [second, first]);
     }
 
     #[test]

@@ -123,9 +123,21 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   configurable in settings.
 - Soft wrap: lines wrap on screen at the column width, but the stored
   markdown keeps paragraphs as single lines (so it pastes cleanly anywhere).
+- Narrower terminals wrap at the terminal's width instead.
 - Mouse: click to place the cursor, drag to select, scroll wheel to scroll.
+  The scroll wheel moves the view, not the cursor.
 - Keyboard: the usual arrows, word / line / paragraph movement, Home/End,
   undo/redo, select with Shift.
+  - Up/Down move by row on screen and keep the cursor's column.
+  - Home/End go to the start/end of the row on screen; Ctrl+Home/Ctrl+End
+    to the start/end of the post. PageUp/PageDown move a screenful.
+  - Tab types two spaces (to be configurable in settings).
+- Opening a post puts the cursor back where it was when the post was last
+  closed, as near the middle of the screen as the text allows. A post that
+  has never been opened starts with the cursor at the end.
+- The cursor is a blinking bar in the editor.
+- If the draft can't be stored when leaving the editor, the editor stays
+  open and says so (a second Ctrl+Q quits anyway).
 - Copy / cut / paste with the system clipboard.
 
 ## Drafts and saves
@@ -241,8 +253,8 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 **Details**
 
-- Line width, default preview preset, API keys, default model, auto-lock
-  timeout — all stored in the vault.
+- Line width, what Tab types, default preview preset, API keys, default
+  model, auto-lock timeout — all stored in the vault.
 - The vault file location has to be known *before* unlocking, so it lives
   outside the vault in a small plain config file (and can also be passed on
   the command line).

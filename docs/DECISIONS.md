@@ -90,3 +90,38 @@ Everything about the vault (unlocking, posts, drafts, saves, export) lives in
 its own module with no TUI dependencies, so the planned CLI subcommands can
 reuse it directly. `clap` for argument parsing from M0, since `--db` already
 needs it; subcommands slot in later.
+
+## Editor internals: ropey 1.x, graphemes, our own soft wrap
+
+`ropey` 1.6 (2.0 is still in beta), with only `\n` counted as a line break.
+Pasted text has `\r\n` / `\r` turned into `\n` and other control characters
+(except tabs) dropped, so the stored markdown stays plain.
+
+The cursor moves by grapheme (`unicode-segmentation`), so an accented letter
+or an emoji is one step and never gets split. Widths come from
+`unicode-width`, so CJK text wraps correctly.
+
+Soft wrap breaks after spaces; a word longer than the column is cut. One
+space may hang a cell past the column, so rows never start with the space
+that ended the previous word. The whole layout is rebuilt after each edit —
+fast enough for posts of any realistic size; caching per paragraph can come
+with M2's "stays fast on long posts" if it's ever needed.
+
+The editor asks the terminal for a blinking bar cursor (DECSCUSR, supported
+by Alacritty, Ghostty and iTerm2), and restores the user's own cursor
+everywhere else and on exit.
+
+## Remembering the cursor: a column on `posts`
+
+Each post stores where the cursor was when it was last closed (migration 3,
+`posts.cursor`), as a character index into the body. NULL means the end, so
+existing posts open as they did before. It's written whenever the editor is
+left (Esc or quit), separately from the draft, and doesn't change the post's
+"last updated" time. On open it's clamped to the text and moved to a
+grapheme boundary, so it's safe even if the body changed some other way
+(e.g. restoring an old save in M1). Failing to store it never keeps you in
+the editor; failing to store the draft does.
+
+Only the cursor is stored, not the scroll position: the view is rebuilt
+around the cursor (as near mid-screen as the text allows), which works at
+any terminal width.

@@ -86,12 +86,14 @@ scripts/      ship.sh and other dev scripts
    - Screenshots: write a VHS tape (`brew install vhs`) that drives the debug
      binary against a throwaway `--db`, with `Screenshot` steps (and a GIF
      `Output` for flows). VHS gotchas: one command per line, quote file
-     paths, wrap the launch command in `Hide` / `Show`.
+     paths, wrap the launch command in `Hide` / `Show`, and there are no
+     `Home` / `End` keys (use arrows).
    - Attach images with gh's built-in `--attach` (on `gh pr create`,
      `pr edit`, `pr comment`): put the images and a body file in one folder,
      reference them as `![alt](./name.png)` in the body, and run e.g.
      `gh pr edit <n> --body-file body.md --attach ./name.png --attach ./flow.gif`
-     from that folder. gh uploads them and rewrites the references.
+     from that folder (add `-R aakashns/writui`, since that folder isn't
+     the repo). gh uploads them and rewrites the references.
 4. Aakash tries it locally and merges. Never merge PRs yourself.
 5. After a merge: pull `main` and ship with `scripts/ship.sh` (release build,
    install to `~/.local/bin/writui`). Tick the items in `docs/PLAN.md`.
