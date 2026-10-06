@@ -287,9 +287,6 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 > and can we publish for all platforms?
 
-> let's simplify to MIT licence, insted of the dual thing, and have a simple
-> LICENSE.txt
-
 > let's remove the logic to download to my local bin in scripts/ship.sh, i
 > want to upgrade manually like everyeone else
 

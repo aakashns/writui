@@ -80,9 +80,9 @@ Gmail etc. keep formatting. (OSC 52 terminal clipboard only does plain text.)
 Static site generator distributed as a single binary, markdown-native, no
 node_modules. Fits the "light and fast" spirit; deploys to GitHub Pages.
 
-## License: MIT OR Apache-2.0
+## License: MIT
 
-The Rust ecosystem convention. Permissive, and Apache-2.0 adds a patent grant.
+Permissive and simple: one short license in `LICENSE.txt`.
 
 ## Vault logic kept separate from the TUI
 
@@ -146,9 +146,3 @@ CI runs clippy (warnings are errors) and the tests on Linux, macOS and
 Windows. No
 `cargo fmt --check` yet: the code isn't rustfmt-formatted, and reformatting
 everything would bury real changes in a PR diff.
-
-## License: MIT only (replaces MIT OR Apache-2.0)
-
-Simpler: one short license in `LICENSE.txt`, instead of the Rust convention
-of dual MIT / Apache-2.0. Gives up Apache-2.0's explicit patent grant, which
-matters little for a writing app.
