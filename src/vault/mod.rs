@@ -308,6 +308,9 @@ fn make_private(path: &Path) -> Result<()> {
         fs::set_permissions(path, fs::Permissions::from_mode(mode))
             .with_context(|| format!("setting permissions on {}", path.display()))?;
     }
+    // Elsewhere (Windows), files in the user's profile are already private.
+    #[cfg(not(unix))]
+    let _ = path;
     Ok(())
 }
 
