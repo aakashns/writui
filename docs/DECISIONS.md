@@ -143,6 +143,5 @@ downloads via `curl`, `gh` or Homebrew aren't quarantined, browser downloads
 need `xattr -d com.apple.quarantine`.
 
 CI runs clippy (warnings are errors) and the tests on Linux, macOS and
-Windows. No
-`cargo fmt --check` yet: the code isn't rustfmt-formatted, and reformatting
-everything would bury real changes in a PR diff.
+Windows. No `cargo fmt --check` yet: the code isn't rustfmt-formatted, and
+reformatting everything would bury real changes in a PR diff.
