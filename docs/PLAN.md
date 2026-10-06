@@ -1,9 +1,9 @@
 # writui — plan
 
 Milestones in build order. Each milestone lands on `main` through one or more
-pull requests (split whenever the scope gets big), and every merge gets
-installed as the binary Aakash writes with — so each PR must leave the app
-usable. Order can change; this file is the source of truth for what's next.
+pull requests (split whenever the scope gets big), and every merge that
+changes the app becomes a release the creator writes with — so each PR must
+leave the app usable. Order can change; this file is the source of truth for what's next.
 
 > Let's plan to do the open source and site right after M2, I want to get it
 > out as soon as it's doing something. And let's bring in LLM chat sidebar
@@ -18,8 +18,10 @@ M0 is split into three PRs:
 3. **Autosave, undo/redo, editor hint bar, first ship.** Autosave needs the
    event loop to wake up on a timer (it currently blocks waiting for input).
 
-Shipping to `~/.local/bin` starts after PR 3; until then, don't run
-`scripts/ship.sh` after merges.
+Shipping starts after PR 3; until then, don't run `scripts/ship.sh` after
+merges. PR 3 ships as the first GitHub release, `v0.1.0` (the version already
+in `Cargo.toml`, so PR 3 doesn't bump it). Every app-changing PR after that
+bumps the version (see CLAUDE.md).
 
 ## M0 — Writing core
 
@@ -39,7 +41,7 @@ The smallest thing that can replace another writing app.
 - [ ] Undo / redo
 - [ ] Draft autosave (debounced + on quit)
 - [ ] Hint bar with the shortcuts for the current screen
-- [ ] First ship: installed to `~/.local/bin/writui`
+- [ ] First ship: GitHub release `v0.1.0`
 
 ## M1 — Saves and history
 
@@ -62,11 +64,15 @@ The smallest thing that can replace another writing app.
 
 ## M4 — Open source release
 
-- [ ] License (MIT OR Apache-2.0), README, contributing notes
-- [ ] GitHub Actions: build, test, lint
-- [ ] Release builds (macOS arm64 / x86_64, Linux) on tags
+The repo went public early (during M0), so most of this is already done.
+
+- [x] License (MIT), README, contributing notes
+- [x] GitHub Actions: build, test, lint
+- [x] Release builds (macOS, Linux, Windows; each x86_64 and arm64) on tags
 - [ ] Site deployed via GitHub Pages
-- [ ] Make the repo public
+- [x] Make the repo public
+- [ ] Signed and notarised macOS binaries (needs an Apple Developer account)
+- [ ] Easier install: Homebrew tap and/or an install script
 
 ## M5 — Selection and clipboard
 

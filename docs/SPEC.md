@@ -1,6 +1,6 @@
 # writui — product spec
 
-This is the living product spec. The quoted parts are in Aakash's own words
+This is the living product spec. The quoted parts are in the creator's own words
 and should stay that way. The **Details** under each section capture what
 we've agreed since, and get updated as things change. Technical choices live
 in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
@@ -20,7 +20,7 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 **Details**
 
-- Terminal agnostic. Aakash mostly uses Alacritty, sometimes Ghostty and
+- Terminal agnostic. The creator mostly uses Alacritty, sometimes Ghostty and
   iTerm2. Nothing may depend on one terminal's special features.
 - Everything works with the mouse; everything also has a keyboard shortcut.
   A hint bar shows the shortcuts that matter on the current screen, so they
@@ -282,9 +282,21 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 > Let's plan to do the open source and site right after M2, I want to get it
 > out as soon as it's doing something.
 
+> i want to take the repo public right now use the github releases going
+> forward
+
+> and can we publish for all platforms?
+
+> let's remove the logic to download to my local bin in scripts/ship.sh, i
+> want to upgrade manually like everyeone else
+
 **Details**
 
-- License: MIT OR Apache-2.0 (dual, the Rust convention).
+- License: MIT, in `LICENSE.txt`.
+- Public on GitHub from M0 onwards; the project site still comes with M3.
+- Every ship is a GitHub release: prebuilt binaries for macOS, Linux and
+  Windows (each x86_64 and arm64), with notes listing the merged PRs. The
+  creator upgrades by downloading the release, the same way every user does.
 
 ## Command line
 

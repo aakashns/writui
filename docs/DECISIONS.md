@@ -63,7 +63,7 @@ in the URL. Markdown rendered with `comrak` (GitHub-flavoured).
 
 ## Datastar for the live preview
 
-Aakash wants to try [Datastar](https://data-star.dev). It fits well: the
+The creator wants to try [Datastar](https://data-star.dev). It fits well: the
 server pushes freshly rendered HTML over server-sent events on every autosave
 and Datastar patches it into the page — no hand-written client JS. Use the
 official `datastar` Rust crate's axum integration. Serve `datastar.js` from
@@ -80,9 +80,9 @@ Gmail etc. keep formatting. (OSC 52 terminal clipboard only does plain text.)
 Static site generator distributed as a single binary, markdown-native, no
 node_modules. Fits the "light and fast" spirit; deploys to GitHub Pages.
 
-## License: MIT OR Apache-2.0
+## License: MIT
 
-The Rust ecosystem convention. Permissive, and Apache-2.0 adds a patent grant.
+Permissive and simple: one short license in `LICENSE.txt`.
 
 ## Vault logic kept separate from the TUI
 
@@ -125,3 +125,23 @@ the editor; failing to store the draft does.
 Only the cursor is stored, not the scroll position: the view is rebuilt
 around the cursor (as near mid-screen as the text allows), which works at
 any terminal width.
+
+## Releases: hand-written GitHub Actions workflow on version tags
+
+Pushing a `vX.Y.Z` tag builds macOS (arm64, and x86_64 cross-compiled on the
+same arm64 runner), Linux (x86_64, arm64, on Ubuntu 22.04 so the binaries
+work with older glibc) and Windows (x86_64, arm64), and publishes bare
+binaries plus a `SHA256SUMS` file. No archives: there's nothing to bundle
+but the binary, and unversioned names like `writui-macos-arm64` give stable
+`releases/latest/download/…` URLs.
+Release notes are GitHub's generated list of merged PRs. `scripts/ship.sh`
+pushes the tag and waits for the release to be published. It doesn't install
+anything: the creator upgrades by downloading the release like any user. Chose a ~80-line workflow over
+`cargo-dist` to keep it small and readable; we can switch if we want its
+installers and Homebrew support later. macOS binaries are unsigned for now:
+downloads via `curl`, `gh` or Homebrew aren't quarantined, browser downloads
+need `xattr -d com.apple.quarantine`.
+
+CI runs clippy (warnings are errors) and the tests on Linux, macOS and
+Windows. No `cargo fmt --check` yet: the code isn't rustfmt-formatted, and
+reformatting everything would bury real changes in a PR diff.
