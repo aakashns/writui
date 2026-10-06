@@ -287,13 +287,19 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 > and can we publish for all platforms?
 
+> let's simplify to MIT licence, insted of the dual thing, and have a simple
+> LICENSE.txt
+
+> let's remove the logic to download to my local bin in scripts/ship.sh, i
+> want to upgrade manually like everyeone else
+
 **Details**
 
-- License: MIT OR Apache-2.0 (dual, the Rust convention).
+- License: MIT, in `LICENSE.txt`.
 - Public on GitHub from M0 onwards; the project site still comes with M3.
 - Every ship is a GitHub release: prebuilt binaries for macOS, Linux and
   Windows (each x86_64 and arm64), with notes listing the merged PRs. The
-  creator installs the same release build every user downloads.
+  creator upgrades by downloading the release, the same way every user does.
 
 ## Command line
 

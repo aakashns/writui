@@ -135,8 +135,8 @@ binaries plus a `SHA256SUMS` file. No archives: there's nothing to bundle
 but the binary, and unversioned names like `writui-macos-arm64` give stable
 `releases/latest/download/…` URLs.
 Release notes are GitHub's generated list of merged PRs. `scripts/ship.sh`
-pushes the tag, waits, and installs the published build, so the binary
-the creator writes with is exactly the released one. Chose a ~80-line workflow over
+pushes the tag and waits for the release to be published. It doesn't install
+anything: the creator upgrades by downloading the release like any user. Chose a ~80-line workflow over
 `cargo-dist` to keep it small and readable; we can switch if we want its
 installers and Homebrew support later. macOS binaries are unsigned for now:
 downloads via `curl`, `gh` or Homebrew aren't quarantined, browser downloads
@@ -146,3 +146,9 @@ CI runs clippy (warnings are errors) and the tests on Linux, macOS and
 Windows. No
 `cargo fmt --check` yet: the code isn't rustfmt-formatted, and reformatting
 everything would bury real changes in a PR diff.
+
+## License: MIT only (replaces MIT OR Apache-2.0)
+
+Simpler: one short license in `LICENSE.txt`, instead of the Rust convention
+of dual MIT / Apache-2.0. Gives up Apache-2.0's explicit patent grant, which
+matters little for a writing app.

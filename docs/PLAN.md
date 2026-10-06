@@ -1,9 +1,9 @@
 # writui — plan
 
 Milestones in build order. Each milestone lands on `main` through one or more
-pull requests (split whenever the scope gets big), and every merge gets
-installed as the binary the creator writes with — so each PR must leave the app
-usable. Order can change; this file is the source of truth for what's next.
+pull requests (split whenever the scope gets big), and every merge that
+changes the app becomes a release the creator writes with — so each PR must
+leave the app usable. Order can change; this file is the source of truth for what's next.
 
 > Let's plan to do the open source and site right after M2, I want to get it
 > out as soon as it's doing something. And let's bring in LLM chat sidebar
@@ -41,7 +41,7 @@ The smallest thing that can replace another writing app.
 - [ ] Undo / redo
 - [ ] Draft autosave (debounced + on quit)
 - [ ] Hint bar with the shortcuts for the current screen
-- [ ] First ship: GitHub release `v0.1.0`, installed to `~/.local/bin/writui`
+- [ ] First ship: GitHub release `v0.1.0`
 
 ## M1 — Saves and history
 
@@ -66,7 +66,7 @@ The smallest thing that can replace another writing app.
 
 The repo went public early (during M0), so most of this is already done.
 
-- [x] License (MIT OR Apache-2.0), README, contributing notes
+- [x] License (MIT), README, contributing notes
 - [x] GitHub Actions: build, test, lint
 - [x] Release builds (macOS, Linux, Windows; each x86_64 and arm64) on tags
 - [ ] Site deployed via GitHub Pages

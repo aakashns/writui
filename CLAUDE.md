@@ -24,8 +24,8 @@ repo and GitHub, not from memory:
      unless they ask.
 3. **Latest PR merged:** `git checkout main && git pull`, then:
    - Ship (`scripts/ship.sh`) unless "Next up" in `docs/PLAN.md` says
-     shipping hasn't started yet. It tags the version, waits for GitHub
-     Actions to publish the release, and installs that build.
+     shipping hasn't started yet. It tags the version and waits for GitHub
+     Actions to publish the release.
    - Tick what landed in `docs/PLAN.md` and update "Next up". Commit that as
      part of the next PR (never push to `main` directly).
    - If the merged PR asked questions that weren't answered in its comments,
@@ -100,9 +100,10 @@ README.md     for people using writui; CONTRIBUTING.md for working on it
      the repo). gh uploads them and rewrites the references.
 4. The creator tries it locally and merges. Never merge PRs yourself.
 5. After a merge: pull `main` and ship with `scripts/ship.sh`. It tags `main`
-   with the version in `Cargo.toml`, GitHub Actions builds and publishes the
-   release (`.github/workflows/release.yml`), and the script installs that
-   build to `~/.local/bin/writui`. Tick the items in `docs/PLAN.md`.
+   with the version in `Cargo.toml`, and GitHub Actions builds and publishes
+   the release (`.github/workflows/release.yml`). It doesn't install
+   anything: the creator upgrades by downloading the release, like any user.
+   Tick the items in `docs/PLAN.md`.
 
 ## Versions and releases
 

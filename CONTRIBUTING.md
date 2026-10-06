@@ -12,7 +12,7 @@ agree on the approach first.
 src/          the app (a single Rust crate)
 docs/         SPEC.md (what we're building), PLAN.md (milestones, what's
               next), DECISIONS.md (technical choices and why)
-scripts/      ship.sh (release and install)
+scripts/      ship.sh (publishes a release)
 .github/      CI and release workflows
 ```
 
@@ -71,7 +71,5 @@ listing the merged PRs.
 
 ## License
 
-Unless you explicitly state otherwise, any contribution intentionally
-submitted for inclusion in writui by you, as defined in the Apache-2.0
-license, shall be dual licensed as MIT OR Apache-2.0, without any additional
-terms or conditions.
+writui is under the [MIT license](LICENSE.txt). By contributing, you agree
+that your contributions are licensed the same way.

@@ -3,7 +3,7 @@ name = "writui"
 version = "0.1.0"
 edition = "2024"
 description = "A terminal writing app. Markdown, encrypted, no nonsense."
-license = "MIT OR Apache-2.0"
+license = "MIT"
 repository = "https://github.com/aakashns/writui"
 
 [dependencies]

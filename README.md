@@ -35,6 +35,7 @@ Download the file for your computer from the
 table at the end of the first line:
 
 ```sh
+mkdir -p ~/.local/bin
 curl -fLo ~/.local/bin/writui https://github.com/aakashns/writui/releases/latest/download/writui-macos-arm64
 chmod +x ~/.local/bin/writui
 ```
@@ -96,5 +97,4 @@ or work on it, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-writui is free and open source, under your choice of the
-[MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE) license.
+writui is free and open source, under the [MIT license](LICENSE.txt).
