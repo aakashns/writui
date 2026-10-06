@@ -46,7 +46,10 @@ jobs:
             echo "Tag $GITHUB_REF_NAME doesn't match Cargo.toml version $version"
             exit 1
           fi
+      # PowerShell, because Git Bash's perl on Windows can't configure the
+      # bundled OpenSSL; PowerShell finds Strawberry Perl instead.
       - run: cargo build --release --locked --target ${{ matrix.target }}
+        shell: pwsh
       - run: |
           mkdir dist
           cp "target/${{ matrix.target }}/release/writui${{ matrix.exe }}" "dist/writui-${{ matrix.name }}${{ matrix.exe }}"

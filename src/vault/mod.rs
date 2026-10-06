@@ -385,6 +385,8 @@ mod tests {
         let vault = Vault::create(&path, "pw").unwrap();
         let first = vault.create_post().unwrap();
         let second = vault.create_post().unwrap();
+        // Times are in milliseconds; make sure the edit is in a later one.
+        std::thread::sleep(std::time::Duration::from_millis(2));
         vault.update_post_body(first, "# First, edited later").unwrap();
         assert_eq!(ids(vault.list_posts().unwrap()), [first, second]);
     }
