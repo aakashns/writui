@@ -145,3 +145,52 @@ need `xattr -d com.apple.quarantine`.
 CI runs clippy (warnings are errors) and the tests on Linux, macOS and
 Windows. No `cargo fmt --check` yet: the code isn't rustfmt-formatted, and
 reformatting everything would bury real changes in a PR diff.
+
+## Releases happen on merge; Windows is build-from-source
+
+Replaces the tag-driven flow and `scripts/ship.sh`. The release workflow runs
+on every push to `main`: if the version in `Cargo.toml` has no `v<version>`
+tag yet, it builds and publishes the release (`gh release create --target`
+creates the tag). Otherwise it does nothing, so docs-only merges don't
+release. A tag pushed by the workflow's own token wouldn't trigger other
+workflows, which is why the release is created in the same run.
+
+Windows binaries are dropped from releases: nobody uses them by hand, and an
+untried download is worse than honest build-from-source instructions. CI
+still builds and tests on Windows, so building from source keeps working.
+
+## One-line install script, attached to each release
+
+`install.sh` (POSIX sh) picks the binary for the OS and CPU (including Apple
+Silicon Macs running a Rosetta shell), checks it against `SHA256SUMS`, and
+renames it into `~/.local/bin` (or `WRITUI_INSTALL_DIR`) so an existing
+writui is replaced in one step. It never edits shell startup files; it prints
+the line to add instead. It's attached to every release, so
+`releases/latest/download/install.sh` always serves the script that matches
+the latest binaries.
+
+## macOS binaries stay unsigned
+
+No paid Apple Developer account. The install script, `curl` and
+`writui upgrade` don't set macOS's quarantine flag, so Gatekeeper doesn't
+interfere; only browser downloads need `xattr -d com.apple.quarantine`.
+
+## `writui upgrade`: ureq + sha2, replace by rename
+
+`ureq` (blocking, small, rustls with `ring`, no async runtime) to ask the
+GitHub API for the latest release and download from it; `sha2` to check the
+download against `SHA256SUMS`. The new binary is written next to the running
+one and renamed over it, which is atomic and fine on macOS and Linux even
+while it runs. Debug builds refuse to upgrade, so `target/debug` is never
+overwritten. Upgrade doesn't touch the vault (it would need the password);
+migrations run on the next unlock, as before. Subcommands use clap's
+`Subcommand`, ready for the planned `list` / `show` / `export`.
+
+## Migration backups are deleted after a verified migration
+
+Before migrating a vault that holds data, it's still copied to
+`writui.db.v<old version>-<time>.bak`. After the migrations, SQLCipher's
+`cipher_integrity_check` (every page decrypts and is untampered) and SQLite's
+`integrity_check` must both pass before the backup is deleted. If a
+migration or a check fails, the backup is kept and the error names it.
+Brand new vaults aren't backed up or checked.

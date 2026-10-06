@@ -12,7 +12,7 @@ agree on the approach first.
 src/          the app (a single Rust crate)
 docs/         SPEC.md (what we're building), PLAN.md (milestones, what's
               next), DECISIONS.md (technical choices and why)
-scripts/      ship.sh (publishes a release)
+install.sh    the one-line installer for macOS and Linux
 .github/      CI and release workflows
 ```
 
@@ -23,8 +23,9 @@ together, tested and shipped.
 
 You need [Rust](https://rustup.rs) 1.85 or newer and a C compiler (Xcode
 command line tools on macOS, `build-essential` on Debian/Ubuntu, Visual
-Studio Build Tools on Windows). The first build takes a few minutes, because
-it compiles the encryption libraries (SQLCipher and OpenSSL) from source.
+Studio Build Tools plus Strawberry Perl on Windows, building from PowerShell).
+The first build takes a few minutes, because it compiles the encryption
+libraries (SQLCipher and OpenSSL) from source.
 
 ```sh
 cargo run
@@ -55,8 +56,9 @@ touches what's drawn on screen. A few rules the app sticks to:
 - Only the terminal's 16 standard colours, so it fits any theme.
 - Everything works with the mouse, everything also has a shortcut, and the
   shortcuts are shown in the hint bar.
-- Changes to what's stored in the vault are migrations, and the vault is
-  backed up before a migration runs. Never lose someone's writing.
+- Changes to what's stored in the vault are migrations. The vault is backed
+  up before a migration runs, and the backup is only removed once the
+  migrated vault passes its integrity checks. Never lose someone's writing.
 
 Pull request descriptions explain what changes for the person using the
 app, with screenshots for anything visible.
@@ -64,10 +66,10 @@ app, with screenshots for anything visible.
 ## Versions and releases
 
 Every PR that changes the app bumps `version` in `Cargo.toml`: minor for new
-behaviour, patch for fixes only. After a merge, `scripts/ship.sh` tags
-`main` with that version, which makes GitHub Actions build binaries for
-macOS, Linux and Windows and publish them as a GitHub release, with notes
-listing the merged PRs.
+behaviour, patch for fixes only. Merging a PR with a new version releases it
+automatically: GitHub Actions builds the macOS and Linux binaries and
+publishes them, with `install.sh` and notes listing the merged PRs, as a
+GitHub release. PRs that keep the version (docs only) release nothing.
 
 ## License
 

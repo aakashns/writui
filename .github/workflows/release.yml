@@ -1,22 +1,53 @@
-# Builds writui for each platform when a version tag (e.g. v0.1.0) is pushed,
-# and publishes the binaries as a GitHub release. scripts/ship.sh pushes the
-# tag. Pull requests that touch this file run the builds without publishing.
+# Publishes a GitHub release whenever main has a version (in Cargo.toml) that
+# hasn't been released yet, so merging a PR that bumps the version releases
+# it. Merges that keep the version (docs-only PRs) release nothing. Pull
+# requests that touch this file run the builds without publishing.
 #
 # Binary names carry no version, so the latest one is always at
 # https://github.com/aakashns/writui/releases/latest/download/<name>
+# (install.sh is attached to every release too).
 name: Release
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
   pull_request:
     paths: [.github/workflows/release.yml]
 
 permissions:
   contents: write
 
+# One release at a time; never cancel one halfway.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      release: ${{ steps.version.outputs.release }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: version
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" != push ]; then
+            echo "Pull request: build only"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          elif git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null; then
+            echo "v$version is already released; nothing to do"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Releasing v$version"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: check
+    if: needs.check.outputs.release == 'true' || github.event_name == 'pull_request'
     name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
@@ -28,39 +59,23 @@ jobs:
           # 22.04 rather than latest, so the binaries run on older glibc too.
           - { name: linux-x86_64, target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
           - { name: linux-arm64, target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
-          - { name: windows-x86_64, target: x86_64-pc-windows-msvc, os: windows-latest, exe: .exe }
-          - { name: windows-arm64, target: aarch64-pc-windows-msvc, os: windows-11-arm, exe: .exe }
-    defaults:
-      run:
-        shell: bash
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-      - name: Check the tag matches Cargo.toml
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "Tag $GITHUB_REF_NAME doesn't match Cargo.toml version $version"
-            exit 1
-          fi
-      # PowerShell, because Git Bash's perl on Windows can't configure the
-      # bundled OpenSSL; PowerShell finds Strawberry Perl instead.
       - run: cargo build --release --locked --target ${{ matrix.target }}
-        shell: pwsh
       - run: |
           mkdir dist
-          cp "target/${{ matrix.target }}/release/writui${{ matrix.exe }}" "dist/writui-${{ matrix.name }}${{ matrix.exe }}"
+          cp "target/${{ matrix.target }}/release/writui" "dist/writui-${{ matrix.name }}"
       - uses: actions/upload-artifact@v5
         with:
           name: ${{ matrix.name }}
           path: dist/*
 
   publish:
-    if: startsWith(github.ref, 'refs/tags/')
-    needs: build
+    needs: [check, build]
+    if: needs.check.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -71,7 +86,9 @@ jobs:
       - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
         run: |
           (cd dist && sha256sum writui-* > SHA256SUMS)
-          gh release create "$GITHUB_REF_NAME" dist/* \
-            --title "writui ${GITHUB_REF_NAME#v}" --generate-notes --verify-tag
+          cp install.sh dist/
+          gh release create "v$VERSION" dist/* --target "$GITHUB_SHA" \
+            --title "writui $VERSION" --generate-notes

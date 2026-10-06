@@ -23,13 +23,20 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE posts ADD COLUMN cursor INTEGER;",
 ];
 
-/// Bring the vault's schema up to date, backing up the file first if it
-/// already holds data.
+/// Bring the vault's schema up to date. If the vault already holds data, it's
+/// backed up first, and the backup is deleted once the updated vault passes
+/// its integrity checks. If anything goes wrong, the backup is kept and the
+/// error says where it is.
 pub(super) fn run(conn: &mut Connection, path: &Path) -> Result<()> {
-    run_list(conn, path, MIGRATIONS)
+    run_list(conn, path, MIGRATIONS, verify)
 }
 
-fn run_list(conn: &mut Connection, path: &Path, migrations: &[&str]) -> Result<()> {
+fn run_list(
+    conn: &mut Connection,
+    path: &Path,
+    migrations: &[&str],
+    verify: fn(&Connection) -> Result<()>,
+) -> Result<()> {
     let current: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
     let current = usize::try_from(current).context("invalid schema version")?;
     if current > migrations.len() {
@@ -38,9 +45,25 @@ fn run_list(conn: &mut Connection, path: &Path, migrations: &[&str]) -> Result<(
     if current == migrations.len() {
         return Ok(());
     }
-    if current > 0 {
-        backup(path, current)?;
+    if current == 0 {
+        // A brand new vault: nothing to back up or check.
+        return apply(conn, migrations, current);
     }
+    let backup = backup(path, current)?;
+    match apply(conn, migrations, current).and_then(|()| verify(conn)) {
+        Ok(()) => {
+            // Not worth failing over: the vault itself is fine.
+            let _ = fs::remove_file(&backup);
+            Ok(())
+        }
+        Err(err) => Err(err.context(format!(
+            "updating the vault failed; a copy from before the update is at {}",
+            backup.display()
+        ))),
+    }
+}
+
+fn apply(conn: &mut Connection, migrations: &[&str], current: usize) -> Result<()> {
     for (index, sql) in migrations.iter().enumerate().skip(current) {
         let tx = conn.transaction()?;
         tx.execute_batch(sql)
@@ -49,6 +72,26 @@ fn run_list(conn: &mut Connection, path: &Path, migrations: &[&str]) -> Result<(
         tx.commit()?;
     }
     Ok(())
+}
+
+/// SQLCipher's check that every page decrypts and is untampered (no rows
+/// when all is well), then SQLite's own structural check (a single "ok").
+fn verify(conn: &Connection) -> Result<()> {
+    let cipher = pragma_rows(conn, "PRAGMA cipher_integrity_check")?;
+    if !cipher.is_empty() {
+        bail!("the vault failed its encryption check: {}", cipher.join("; "));
+    }
+    let structure = pragma_rows(conn, "PRAGMA integrity_check")?;
+    if structure != ["ok"] {
+        bail!("the vault failed its integrity check: {}", structure.join("; "));
+    }
+    Ok(())
+}
+
+fn pragma_rows(conn: &Connection, sql: &str) -> Result<Vec<String>> {
+    let mut stmt = conn.prepare(sql)?;
+    let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+    Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
 /// Copy the (still encrypted) vault file next to itself, e.g.
@@ -65,30 +108,106 @@ fn backup(path: &Path, version: usize) -> Result<PathBuf> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn migrating_an_existing_vault_backs_it_up_first() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("writui.db");
+    /// A vault with migration 1 done and one post in it, like one made by an
+    /// older writui.
+    fn old_vault(dir: &Path) -> (Connection, PathBuf) {
+        let path = dir.join("writui.db");
         let mut conn = Connection::open(&path).unwrap();
-
-        run_list(&mut conn, &path, &MIGRATIONS[..1]).unwrap();
+        conn.pragma_update(None, "key", "test").unwrap();
+        run_list(&mut conn, &path, &MIGRATIONS[..1], verify).unwrap();
         conn.execute("INSERT INTO posts (body, created_at, updated_at) VALUES ('# Hi', 0, 0)", [])
             .unwrap();
-        // A fresh vault has nothing to back up.
-        assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+        (conn, path)
+    }
 
-        run_list(&mut conn, &path, MIGRATIONS).unwrap();
-        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
-        assert_eq!(version, MIGRATIONS.len() as i64);
-        let backups: Vec<_> = fs::read_dir(dir.path())
+    fn files(dir: &Path) -> Vec<String> {
+        let mut names: Vec<_> = fs::read_dir(dir)
             .unwrap()
             .map(|e| e.unwrap().file_name().into_string().unwrap())
-            .filter(|name| name.starts_with("writui.db.v1-") && name.ends_with(".bak"))
             .collect();
+        names.sort();
+        names
+    }
+
+    fn is_backup(name: &str) -> bool {
+        name.starts_with("writui.db.v1-") && name.ends_with(".bak")
+    }
+
+    #[test]
+    fn a_fresh_vault_is_not_backed_up() {
+        let dir = tempfile::tempdir().unwrap();
+        old_vault(dir.path());
+        assert_eq!(files(dir.path()), ["writui.db"]);
+    }
+
+    #[test]
+    fn the_backup_is_deleted_after_a_verified_migration() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut conn, path) = old_vault(dir.path());
+
+        // Check the backup exists while migrating, and holds the old data.
+        fn backup_exists(conn: &Connection) -> Result<()> {
+            let path = PathBuf::from(conn.path().unwrap());
+            let dir = path.parent().unwrap();
+            let backups: Vec<_> = files(dir).into_iter().filter(|n| is_backup(n)).collect();
+            assert_eq!(backups.len(), 1);
+            let backup = Connection::open(dir.join(&backups[0])).unwrap();
+            backup.pragma_update(None, "key", "test").unwrap();
+            let body: String = backup.query_row("SELECT body FROM posts", [], |r| r.get(0)).unwrap();
+            assert_eq!(body, "# Hi");
+            verify(conn)
+        }
+        run_list(&mut conn, &path, MIGRATIONS, backup_exists).unwrap();
+
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, MIGRATIONS.len() as i64);
+        assert_eq!(files(dir.path()), ["writui.db"]);
+    }
+
+    #[test]
+    fn the_backup_is_kept_if_the_check_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut conn, path) = old_vault(dir.path());
+        let err = run_list(&mut conn, &path, MIGRATIONS, |_| bail!("corrupt")).unwrap_err();
+        let backups: Vec<_> = files(dir.path()).into_iter().filter(|n| is_backup(n)).collect();
         assert_eq!(backups.len(), 1);
-        let backup = Connection::open(dir.path().join(&backups[0])).unwrap();
-        let body: String = backup.query_row("SELECT body FROM posts", [], |r| r.get(0)).unwrap();
-        assert_eq!(body, "# Hi");
+        assert!(format!("{err:#}").contains(&backups[0]));
+    }
+
+    #[test]
+    fn the_backup_is_kept_if_a_migration_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let (mut conn, path) = old_vault(dir.path());
+        let broken = [MIGRATIONS[0], "NOT SQL"];
+        let err = run_list(&mut conn, &path, &broken, verify).unwrap_err();
+        let backups: Vec<_> = files(dir.path()).into_iter().filter(|n| is_backup(n)).collect();
+        assert_eq!(backups.len(), 1);
+        assert!(format!("{err:#}").contains(&backups[0]));
+        // The failed migration was rolled back.
+        let version: i64 = conn.pragma_query_value(None, "user_version", |r| r.get(0)).unwrap();
+        assert_eq!(version, 1);
+    }
+
+    #[test]
+    fn the_checks_pass_on_a_healthy_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let (conn, _path) = old_vault(dir.path());
+        verify(&conn).unwrap();
+    }
+
+    #[test]
+    fn the_checks_catch_a_damaged_vault() {
+        let dir = tempfile::tempdir().unwrap();
+        let (conn, path) = old_vault(dir.path());
+        drop(conn);
+        let mut bytes = fs::read(&path).unwrap();
+        assert!(bytes.len() > 4096 + 200, "expected more than one page");
+        bytes[4096 + 200] ^= 0xff;
+        fs::write(&path, bytes).unwrap();
+
+        let conn = Connection::open(&path).unwrap();
+        conn.pragma_update(None, "key", "test").unwrap();
+        assert!(verify(&conn).is_err());
     }
 
     #[test]

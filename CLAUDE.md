@@ -23,9 +23,10 @@ repo and GitHub, not from memory:
      merge it, with the Try it commands. Don't start the next PR on top of it
      unless they ask.
 3. **Latest PR merged:** `git checkout main && git pull`, then:
-   - Ship (`scripts/ship.sh`) unless "Next up" in `docs/PLAN.md` says
-     shipping hasn't started yet. It tags the version and waits for GitHub
-     Actions to publish the release.
+   - If the merged PR bumped the version, it was released automatically.
+     Check the Release run on `main` succeeded
+     (`gh run list --workflow release.yml --branch main --limit 1`) and tell
+     the creator the release URL. If it failed, fixing it comes first.
    - Tick what landed in `docs/PLAN.md` and update "Next up". Commit that as
      part of the next PR (never push to `main` directly).
    - If the merged PR asked questions that weren't answered in its comments,
@@ -43,7 +44,7 @@ src/          Rust app (single crate)
 presets/      built-in preview CSS, embedded into the binary
 site/         Zola project site: landing page, blog, changelog
 docs/         spec, plan, decisions
-scripts/      ship.sh and other dev scripts
+install.sh    one-line installer, attached to every release
 README.md     for people using writui; CONTRIBUTING.md for working on it
 .github/      CI and release workflows
 ```
@@ -54,7 +55,8 @@ README.md     for people using writui; CONTRIBUTING.md for working on it
   the real vault. Dev and throwaway vaults always use the shared password
   **`writui-dev`** (debug builds show it on the unlock screen). Every schema
   change is a migration; never drop or rewrite user data destructively. Back
-  up the vault before migrating.
+  up the vault before migrating; the backup is deleted only after the
+  migrated vault passes its integrity checks.
 - The creator doesn't know Rust. Explain changes in terms of behaviour, not
   code.
 - Terminal agnostic: test assumptions against Alacritty, Ghostty, iTerm2. Use
@@ -79,7 +81,7 @@ README.md     for people using writui; CONTRIBUTING.md for working on it
    - Mouse clicks can be sent as SGR sequences (1-based):
      `tmux send-keys -t w -l $'\e[<0;COL;ROWM\e[<0;COL;ROWm'`.
    - When a PR adds a migration, check it against a vault made by the
-     previous build: the backup file appears and the data survives.
+     previous build: the data survives, and the backup is gone afterwards.
    - Don't build an old commit into the shared `target/` (e.g. from a
      worktree): cargo then leaves the stale binary in `target/debug/`. Use a
      separate `CARGO_TARGET_DIR`, or `touch src/main.rs` before rebuilding.
@@ -99,19 +101,19 @@ README.md     for people using writui; CONTRIBUTING.md for working on it
      from that folder (add `-R aakashns/writui`, since that folder isn't
      the repo). gh uploads them and rewrites the references.
 4. The creator tries it locally and merges. Never merge PRs yourself.
-5. After a merge: pull `main` and ship with `scripts/ship.sh`. It tags `main`
-   with the version in `Cargo.toml`, and GitHub Actions builds and publishes
-   the release (`.github/workflows/release.yml`). It doesn't install
-   anything: the creator upgrades by downloading the release, like any user.
-   Tick the items in `docs/PLAN.md`.
+5. After a merge there's nothing to run: if the PR bumped the version,
+   `.github/workflows/release.yml` publishes the release from `main` on its
+   own. Check it succeeded and report the release URL. The creator upgrades
+   with `writui upgrade`, like any user. Tick the items in `docs/PLAN.md`.
 
 ## Versions and releases
 
-The repo is public, and every ship is a GitHub release with notes generated
-from the merged PRs. So every PR that changes the app bumps `version` in
-`Cargo.toml` (and `Cargo.lock`, via `cargo build`): minor for new behaviour,
-patch for fixes only (`0.1.0` → `0.2.0` / `0.1.1`). Docs-only PRs don't bump
-and don't ship. The PR title becomes a line in the release notes, so make it
+The repo is public, and merging a PR that bumps `version` in `Cargo.toml`
+publishes a GitHub release of it, with notes generated from the merged PRs.
+So every PR that changes the app bumps the version (and `Cargo.lock`, via
+`cargo build`): minor for new behaviour, patch for fixes only (`0.1.0` →
+`0.2.0` / `0.1.1`). Docs-only PRs don't bump and don't release. Release
+builds are macOS and Linux only; Windows is build-from-source. The PR title becomes a line in the release notes, so make it
 read well to users, not just the creator. CI (`.github/workflows/ci.yml`) runs
 clippy and the tests on Linux, macOS and Windows for every PR; keep it green.
 

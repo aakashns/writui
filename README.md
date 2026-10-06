@@ -9,8 +9,7 @@ A writing app for the terminal. Markdown, encrypted, no nonsense.
   use shortcuts. The bar at the bottom of the screen always shows the
   shortcuts for where you are, and you can click those too.
 - **Fits your terminal.** It uses your terminal's own colours and font, and
-  works in any modern terminal (Alacritty, Ghostty, iTerm2, Windows Terminal,
-  and others).
+  works in any modern terminal (Alacritty, Ghostty, iTerm2, and others).
 
 > **Early days.** writui is being built in the open, a small piece at a time
 > ([what's planned](docs/PLAN.md)). It's usable for writing now, but keep a
@@ -19,36 +18,68 @@ A writing app for the terminal. Markdown, encrypted, no nonsense.
 
 ## Install
 
-Download the file for your computer from the
-[latest release](https://github.com/aakashns/writui/releases/latest):
-
-| Computer                       | File                        |
-| ------------------------------ | --------------------------- |
-| Mac with Apple Silicon (M1+)   | `writui-macos-arm64`        |
-| Mac with Intel                 | `writui-macos-x86_64`       |
-| Linux (most PCs)               | `writui-linux-x86_64`       |
-| Linux (ARM, e.g. Raspberry Pi) | `writui-linux-arm64`        |
-| Windows (most PCs)             | `writui-windows-x86_64.exe` |
-| Windows on ARM                 | `writui-windows-arm64.exe`  |
-
-**Mac and Linux:** paste this into your terminal, with the file name from the
-table at the end of the first line:
+On macOS or Linux, paste this into a terminal:
 
 ```sh
-mkdir -p ~/.local/bin
-curl -fLo ~/.local/bin/writui https://github.com/aakashns/writui/releases/latest/download/writui-macos-arm64
-chmod +x ~/.local/bin/writui
+curl -fsSL https://github.com/aakashns/writui/releases/latest/download/install.sh | bash
 ```
 
-If `writui` isn't found afterwards, add `~/.local/bin` to your `PATH`. On a
-Mac, if you downloaded the file with a browser instead and macOS won't open
-it, run `xattr -d com.apple.quarantine ~/.local/bin/writui` once.
+It downloads the latest writui for your computer, checks it, and puts it in
+`~/.local/bin`. If that folder isn't on your `PATH` yet, it tells you the line
+to add. ([Read the script](install.sh) first if you like.) Check it worked
+with `writui --version`.
 
-**Windows:** download the `.exe`, rename it to `writui.exe`, and put it in a
-folder on your `PATH`. Windows support is new and hasn't had much use yet;
-please [report anything odd](https://github.com/aakashns/writui/issues).
+<details>
+<summary>Or download it yourself</summary>
 
-To update, download the new version the same way.
+Every [release](https://github.com/aakashns/writui/releases/latest) has a
+ready-to-run file for each computer:
+
+| Computer                       | File                  |
+| ------------------------------ | --------------------- |
+| Mac with Apple Silicon (M1+)   | `writui-macos-arm64`  |
+| Mac with Intel                 | `writui-macos-x86_64` |
+| Linux (most PCs)               | `writui-linux-x86_64` |
+| Linux (ARM, e.g. Raspberry Pi) | `writui-linux-arm64`  |
+
+Save it as `writui` in a folder on your `PATH` and make it executable
+(`chmod +x writui`). The Mac files aren't signed: if you downloaded with a
+browser and macOS won't open it, run `xattr -d com.apple.quarantine writui`
+once. (The install script avoids this.)
+
+</details>
+
+### Upgrade
+
+```sh
+writui upgrade
+```
+
+This checks for a newer version, shows what's new, and asks before replacing
+writui with it (`writui upgrade --yes` skips the question). The next time you
+unlock, the new version updates your vault if it needs to. It backs the vault
+up first, checks the result, and only then removes the backup. Running the
+install script again also upgrades.
+
+### Windows
+
+There's no ready-made Windows version, but you can build writui yourself:
+
+1. Install [Rust](https://rustup.rs), the
+   [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/)
+   (the "Desktop development with C++" workload), and
+   [Strawberry Perl](https://strawberryperl.com) (needed to build the
+   encryption library).
+2. In a new PowerShell window (not Git Bash, whose Perl can't build it), run:
+
+   ```sh
+   cargo install --locked --git https://github.com/aakashns/writui
+   ```
+
+The build takes a few minutes. writui's automated tests run on Windows, but
+it isn't regularly tried out by hand there, so please
+[report anything odd](https://github.com/aakashns/writui/issues). To upgrade,
+run the same command again.
 
 ## Use
 
