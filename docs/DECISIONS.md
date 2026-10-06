@@ -125,3 +125,20 @@ the editor; failing to store the draft does.
 Only the cursor is stored, not the scroll position: the view is rebuilt
 around the cursor (as near mid-screen as the text allows), which works at
 any terminal width.
+
+## Releases: hand-written GitHub Actions workflow on version tags
+
+Pushing a `vX.Y.Z` tag builds macOS (arm64, and x86_64 cross-compiled on the
+same arm64 runner) and Linux (x86_64, arm64, on Ubuntu 22.04 so the binaries
+work with older glibc) and publishes `.tar.gz` archives with SHA-256 files.
+Release notes are GitHub's generated list of merged PRs. `scripts/ship.sh`
+pushes the tag, waits, and installs the published build, so the binary
+Aakash writes with is exactly the released one. Chose a ~80-line workflow over
+`cargo-dist` to keep it small and readable; we can switch if we want its
+installers and Homebrew support later. macOS binaries are unsigned for now:
+downloads via `curl`, `gh` or Homebrew aren't quarantined, browser downloads
+need `xattr -d com.apple.quarantine`.
+
+CI runs clippy (warnings are errors) and the tests on Linux and macOS. No
+`cargo fmt --check` yet: the code isn't rustfmt-formatted, and reformatting
+everything would bury real changes in a PR diff.

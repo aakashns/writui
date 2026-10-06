@@ -24,7 +24,8 @@ repo and GitHub, not from memory:
      he asks.
 3. **Latest PR merged:** `git checkout main && git pull`, then:
    - Ship (`scripts/ship.sh`) unless "Next up" in `docs/PLAN.md` says
-     shipping hasn't started yet.
+     shipping hasn't started yet. It tags the version, waits for GitHub
+     Actions to publish the release, and installs that build.
    - Tick what landed in `docs/PLAN.md` and update "Next up". Commit that as
      part of the next PR (never push to `main` directly).
    - If the merged PR asked questions that weren't answered in its comments,
@@ -43,6 +44,7 @@ presets/      built-in preview CSS, embedded into the binary
 site/         Zola project site: landing page, blog, changelog
 docs/         spec, plan, decisions
 scripts/      ship.sh and other dev scripts
+.github/      CI and release workflows
 ```
 
 ## Rules
@@ -95,5 +97,17 @@ scripts/      ship.sh and other dev scripts
      from that folder (add `-R aakashns/writui`, since that folder isn't
      the repo). gh uploads them and rewrites the references.
 4. Aakash tries it locally and merges. Never merge PRs yourself.
-5. After a merge: pull `main` and ship with `scripts/ship.sh` (release build,
-   install to `~/.local/bin/writui`). Tick the items in `docs/PLAN.md`.
+5. After a merge: pull `main` and ship with `scripts/ship.sh`. It tags `main`
+   with the version in `Cargo.toml`, GitHub Actions builds and publishes the
+   release (`.github/workflows/release.yml`), and the script installs that
+   build to `~/.local/bin/writui`. Tick the items in `docs/PLAN.md`.
+
+## Versions and releases
+
+The repo is public, and every ship is a GitHub release with notes generated
+from the merged PRs. So every PR that changes the app bumps `version` in
+`Cargo.toml` (and `Cargo.lock`, via `cargo build`): minor for new behaviour,
+patch for fixes only (`0.1.0` → `0.2.0` / `0.1.1`). Docs-only PRs don't bump
+and don't ship. The PR title becomes a line in the release notes, so make it
+read well to someone who isn't Aakash. CI (`.github/workflows/ci.yml`) runs
+clippy and the tests on Linux and macOS for every PR; keep it green.

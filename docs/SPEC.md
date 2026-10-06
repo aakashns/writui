@@ -282,9 +282,16 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 > Let's plan to do the open source and site right after M2, I want to get it
 > out as soon as it's doing something.
 
+> i want to take the repo public right now use the github releases going
+> forward
+
 **Details**
 
 - License: MIT OR Apache-2.0 (dual, the Rust convention).
+- Public on GitHub from M0 onwards; the project site still comes with M3.
+- Every ship is a GitHub release: prebuilt binaries for macOS (Apple Silicon,
+  Intel) and Linux (x86_64, arm64), with notes listing the merged PRs. Aakash
+  installs the same release build everyone else downloads.
 
 ## Command line
 

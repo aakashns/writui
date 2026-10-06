@@ -18,8 +18,10 @@ M0 is split into three PRs:
 3. **Autosave, undo/redo, editor hint bar, first ship.** Autosave needs the
    event loop to wake up on a timer (it currently blocks waiting for input).
 
-Shipping to `~/.local/bin` starts after PR 3; until then, don't run
-`scripts/ship.sh` after merges.
+Shipping starts after PR 3; until then, don't run `scripts/ship.sh` after
+merges. PR 3 ships as the first GitHub release, `v0.1.0` (the version already
+in `Cargo.toml`, so PR 3 doesn't bump it). Every app-changing PR after that
+bumps the version (see CLAUDE.md).
 
 ## M0 — Writing core
 
@@ -39,7 +41,7 @@ The smallest thing that can replace another writing app.
 - [ ] Undo / redo
 - [ ] Draft autosave (debounced + on quit)
 - [ ] Hint bar with the shortcuts for the current screen
-- [ ] First ship: installed to `~/.local/bin/writui`
+- [ ] First ship: GitHub release `v0.1.0`, installed to `~/.local/bin/writui`
 
 ## M1 — Saves and history
 
@@ -62,11 +64,16 @@ The smallest thing that can replace another writing app.
 
 ## M4 — Open source release
 
-- [ ] License (MIT OR Apache-2.0), README, contributing notes
-- [ ] GitHub Actions: build, test, lint
-- [ ] Release builds (macOS arm64 / x86_64, Linux) on tags
+The repo went public early (during M0), so most of this is already done.
+
+- [x] License (MIT OR Apache-2.0), README
+- [ ] Contributing notes
+- [x] GitHub Actions: build, test, lint
+- [x] Release builds (macOS arm64 / x86_64, Linux x86_64 / arm64) on tags
 - [ ] Site deployed via GitHub Pages
-- [ ] Make the repo public
+- [x] Make the repo public
+- [ ] Signed and notarised macOS binaries (needs an Apple Developer account)
+- [ ] Easier install: Homebrew tap and/or an install script
 
 ## M5 — Selection and clipboard
 
