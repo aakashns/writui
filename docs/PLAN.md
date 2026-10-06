@@ -35,6 +35,7 @@ The smallest thing that can replace another writing app.
 - [x] Posts: first line fixed as `# ` title; created / updated times tracked
 - [x] Editor: centred 68-char column, soft wrap, cursor movement, scrolling
 - [x] Editor: mouse click to place cursor, scroll wheel
+- [x] Editor: reopening a post puts the cursor back where it was left
 - [ ] Undo / redo
 - [ ] Draft autosave (debounced + on quit)
 - [ ] Hint bar with the shortcuts for the current screen
@@ -78,7 +79,9 @@ Needed before the chat sidebar, so the LLM can see what's selected.
 
 ## M6 — LLM chat sidebar
 
-- [ ] Settings screen; API keys for OpenAI + Anthropic (or prompt on first open)
+- [ ] Settings screen, stored in the vault: line width, what Tab types, and
+      the rest listed in the spec
+- [ ] API keys for OpenAI + Anthropic in settings (or prompt on first open)
 - [ ] Sidebar that fits next to the editor (or takes over on narrow terminals)
 - [ ] Context sent automatically: post, selection, cursor position
 - [ ] Streaming replies, model picker

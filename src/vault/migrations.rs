@@ -18,6 +18,9 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX posts_updated_at ON posts (updated_at);",
     // 2: Trash. Set when a post is deleted; cleared on restore.
     "ALTER TABLE posts ADD COLUMN deleted_at INTEGER;",
+    // 3: where the cursor was when the post was last closed, as a character
+    // index into `body`. NULL means the end.
+    "ALTER TABLE posts ADD COLUMN cursor INTEGER;",
 ];
 
 /// Bring the vault's schema up to date, backing up the file first if it

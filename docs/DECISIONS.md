@@ -110,3 +110,18 @@ with M2's "stays fast on long posts" if it's ever needed.
 The editor asks the terminal for a blinking bar cursor (DECSCUSR, supported
 by Alacritty, Ghostty and iTerm2), and restores the user's own cursor
 everywhere else and on exit.
+
+## Remembering the cursor: a column on `posts`
+
+Each post stores where the cursor was when it was last closed (migration 3,
+`posts.cursor`), as a character index into the body. NULL means the end, so
+existing posts open as they did before. It's written whenever the editor is
+left (Esc or quit), separately from the draft, and doesn't change the post's
+"last updated" time. On open it's clamped to the text and moved to a
+grapheme boundary, so it's safe even if the body changed some other way
+(e.g. restoring an old save in M1). Failing to store it never keeps you in
+the editor; failing to store the draft does.
+
+Only the cursor is stored, not the scroll position: the view is rebuilt
+around the cursor (as near mid-screen as the text allows), which works at
+any terminal width.

@@ -131,8 +131,10 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   - Up/Down move by row on screen and keep the cursor's column.
   - Home/End go to the start/end of the row on screen; Ctrl+Home/Ctrl+End
     to the start/end of the post. PageUp/PageDown move a screenful.
-  - Tab types four spaces.
-- Opening a post puts the cursor at the end of it.
+  - Tab types two spaces (to be configurable in settings).
+- Opening a post puts the cursor back where it was when the post was last
+  closed, as near the middle of the screen as the text allows. A post that
+  has never been opened starts with the cursor at the end.
 - The cursor is a blinking bar in the editor.
 - If the draft can't be stored when leaving the editor, the editor stays
   open and says so (a second Ctrl+Q quits anyway).
@@ -251,8 +253,8 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 **Details**
 
-- Line width, default preview preset, API keys, default model, auto-lock
-  timeout — all stored in the vault.
+- Line width, what Tab types, default preview preset, API keys, default
+  model, auto-lock timeout — all stored in the vault.
 - The vault file location has to be known *before* unlocking, so it lives
   outside the vault in a small plain config file (and can also be passed on
   the command line).

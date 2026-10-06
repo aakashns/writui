@@ -258,32 +258,33 @@ impl App {
         });
     }
 
-    /// Store the open post's draft in the vault, if it changed. If that
-    /// fails, the editor stays open and says so, so no writing is lost.
-    /// Returns whether it's safe to leave the editor.
+    /// Store the open post's draft in the vault, if it changed, and where
+    /// the cursor is. If storing the draft fails, the editor stays open and
+    /// says so, so no writing is lost. Returns whether it's safe to leave
+    /// the editor.
     fn store_draft(&mut self) -> bool {
         let Screen::Editor(editor) = &mut self.screen else {
             return true;
         };
-        if !editor.changed() {
-            return true;
-        }
-        let text = editor.text();
-        let result = self.vault.as_ref().context("the vault is locked").and_then(|vault| {
-            vault.update_post_body(editor.post_id(), &text)
-        });
-        match result {
-            Ok(()) => {
-                editor.mark_stored(text);
-                true
-            }
-            Err(err) => {
-                editor.set_error(format!(
-                    "Couldn't save the draft: {err:#}. Ctrl+Q again quits without saving."
-                ));
-                false
+        let vault = self.vault.as_ref().context("the vault is locked");
+        if editor.changed() {
+            let text = editor.text();
+            match vault.and_then(|vault| vault.update_post_body(editor.post_id(), &text)) {
+                Ok(()) => editor.mark_stored(text),
+                Err(err) => {
+                    editor.set_error(format!(
+                        "Couldn't save the draft: {err:#}. Ctrl+Q again quits without saving."
+                    ));
+                    return false;
+                }
             }
         }
+        // Only a convenience: failing to remember it shouldn't keep you in
+        // the editor.
+        if let Some(vault) = &self.vault {
+            let _ = vault.set_post_cursor(editor.post_id(), editor.cursor());
+        }
+        true
     }
 
     fn open_post(&mut self, id: i64) -> Result<()> {

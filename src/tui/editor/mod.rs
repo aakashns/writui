@@ -22,7 +22,7 @@ use buffer::{Buffer, MIN};
 use wrap::{Row, TAB_WIDTH, layout, pos_at_x, row_of, x_of};
 
 /// What the Tab key types.
-const TAB: &str = "    ";
+const TAB: &str = "  ";
 
 /// Rows kept between the cursor and the top or bottom edge when scrolling to
 /// follow it. The text can also scroll this far past its last row.
@@ -53,6 +53,8 @@ pub struct Editor {
     top: usize,
     /// Scroll to the cursor on the next render.
     follow: bool,
+    /// Not rendered yet: the first render puts the cursor mid-screen.
+    opening: bool,
     /// The column kept while moving up and down past shorter rows.
     goal: Option<usize>,
     error: Option<String>,
@@ -60,11 +62,11 @@ pub struct Editor {
 }
 
 impl Editor {
-    /// Opens with the cursor at the end of the post.
+    /// Opens with the cursor where it was left (or at the end of the post).
     pub fn new(post: Post) -> Self {
         Editor {
             post_id: post.id,
-            buffer: Buffer::new(&post.body),
+            buffer: Buffer::new(&post.body, post.cursor),
             stored: post.body,
             rows: Vec::new(),
             stale: true,
@@ -72,6 +74,7 @@ impl Editor {
             text_area: Rect::default(),
             top: 0,
             follow: true,
+            opening: true,
             goal: None,
             error: None,
             hints: HintBar::default(),
@@ -84,6 +87,11 @@ impl Editor {
 
     pub fn text(&self) -> String {
         self.buffer.text()
+    }
+
+    /// The cursor, as a char index into `text()`.
+    pub fn cursor(&self) -> usize {
+        self.buffer.cursor()
     }
 
     /// The text differs from what's stored in the vault.
@@ -121,6 +129,13 @@ impl Editor {
 
         let height = body.height as usize;
         let (cursor_row, cursor_x) = self.cursor_cell();
+        if self.opening {
+            // As close to the middle as the text allows (at the end of the
+            // post, that's the usual margin above the bottom edge).
+            self.opening = false;
+            self.follow = false;
+            self.top = cursor_row.saturating_sub(height / 2).min(self.max_top());
+        }
         if self.follow {
             self.follow = false;
             let margin = margin(height);
@@ -344,7 +359,11 @@ mod tests {
 
     impl Harness {
         fn new(body: &str) -> Self {
-            let editor = Editor::new(Post { id: 1, body: body.into() });
+            Harness::at(body, None)
+        }
+
+        fn at(body: &str, cursor: Option<usize>) -> Self {
+            let editor = Editor::new(Post { id: 1, body: body.into(), cursor });
             let mut h = Harness { editor, terminal: Terminal::new(TestBackend::new(80, 12)).unwrap() };
             h.draw();
             h
@@ -452,6 +471,29 @@ mod tests {
         assert_eq!(h.cursor(), (LEFT, 5));
         h.key(KeyCode::Char('!'));
         assert_eq!(h.editor.text().lines().nth(20), Some("!line 20"));
+    }
+
+    #[test]
+    fn reopens_where_the_cursor_was_left() {
+        let body: String = (1..=30).map(|n| format!("\nline {n}")).collect();
+        let text = format!("# Title{body}");
+        let pos = text.find("line 15").unwrap() + 2;
+        let mut h = Harness::at(&text, Some(pos));
+        // In the middle of the screen.
+        assert_eq!(h.screen_row(5), format!("{}line 15", " ".repeat(6)));
+        assert_eq!(h.cursor(), (LEFT + 2, 5));
+        assert_eq!(h.editor.cursor(), pos);
+        // Near the top, it can't be mid-screen.
+        let mut h = Harness::at(&text, Some(9));
+        assert_eq!(h.screen_row(1), format!("{}# Title", " ".repeat(6)));
+        assert_eq!(h.cursor(), (LEFT + 1, 2));
+    }
+
+    #[test]
+    fn tab_types_two_spaces() {
+        let mut h = Harness::new("# Title\n");
+        h.key(KeyCode::Tab);
+        assert_eq!(h.editor.text(), "# Title\n  ");
     }
 
     #[test]

@@ -18,11 +18,17 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    /// The cursor starts at the end of the text.
-    pub fn new(text: &str) -> Self {
+    /// The cursor starts at `cursor` (a char index), or the end of the text.
+    pub fn new(text: &str, cursor: Option<usize>) -> Self {
         let rope = Rope::from_str(&with_title_prefix(&clean(text)));
-        let cursor = rope.len_chars();
-        Buffer { rope, cursor }
+        let mut buffer = Buffer { cursor: rope.len_chars(), rope };
+        if let Some(pos) = cursor {
+            buffer.set_cursor(pos);
+            // A stored position could be inside a grapheme (if the text was
+            // cleaned up above); move it to the end of that grapheme.
+            buffer.cursor = buffer.next_boundary(buffer.prev_boundary(buffer.cursor));
+        }
+        buffer
     }
 
     pub fn rope(&self) -> &Rope {
@@ -141,8 +147,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn opens_at_a_stored_cursor() {
+        let text = "# cafe\u{301}\nmore";
+        assert_eq!(Buffer::new(text, Some(4)).cursor(), 4);
+        assert_eq!(Buffer::new(text, Some(6)).cursor(), 7); // inside "é": after it
+        assert_eq!(Buffer::new(text, Some(7)).cursor(), 7);
+        assert_eq!(Buffer::new(text, Some(8)).cursor(), 8); // start of the next line
+        assert_eq!(Buffer::new(text, Some(0)).cursor(), MIN);
+        assert_eq!(Buffer::new(text, Some(999)).cursor(), 12);
+    }
+
+    #[test]
     fn title_prefix_cannot_be_removed() {
-        let mut b = Buffer::new("# ");
+        let mut b = Buffer::new("# ", None);
         assert_eq!(b.cursor(), MIN);
         b.backspace();
         b.left();
@@ -159,14 +176,14 @@ mod tests {
 
     #[test]
     fn a_missing_prefix_is_added() {
-        assert_eq!(Buffer::new("").text(), "# ");
-        assert_eq!(Buffer::new("Title").text(), "# Title");
-        assert_eq!(Buffer::new("#Title").text(), "# Title");
+        assert_eq!(Buffer::new("", None).text(), "# ");
+        assert_eq!(Buffer::new("Title", None).text(), "# Title");
+        assert_eq!(Buffer::new("#Title", None).text(), "# Title");
     }
 
     #[test]
     fn typing_and_deleting() {
-        let mut b = Buffer::new("# Title");
+        let mut b = Buffer::new("# Title", None);
         b.insert("\nHello");
         assert_eq!(b.text(), "# Title\nHello");
         b.set_cursor(8);
@@ -182,7 +199,7 @@ mod tests {
 
     #[test]
     fn pasted_text_is_cleaned() {
-        let mut b = Buffer::new("# ");
+        let mut b = Buffer::new("# ", None);
         b.insert("one\r\ntwo\rthree\u{7}\tfour");
         assert_eq!(b.text(), "# one\ntwo\nthree\tfour");
     }
@@ -190,7 +207,7 @@ mod tests {
     #[test]
     fn moves_by_grapheme() {
         // "e" + combining accent, and a flag made of two chars.
-        let mut b = Buffer::new("# cafe\u{301}\n🇮🇳");
+        let mut b = Buffer::new("# cafe\u{301}\n🇮🇳", None);
         b.left();
         assert_eq!(b.cursor(), 8);
         b.left(); // over the newline
