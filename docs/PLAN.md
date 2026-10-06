@@ -2,7 +2,7 @@
 
 Milestones in build order. Each milestone lands on `main` through one or more
 pull requests (split whenever the scope gets big), and every merge gets
-installed as the binary Aakash writes with — so each PR must leave the app
+installed as the binary the creator writes with — so each PR must leave the app
 usable. Order can change; this file is the source of truth for what's next.
 
 > Let's plan to do the open source and site right after M2, I want to get it

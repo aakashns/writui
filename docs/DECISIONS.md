@@ -63,7 +63,7 @@ in the URL. Markdown rendered with `comrak` (GitHub-flavoured).
 
 ## Datastar for the live preview
 
-Aakash wants to try [Datastar](https://data-star.dev). It fits well: the
+The creator wants to try [Datastar](https://data-star.dev). It fits well: the
 server pushes freshly rendered HTML over server-sent events on every autosave
 and Datastar patches it into the page — no hand-written client JS. Use the
 official `datastar` Rust crate's axum integration. Serve `datastar.js` from
@@ -136,7 +136,7 @@ but the binary, and unversioned names like `writui-macos-arm64` give stable
 `releases/latest/download/…` URLs.
 Release notes are GitHub's generated list of merged PRs. `scripts/ship.sh`
 pushes the tag, waits, and installs the published build, so the binary
-Aakash writes with is exactly the released one. Chose a ~80-line workflow over
+the creator writes with is exactly the released one. Chose a ~80-line workflow over
 `cargo-dist` to keep it small and readable; we can switch if we want its
 installers and Homebrew support later. macOS binaries are unsigned for now:
 downloads via `curl`, `gh` or Homebrew aren't quarantined, browser downloads

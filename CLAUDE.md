@@ -1,14 +1,14 @@
 # writui
 
 Terminal-based, encrypted markdown writing app in Rust (ratatui). Built mainly
-for Aakash's own daily writing, developed as if it's open source.
+for the creator's own daily writing, developed in the open.
 
-- Product spec: `docs/SPEC.md` — quoted parts are Aakash's own words; keep
+- Product spec: `docs/SPEC.md` — quoted parts are the creator's own words; keep
   them verbatim. Update the **Details** when decisions change.
 - Plan: `docs/PLAN.md` — milestones with checkboxes. Tick items as they land.
 - Technical decisions: `docs/DECISIONS.md` — append, don't rewrite.
 
-## When Aakash says "continue"
+## When the creator says "continue"
 
 Each PR is usually done in a fresh conversation, so pick up the state from the
 repo and GitHub, not from memory:
@@ -19,9 +19,9 @@ repo and GitHub, not from memory:
    plus review comments via `gh api repos/aakashns/writui/pulls/<n>/comments`).
    - Feedback to address → check out that branch, fix it, push, refresh the
      screenshots if the UI changed, and reply on the PR with what changed.
-   - No feedback yet → tell Aakash it's waiting on him to try and merge it,
-     with the Try it commands. Don't start the next PR on top of it unless
-     he asks.
+   - No feedback yet → tell the creator it's waiting on them to try and
+     merge it, with the Try it commands. Don't start the next PR on top of it
+     unless they ask.
 3. **Latest PR merged:** `git checkout main && git pull`, then:
    - Ship (`scripts/ship.sh`) unless "Next up" in `docs/PLAN.md` says
      shipping hasn't started yet. It tags the version, waits for GitHub
@@ -50,12 +50,13 @@ README.md     for people using writui; CONTRIBUTING.md for working on it
 
 ## Rules
 
-- **Aakash's real writing is sacred.** Debug builds use `./.dev-data/`, never
+- **The creator's real writing is sacred.** Debug builds use `./.dev-data/`, never
   the real vault. Dev and throwaway vaults always use the shared password
   **`writui-dev`** (debug builds show it on the unlock screen). Every schema
   change is a migration; never drop or rewrite user data destructively. Back
   up the vault before migrating.
-- Aakash doesn't know Rust. Explain changes in terms of behaviour, not code.
+- The creator doesn't know Rust. Explain changes in terms of behaviour, not
+  code.
 - Terminal agnostic: test assumptions against Alacritty, Ghostty, iTerm2. Use
   only the 16 standard terminal colours.
 - Everything mouse-operable, everything also keyboard-accessible, shortcuts
@@ -97,7 +98,7 @@ README.md     for people using writui; CONTRIBUTING.md for working on it
      `gh pr edit <n> --body-file body.md --attach ./name.png --attach ./flow.gif`
      from that folder (add `-R aakashns/writui`, since that folder isn't
      the repo). gh uploads them and rewrites the references.
-4. Aakash tries it locally and merges. Never merge PRs yourself.
+4. The creator tries it locally and merges. Never merge PRs yourself.
 5. After a merge: pull `main` and ship with `scripts/ship.sh`. It tags `main`
    with the version in `Cargo.toml`, GitHub Actions builds and publishes the
    release (`.github/workflows/release.yml`), and the script installs that
@@ -110,7 +111,7 @@ from the merged PRs. So every PR that changes the app bumps `version` in
 `Cargo.toml` (and `Cargo.lock`, via `cargo build`): minor for new behaviour,
 patch for fixes only (`0.1.0` → `0.2.0` / `0.1.1`). Docs-only PRs don't bump
 and don't ship. The PR title becomes a line in the release notes, so make it
-read well to someone who isn't Aakash. CI (`.github/workflows/ci.yml`) runs
+read well to users, not just the creator. CI (`.github/workflows/ci.yml`) runs
 clippy and the tests on Linux, macOS and Windows for every PR; keep it green.
 
 `README.md` is for people using writui, who don't know or care that it's

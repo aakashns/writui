@@ -1,6 +1,6 @@
 # writui — product spec
 
-This is the living product spec. The quoted parts are in Aakash's own words
+This is the living product spec. The quoted parts are in the creator's own words
 and should stay that way. The **Details** under each section capture what
 we've agreed since, and get updated as things change. Technical choices live
 in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
@@ -20,7 +20,7 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 **Details**
 
-- Terminal agnostic. Aakash mostly uses Alacritty, sometimes Ghostty and
+- Terminal agnostic. The creator mostly uses Alacritty, sometimes Ghostty and
   iTerm2. Nothing may depend on one terminal's special features.
 - Everything works with the mouse; everything also has a keyboard shortcut.
   A hint bar shows the shortcuts that matter on the current screen, so they
@@ -292,8 +292,8 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - License: MIT OR Apache-2.0 (dual, the Rust convention).
 - Public on GitHub from M0 onwards; the project site still comes with M3.
 - Every ship is a GitHub release: prebuilt binaries for macOS, Linux and
-  Windows (each x86_64 and arm64), with notes listing the merged PRs. Aakash
-  installs the same release build everyone else downloads.
+  Windows (each x86_64 and arm64), with notes listing the merged PRs. The
+  creator installs the same release build every user downloads.
 
 ## Command line
 
