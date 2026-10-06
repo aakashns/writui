@@ -290,18 +290,38 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 > let's remove the logic to download to my local bin in scripts/ship.sh, i
 > want to upgrade manually like everyeone else
 
+> let's drop the windows builds entriely, yeah, and just include a "Windows"
+> section in the readme asking people to build from source. and let's also
+> set up the automatic release from main when version is bumped. and for
+> macos and linux, i want a single command to install, like bun.com has
+
 **Details**
 
 - License: MIT, in `LICENSE.txt`.
 - Public on GitHub from M0 onwards; the project site still comes with M3.
-- Every ship is a GitHub release: prebuilt binaries for macOS, Linux and
-  Windows (each x86_64 and arm64), with notes listing the merged PRs. The
-  creator upgrades by downloading the release, the same way every user does.
+- Merging a PR that bumps the version publishes a GitHub release
+  automatically: prebuilt binaries for macOS and Linux (each x86_64 and
+  arm64), with notes listing the merged PRs. The creator upgrades the same
+  way every user does.
+- Install on macOS / Linux with one command:
+  `curl -fsSL https://github.com/aakashns/writui/releases/latest/download/install.sh | bash`.
+  Installs to `~/.local/bin`, never edits shell startup files (it prints the
+  line to add instead).
+- Windows: no prebuilt binaries; the README explains building from source.
+  CI still builds and tests on Windows.
+- macOS binaries aren't signed (no paid Apple Developer account). Installing
+  with the script or `curl` isn't affected; browser downloads need a one-off
+  `xattr` command, explained in the README.
 
 ## Command line
 
 > I want the binary to also be usable as a CLI, like to list posts, show a
 > post, export a post etc. That can come much later.
+
+> i want to add a upgrade cli command which checks the current version, and
+> upgrades to the latest version (with confirmation, or --yes), and performs
+> the migrations (backup before, delte backup after success), and also add a
+> --version cli command
 
 **Details**
 
@@ -309,6 +329,14 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   `writui show`, `writui export`) do one thing and exit.
 - The CLI still needs the vault unlocked, so it asks for the password. How
   that works for scripting is to be decided when we get there.
+- `writui --version` prints the version.
+- `writui upgrade` checks GitHub for a newer release, shows "0.1.0 → 0.2.0"
+  and a link to what's new, asks before upgrading (`--yes` skips that), then
+  downloads it, checks its checksum and replaces itself. It doesn't need the
+  password: the vault is migrated the next time it's unlocked, by the new
+  version. Migrations back the vault up first, check the migrated vault's
+  integrity, and only then delete the backup; if anything fails, the backup
+  stays and the error says where it is.
 
 ## Not now
 

@@ -2,8 +2,9 @@
 
 Milestones in build order. Each milestone lands on `main` through one or more
 pull requests (split whenever the scope gets big), and every merge that
-changes the app becomes a release the creator writes with — so each PR must
-leave the app usable. Order can change; this file is the source of truth for what's next.
+changes the app is released automatically and becomes what the creator
+writes with — so each PR must leave the app usable. Order can change; this
+file is the source of truth for what's next.
 
 > Let's plan to do the open source and site right after M2, I want to get it
 > out as soon as it's doing something. And let's bring in LLM chat sidebar
@@ -15,19 +16,18 @@ M0 is split into three PRs:
 
 1. ~~Vault create/unlock + post list~~ — PR #2
 2. ~~The editor~~ — PR #3
-3. **Autosave, undo/redo, editor hint bar, first ship.** Autosave needs the
-   event loop to wake up on a timer (it currently blocks waiting for input).
+3. **Autosave, undo/redo, editor hint bar.** Autosave needs the event loop
+   to wake up on a timer (it currently blocks waiting for input).
 
-Shipping starts after PR 3; until then, don't run `scripts/ship.sh` after
-merges. PR 3 ships as the first GitHub release, `v0.1.0` (the version already
-in `Cargo.toml`, so PR 3 doesn't bump it). Every app-changing PR after that
-bumps the version (see CLAUDE.md).
+Releases are already going out: `v0.1.0` was released by hand after PR #4,
+and the install script / `writui upgrade` / automatic releases PR bumps to
+`0.2.0`. PR 3 bumps the minor version again, and merging it releases it.
 
 ## M0 — Writing core
 
 The smallest thing that can replace another writing app.
 
-- [x] Project scaffold: Cargo crate, `scripts/ship.sh`, dev data dir kept apart from real data
+- [x] Project scaffold: Cargo crate, dev data dir kept apart from real data
 - [x] Config file (vault location) + `--db` flag
 - [x] Vault: create on first run (password twice, no-recovery warning), unlock on later runs
 - [x] Schema migrations from day one, with a backup of the vault before migrating
@@ -41,7 +41,7 @@ The smallest thing that can replace another writing app.
 - [ ] Undo / redo
 - [ ] Draft autosave (debounced + on quit)
 - [ ] Hint bar with the shortcuts for the current screen
-- [ ] First ship: GitHub release `v0.1.0`
+- [x] First ship: GitHub release `v0.1.0`
 
 ## M1 — Saves and history
 
@@ -68,11 +68,15 @@ The repo went public early (during M0), so most of this is already done.
 
 - [x] License (MIT), README, contributing notes
 - [x] GitHub Actions: build, test, lint
-- [x] Release builds (macOS, Linux, Windows; each x86_64 and arm64) on tags
+- [x] Release builds (macOS and Linux, each x86_64 and arm64), published
+      automatically when a merge bumps the version
+- [x] Windows: build from source (README), tested in CI
 - [ ] Site deployed via GitHub Pages
 - [x] Make the repo public
-- [ ] Signed and notarised macOS binaries (needs an Apple Developer account)
-- [ ] Easier install: Homebrew tap and/or an install script
+- [x] One-line install script (`curl … | bash`)
+- [x] `writui upgrade` and `writui --version`
+- [x] Migration backups deleted once the migrated vault passes integrity checks
+- [ ] Homebrew tap (maybe)
 
 ## M5 — Selection and clipboard
 
