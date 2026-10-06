@@ -66,8 +66,7 @@ The smallest thing that can replace another writing app.
 
 The repo went public early (during M0), so most of this is already done.
 
-- [x] License (MIT OR Apache-2.0), README
-- [ ] Contributing notes
+- [x] License (MIT OR Apache-2.0), README, contributing notes
 - [x] GitHub Actions: build, test, lint
 - [x] Release builds (macOS, Linux, Windows; each x86_64 and arm64) on tags
 - [ ] Site deployed via GitHub Pages

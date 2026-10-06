@@ -44,6 +44,7 @@ presets/      built-in preview CSS, embedded into the binary
 site/         Zola project site: landing page, blog, changelog
 docs/         spec, plan, decisions
 scripts/      ship.sh and other dev scripts
+README.md     for people using writui; CONTRIBUTING.md for working on it
 .github/      CI and release workflows
 ```
 
@@ -111,3 +112,8 @@ patch for fixes only (`0.1.0` → `0.2.0` / `0.1.1`). Docs-only PRs don't bump
 and don't ship. The PR title becomes a line in the release notes, so make it
 read well to someone who isn't Aakash. CI (`.github/workflows/ci.yml`) runs
 clippy and the tests on Linux, macOS and Windows for every PR; keep it green.
+
+`README.md` is for people using writui, who don't know or care that it's
+Rust: what it does, install, use, where the writing is kept. Keep it current
+when behaviour changes (e.g. how saving works). Anything about building or
+working on writui goes in `CONTRIBUTING.md`.

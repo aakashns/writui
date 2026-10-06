@@ -1,81 +1,100 @@
 # writui
 
-A terminal writing app. Markdown, encrypted, no nonsense.
+A writing app for the terminal. Markdown, encrypted, no nonsense.
 
-writui keeps all your posts in a single encrypted file (SQLCipher, with the
-key derived from your password using Argon2id). It works with the mouse and
-the keyboard, and uses your terminal's own colours.
+- **Private.** All your posts live in one file, encrypted with your password.
+  Without the password nobody can read them.
+- **Plain markdown.** You write markdown. Each post starts with a `# Title`.
+- **Mouse and keyboard.** Click, scroll and press buttons with the mouse, or
+  use shortcuts. The bar at the bottom of the screen always shows the
+  shortcuts for where you are, and you can click those too.
+- **Fits your terminal.** It uses your terminal's own colours and font, and
+  works in any modern terminal (Alacritty, Ghostty, iTerm2, Windows Terminal,
+  and others).
 
-**Status: early.** writui is being built in the open, milestone by milestone
-([plan](docs/PLAN.md), [spec](docs/SPEC.md)). It's usable for writing, but
-expect rough edges, and keep a copy of anything you can't afford to lose.
-There is no password recovery: if you forget it, your writing is gone.
+> **Early days.** writui is being built in the open, a small piece at a time
+> ([what's planned](docs/PLAN.md)). It's usable for writing now, but keep a
+> copy of anything you can't afford to lose. And remember: **there is no way
+> to recover a forgotten password.**
 
 ## Install
 
-Every [release](https://github.com/aakashns/writui/releases/latest) has a
-ready-to-run binary for each platform:
+Download the file for your computer from the
+[latest release](https://github.com/aakashns/writui/releases/latest):
 
-| Platform              | Binary                       |
-| --------------------- | ---------------------------- |
-| macOS (Apple Silicon) | `writui-macos-arm64`         |
-| macOS (Intel)         | `writui-macos-x86_64`        |
-| Linux (x86_64)        | `writui-linux-x86_64`        |
-| Linux (arm64)         | `writui-linux-arm64`         |
-| Windows (x86_64)      | `writui-windows-x86_64.exe`  |
-| Windows (arm64)       | `writui-windows-arm64.exe`   |
+| Computer                       | File                        |
+| ------------------------------ | --------------------------- |
+| Mac with Apple Silicon (M1+)   | `writui-macos-arm64`        |
+| Mac with Intel                 | `writui-macos-x86_64`       |
+| Linux (most PCs)               | `writui-linux-x86_64`       |
+| Linux (ARM, e.g. Raspberry Pi) | `writui-linux-arm64`        |
+| Windows (most PCs)             | `writui-windows-x86_64.exe` |
+| Windows on ARM                 | `writui-windows-arm64.exe`  |
 
-On macOS and Linux, download it into a folder on your `PATH` and make it
-executable, e.g. for an Apple Silicon Mac:
+**Mac and Linux:** paste this into your terminal, with the file name from the
+table at the end of the first line:
 
 ```sh
 curl -fLo ~/.local/bin/writui https://github.com/aakashns/writui/releases/latest/download/writui-macos-arm64
 chmod +x ~/.local/bin/writui
 ```
 
-`SHA256SUMS` in each release lists the checksums. The macOS binaries aren't
-signed yet: downloading with `curl` as above works, but if you download with a
-browser and macOS refuses to open it, run
-`xattr -d com.apple.quarantine ~/.local/bin/writui`.
+If `writui` isn't found afterwards, add `~/.local/bin` to your `PATH`. On a
+Mac, if you downloaded the file with a browser instead and macOS won't open
+it, run `xattr -d com.apple.quarantine ~/.local/bin/writui` once.
 
-Windows builds are made and tested by CI, but nobody has tried them by hand
-yet. Reports welcome.
+**Windows:** download the `.exe`, rename it to `writui.exe`, and put it in a
+folder on your `PATH`. Windows support is new and hasn't had much use yet;
+please [report anything odd](https://github.com/aakashns/writui/issues).
 
-Or build from source with Rust 1.85 or newer:
-
-```sh
-cargo install --locked --git https://github.com/aakashns/writui
-```
+To update, download the new version the same way.
 
 ## Use
+
+Open a terminal and run:
 
 ```sh
 writui
 ```
 
-The first run asks you to choose a password and creates the vault at
-`~/Library/Application Support/writui/writui.db` (macOS) or
-`~/.local/share/writui/writui.db` (Linux). To keep it somewhere else, pass
-`--db PATH`, or put `vault = "~/path/to/writui.db"` in
-`~/.config/writui/config.toml`.
+The first time, writui asks you to choose a password (twice) and creates your
+vault: the encrypted file that holds all your posts. After that, it asks for
+the password each time it starts.
 
-## Develop
+- **Posts** are listed with the most recently changed first. Open one with
+  Enter or a click, start a new one with Ctrl+N.
+- **Writing:** type away. Your post is saved when you go back to the list
+  (Esc) or quit (Ctrl+Q). When you reopen a post, the cursor is where you
+  left it.
+- **Deleting** (Ctrl+D) moves a post to the Trash, where you can restore it
+  for 30 days.
 
-```sh
-cargo run
+### Where your writing is kept
+
+| Computer | Vault                                              |
+| -------- | -------------------------------------------------- |
+| Mac      | `~/Library/Application Support/writui/writui.db`   |
+| Linux    | `~/.local/share/writui/writui.db`                  |
+| Windows  | `%APPDATA%\writui\writui.db`                       |
+
+It's a single file, so backing up means copying it somewhere safe. The copy
+is just as encrypted as the original.
+
+To keep the vault somewhere else (say, a synced folder), run
+`writui --db ~/path/to/writui.db`, or make it the default by putting this in
+`~/.config/writui/config.toml`:
+
+```toml
+vault = "~/path/to/writui.db"
 ```
 
-Debug builds never touch your real vault: they use `.dev-data/` in the repo,
-with the password `writui-dev`. See [CLAUDE.md](CLAUDE.md) for how the project
-is worked on, and [docs/DECISIONS.md](docs/DECISIONS.md) for why things are
-the way they are.
+## Contributing
+
+Ideas and bug reports are welcome in
+[issues](https://github.com/aakashns/writui/issues). To build writui yourself
+or work on it, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-Licensed under either of [Apache License, Version 2.0](LICENSE-APACHE) or
-[MIT license](LICENSE-MIT), at your option.
-
-Unless you explicitly state otherwise, any contribution intentionally
-submitted for inclusion in writui by you, as defined in the Apache-2.0
-license, shall be dual licensed as above, without any additional terms or
-conditions.
+writui is free and open source, under your choice of the
+[MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE) license.
