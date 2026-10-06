@@ -69,7 +69,7 @@ The repo went public early (during M0), so most of this is already done.
 - [x] License (MIT OR Apache-2.0), README
 - [ ] Contributing notes
 - [x] GitHub Actions: build, test, lint
-- [x] Release builds (macOS arm64 / x86_64, Linux x86_64 / arm64) on tags
+- [x] Release builds (macOS, Linux, Windows; each x86_64 and arm64) on tags
 - [ ] Site deployed via GitHub Pages
 - [x] Make the repo public
 - [ ] Signed and notarised macOS binaries (needs an Apple Developer account)

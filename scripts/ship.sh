@@ -21,11 +21,11 @@ version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 tag="v$version"
 
 case "$(uname -s)-$(uname -m)" in
-  Darwin-arm64) target=aarch64-apple-darwin ;;
-  Darwin-x86_64) target=x86_64-apple-darwin ;;
-  Linux-x86_64) target=x86_64-unknown-linux-gnu ;;
-  Linux-aarch64) target=aarch64-unknown-linux-gnu ;;
-  *) fail "no release build for $(uname -s) $(uname -m)" ;;
+  Darwin-arm64) binary=writui-macos-arm64 ;;
+  Darwin-x86_64) binary=writui-macos-x86_64 ;;
+  Linux-x86_64) binary=writui-linux-x86_64 ;;
+  Linux-aarch64) binary=writui-linux-arm64 ;;
+  *) fail "ship.sh doesn't support $(uname -s) $(uname -m)" ;;
 esac
 
 if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
@@ -52,11 +52,9 @@ gh run watch "$run" --exit-status --interval 10 >/dev/null ||
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
-archive="writui-$tag-$target.tar.gz"
-gh release download "$tag" --dir "$tmp" --pattern "$archive" --pattern "$archive.sha256"
-(cd "$tmp" && shasum -a 256 -c "$archive.sha256" >/dev/null) || fail "checksum mismatch"
-tar -xzf "$tmp/$archive" -C "$tmp"
+gh release download "$tag" --dir "$tmp" --pattern "$binary" --pattern SHA256SUMS
+(cd "$tmp" && grep " $binary\$" SHA256SUMS | shasum -a 256 -c - >/dev/null) || fail "checksum mismatch"
 mkdir -p "$dest"
-install -m 755 "$tmp/writui-$tag-$target/writui" "$dest/writui"
+install -m 755 "$tmp/$binary" "$dest/writui"
 echo "Installed $("$dest/writui" --version) to $dest/writui"
 echo "Release: $(gh release view "$tag" --json url --jq .url)"

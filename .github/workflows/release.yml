@@ -1,6 +1,9 @@
 # Builds writui for each platform when a version tag (e.g. v0.1.0) is pushed,
-# and publishes the archives as a GitHub release. scripts/ship.sh pushes the
+# and publishes the binaries as a GitHub release. scripts/ship.sh pushes the
 # tag. Pull requests that touch this file run the builds without publishing.
+#
+# Binary names carry no version, so the latest one is always at
+# https://github.com/aakashns/writui/releases/latest/download/<name>
 name: Release
 
 on:
@@ -14,17 +17,22 @@ permissions:
 
 jobs:
   build:
-    name: Build ${{ matrix.target }}
+    name: Build ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { target: aarch64-apple-darwin, os: macos-latest }
-          - { target: x86_64-apple-darwin, os: macos-latest }
+          - { name: macos-arm64, target: aarch64-apple-darwin, os: macos-latest }
+          - { name: macos-x86_64, target: x86_64-apple-darwin, os: macos-latest }
           # 22.04 rather than latest, so the binaries run on older glibc too.
-          - { target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
-          - { target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
+          - { name: linux-x86_64, target: x86_64-unknown-linux-gnu, os: ubuntu-22.04 }
+          - { name: linux-arm64, target: aarch64-unknown-linux-gnu, os: ubuntu-22.04-arm }
+          - { name: windows-x86_64, target: x86_64-pc-windows-msvc, os: windows-latest, exe: .exe }
+          - { name: windows-arm64, target: aarch64-pc-windows-msvc, os: windows-11-arm, exe: .exe }
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -39,18 +47,13 @@ jobs:
             exit 1
           fi
       - run: cargo build --release --locked --target ${{ matrix.target }}
-      - name: Package
-        run: |
-          # On pull requests the ref is e.g. "12/merge".
-          name="writui-${GITHUB_REF_NAME//\//-}-${{ matrix.target }}"
-          mkdir -p "dist/$name"
-          cp "target/${{ matrix.target }}/release/writui" README.md LICENSE-MIT LICENSE-APACHE "dist/$name/"
-          tar -C dist -czf "dist/$name.tar.gz" "$name"
-          (cd dist && shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256")
+      - run: |
+          mkdir dist
+          cp "target/${{ matrix.target }}/release/writui${{ matrix.exe }}" "dist/writui-${{ matrix.name }}${{ matrix.exe }}"
       - uses: actions/upload-artifact@v5
         with:
-          name: ${{ matrix.target }}
-          path: dist/*.tar.gz*
+          name: ${{ matrix.name }}
+          path: dist/*
 
   publish:
     if: startsWith(github.ref, 'refs/tags/')
@@ -66,5 +69,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          (cd dist && sha256sum writui-* > SHA256SUMS)
           gh release create "$GITHUB_REF_NAME" dist/* \
             --title "writui ${GITHUB_REF_NAME#v}" --generate-notes --verify-tag

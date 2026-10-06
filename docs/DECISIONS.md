@@ -129,8 +129,11 @@ any terminal width.
 ## Releases: hand-written GitHub Actions workflow on version tags
 
 Pushing a `vX.Y.Z` tag builds macOS (arm64, and x86_64 cross-compiled on the
-same arm64 runner) and Linux (x86_64, arm64, on Ubuntu 22.04 so the binaries
-work with older glibc) and publishes `.tar.gz` archives with SHA-256 files.
+same arm64 runner), Linux (x86_64, arm64, on Ubuntu 22.04 so the binaries
+work with older glibc) and Windows (x86_64, arm64), and publishes bare
+binaries plus a `SHA256SUMS` file. No archives: there's nothing to bundle
+but the binary, and unversioned names like `writui-macos-arm64` give stable
+`releases/latest/download/…` URLs.
 Release notes are GitHub's generated list of merged PRs. `scripts/ship.sh`
 pushes the tag, waits, and installs the published build, so the binary
 Aakash writes with is exactly the released one. Chose a ~80-line workflow over
@@ -139,6 +142,7 @@ installers and Homebrew support later. macOS binaries are unsigned for now:
 downloads via `curl`, `gh` or Homebrew aren't quarantined, browser downloads
 need `xattr -d com.apple.quarantine`.
 
-CI runs clippy (warnings are errors) and the tests on Linux and macOS. No
+CI runs clippy (warnings are errors) and the tests on Linux, macOS and
+Windows. No
 `cargo fmt --check` yet: the code isn't rustfmt-formatted, and reformatting
 everything would bury real changes in a PR diff.

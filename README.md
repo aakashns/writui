@@ -13,18 +13,33 @@ There is no password recovery: if you forget it, your writing is gone.
 
 ## Install
 
-Download the archive for your machine from the
-[latest release](https://github.com/aakashns/writui/releases/latest)
-(macOS Apple Silicon / Intel, Linux x86_64 / arm64), unpack it, and put
-`writui` somewhere on your `PATH`:
+Every [release](https://github.com/aakashns/writui/releases/latest) has a
+ready-to-run binary for each platform:
+
+| Platform              | Binary                       |
+| --------------------- | ---------------------------- |
+| macOS (Apple Silicon) | `writui-macos-arm64`         |
+| macOS (Intel)         | `writui-macos-x86_64`        |
+| Linux (x86_64)        | `writui-linux-x86_64`        |
+| Linux (arm64)         | `writui-linux-arm64`         |
+| Windows (x86_64)      | `writui-windows-x86_64.exe`  |
+| Windows (arm64)       | `writui-windows-arm64.exe`   |
+
+On macOS and Linux, download it into a folder on your `PATH` and make it
+executable, e.g. for an Apple Silicon Mac:
 
 ```sh
-tar -xzf writui-*.tar.gz
-mv writui-*/writui ~/.local/bin/
+curl -fLo ~/.local/bin/writui https://github.com/aakashns/writui/releases/latest/download/writui-macos-arm64
+chmod +x ~/.local/bin/writui
 ```
 
-The macOS binaries aren't signed yet. If you downloaded with a browser and
-macOS refuses to open it, run `xattr -d com.apple.quarantine ~/.local/bin/writui`.
+`SHA256SUMS` in each release lists the checksums. The macOS binaries aren't
+signed yet: downloading with `curl` as above works, but if you download with a
+browser and macOS refuses to open it, run
+`xattr -d com.apple.quarantine ~/.local/bin/writui`.
+
+Windows builds are made and tested by CI, but nobody has tried them by hand
+yet. Reports welcome.
 
 Or build from source with Rust 1.85 or newer:
 
