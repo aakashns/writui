@@ -21,6 +21,15 @@ const MIGRATIONS: &[&str] = &[
     // 3: where the cursor was when the post was last closed, as a character
     // index into `body`. NULL means the end.
     "ALTER TABLE posts ADD COLUMN cursor INTEGER;",
+    // 4: saves: named snapshots of a post's full text, made with Ctrl+S.
+    "CREATE TABLE saves (
+        id         INTEGER PRIMARY KEY,
+        post_id    INTEGER NOT NULL REFERENCES posts (id),
+        name       TEXT    NOT NULL,
+        body       TEXT    NOT NULL,
+        created_at INTEGER NOT NULL
+    );
+    CREATE INDEX saves_post_id ON saves (post_id, created_at);",
 ];
 
 /// Bring the vault's schema up to date. If the vault already holds data, it's

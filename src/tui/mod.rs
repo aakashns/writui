@@ -39,6 +39,12 @@ pub enum Action {
     DeletePostForever { id: i64, select: Option<i64> },
     /// Go back to the list, highlighting this post.
     BackToList(Option<i64>),
+    /// Record a save of the open post.
+    SavePost { name: String },
+    /// Show the open post's history.
+    ShowHistory,
+    /// Open a save in the history, to read.
+    LoadSave(i64),
 }
 
 /// Whether the draft is being stored because the editor is being left.
@@ -52,7 +58,7 @@ enum Screen {
     Setup(setup::Setup),
     Unlock(unlock::Unlock),
     List(list::List),
-    Editor(editor::Editor),
+    Editor(Box<editor::Editor>),
 }
 
 pub fn run(vault_path: PathBuf) -> Result<()> {
@@ -227,6 +233,27 @@ impl App {
                     self.show_list(select, None)?;
                 }
             }
+            Action::SavePost { name } => {
+                let Screen::Editor(editor) = &mut self.screen else { return Ok(()) };
+                let vault = self.vault.as_ref().context("the vault is locked");
+                match vault.and_then(|vault| vault.create_save(editor.post_id(), &name, &editor.text())) {
+                    Ok(save) => editor.saved(save),
+                    Err(err) => editor.set_error(format!("Couldn't save: {err:#}")),
+                }
+                // The draft matches the save, so store that too.
+                self.store_draft(Leaving::No);
+            }
+            Action::ShowHistory | Action::LoadSave(_) => {
+                let Screen::Editor(editor) = &mut self.screen else { return Ok(()) };
+                let vault = self.vault.as_ref().context("the vault is locked");
+                let result = match action {
+                    Action::LoadSave(id) => vault.and_then(|v| v.save(id)).map(|s| editor.show_save(s)),
+                    _ => vault.and_then(|v| v.list_saves(editor.post_id())).map(|s| editor.show_history(s)),
+                };
+                if let Err(err) = result {
+                    editor.set_error(format!("Couldn't load the history: {err:#}"));
+                }
+            }
         }
         Ok(())
     }
@@ -323,8 +350,10 @@ impl App {
     }
 
     fn open_post(&mut self, id: i64) -> Result<()> {
-        let post = self.vault()?.post(id)?;
-        self.screen = Screen::Editor(editor::Editor::new(post));
+        let vault = self.vault()?;
+        let post = vault.post(id)?;
+        let last_save = vault.latest_save(id)?;
+        self.screen = Screen::Editor(Box::new(editor::Editor::new(post, last_save)));
         Ok(())
     }
 }

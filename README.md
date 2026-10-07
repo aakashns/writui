@@ -99,9 +99,16 @@ the password each time it starts.
   you stop typing, every few seconds while you keep typing, and when you go
   back to the list (Esc) or quit (Ctrl+Q). When you reopen a post, the
   cursor is where you left it.
+- **Saves** are versions you make on purpose. Ctrl+S asks for a name (like
+  a commit message) and keeps a copy of the whole post. Below the text,
+  writui shows whether the post has changed since its last save.
+- **History** (Ctrl+R) lists a post's saves. Open one to read it, and press
+  Enter to restore it into your post (Ctrl+Z undoes that).
 - **Undo** with Ctrl+Z and **redo** with Ctrl+Y (or Ctrl+Shift+Z, in
   terminals that tell it apart from Ctrl+Z). Undo goes back a word at a
   time while typing.
+- **Copying text:** writui doesn't have its own selection yet. Hold Shift
+  (Option in iTerm2) while dragging to select with your terminal instead.
 - **Deleting** (Ctrl+D) moves a post to the Trash, where you can restore it
   for 30 days.
 

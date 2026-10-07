@@ -12,17 +12,22 @@ file is the source of truth for what's next.
 
 ## Next up
 
-M0 is done once the autosave / undo / hint bar PR (`0.3.0`) is merged.
-PRs can be bigger from here on (see CLAUDE.md), so next:
+M0 shipped in `0.3.0`. M1 (saves and history) is in the `0.4.0` PR.
+Next:
 
-1. **M1 — saves and history, as one PR:** Ctrl+S names and records a save,
-   the "changed since last save" indicator, and the history view (full text,
-   restore into the draft; restoring is an edit, so it can be undone).
+1. **M5 — selection and clipboard, as one PR.** Moved up ahead of M2:
+
+   > yes, let's move up m5 do it next, i like selecting things and deleting
+
+   Shift+arrows / Shift+Home/End select, mouse drag and double-click
+   select, typing or Backspace/Delete replaces the selection, copy / cut /
+   paste with the system clipboard, word / paragraph movement.
 2. **`writui upgrade` migrates the vault right away** (M4): after swapping
    in the new binary, ask for the password and run the new binary to
    migrate, with the usual backup → check → delete-backup. The creator
    chose this over migrating on next unlock (PR #5's question). Small
    enough to go in with another PR.
+3. Then M2 (live markdown formatting) and on in order.
 
 ## M0 — Writing core
 
@@ -46,9 +51,21 @@ The smallest thing that can replace another writing app.
 
 ## M1 — Saves and history
 
-- [ ] Ctrl+S: prompt for a name, record a full snapshot
-- [ ] "Changed since last save" indicator
-- [ ] History view: list of saves, view full text, restore into draft
+- [x] Ctrl+S: prompt for a name, record a full snapshot
+- [x] "Changed since last save" indicator
+- [x] History view: list of saves, view full text, restore into draft
+
+## M5 — Selection and clipboard
+
+Moved up: built right after M1.
+
+Needed before the chat sidebar, so the LLM can see what's selected.
+(Until then, Shift+drag, or Option+drag in iTerm2, uses the terminal's own
+selection to copy.)
+
+- [ ] Mouse drag select, double-click word, Shift+movement select
+- [ ] Copy / cut / paste with the system clipboard
+- [ ] Word / paragraph movement
 
 ## M2 — Live markdown formatting
 
@@ -78,15 +95,6 @@ The repo went public early (during M0), so most of this is already done.
 - [x] `writui upgrade` and `writui --version`
 - [ ] `writui upgrade` asks for the password and migrates the vault right away
 - [x] Migration backups deleted once the migrated vault passes integrity checks
-
-## M5 — Selection and clipboard
-
-Needed before the chat sidebar, so the LLM can see what's selected.
-(Until then, Shift+drag uses the terminal's own selection to copy.)
-
-- [ ] Mouse drag select, double-click word, Shift+movement select
-- [ ] Copy / cut / paste with the system clipboard
-- [ ] Word / paragraph movement
 
 ## M6 — LLM chat sidebar
 
