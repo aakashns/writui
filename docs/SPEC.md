@@ -25,6 +25,16 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - Everything works with the mouse; everything also has a keyboard shortcut.
   A hint bar shows the shortcuts that matter on the current screen, so they
   can be picked up gradually.
+
+  > show the shortcuts and the saved status only when i hold down control.
+  > otherwise i want a total zen experience
+
+  In the editor, the hint bar and the saved state ("● Changed since last
+  save" etc.) only show while Ctrl is held. Passing messages ("Saved",
+  errors) and the save-name dialog still show. Terminals that can't report
+  Ctrl on its own (no kitty keyboard protocol, e.g. Terminal.app, tmux)
+  always show them, so the shortcuts are never out of reach. The list and
+  other screens keep their hint bar.
 - Shortcuts use Ctrl (not Cmd — the terminal swallows Cmd).
 
 ## Look and feel
@@ -176,7 +186,7 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   last save, Ctrl+S just says so.
 - The editor shows when the draft has changed since the last save: a line
   under the text reads "● Changed since last save" (or "● Never saved"), or
-  "Saved · <name>" when it matches.
+  "Saved · <name>" when it matches (while Ctrl is held; see above).
 - History (Ctrl+R): a list of a post's saves (name + time), newest first.
   Pick one to view its full text, and restore it into the draft if wanted.
   Restoring asks first, and is an ordinary edit: Ctrl+Z undoes it. The

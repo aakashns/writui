@@ -96,6 +96,10 @@ the password each time it starts.
 
 - **Posts** are listed with the most recently changed first. Open one with
   Enter or a click, start a new one with Ctrl+N.
+- **Zen writing:** the editor shows only your words. Hold Ctrl to see the
+  shortcuts and whether the post is saved. (This needs a terminal that can
+  report Ctrl on its own, like Alacritty, Ghostty, kitty, WezTerm or a recent
+  iTerm2; in others, and inside tmux, they're always shown.)
 - **Writing:** type away. Your post saves itself as you go: a second after
   you stop typing, every few seconds while you keep typing, and when you go
   back to the list (Esc) or quit (Ctrl+Q). When you reopen a post, the

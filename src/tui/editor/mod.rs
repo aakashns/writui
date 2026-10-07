@@ -112,6 +112,9 @@ pub struct Editor {
     /// The post's history, shown instead of the post while open.
     history: Option<History>,
     hints: HintBar<Cmd>,
+    /// Show the hint bar and whether the post is saved; otherwise only the
+    /// writing (and passing messages) are on screen.
+    pub show_chrome: bool,
 }
 
 impl Editor {
@@ -140,6 +143,7 @@ impl Editor {
             dialog: None,
             history: None,
             hints: HintBar::default(),
+            show_chrome: true,
         }
     }
 
@@ -273,7 +277,9 @@ impl Editor {
 
         // The status row: a message on the left, whether the post has
         // changed since its last save on the right.
+        let chrome = self.show_chrome || self.dialog.is_some();
         let state = match &self.last_save {
+            _ if !chrome => Line::default(),
             _ if self.unsaved() => {
                 let what = if self.last_save.is_some() { "Changed since last save" } else { "Never saved" };
                 Line::from(vec!["● ".yellow(), what.dim()])
@@ -299,6 +305,10 @@ impl Editor {
             dialog.render(frame);
             let hints = dialog.hints();
             self.hints.render(frame, hint_area, &hints);
+            return;
+        }
+        if !chrome {
+            self.hints.hide();
             return;
         }
         if self.buffer.selection().is_some() {
@@ -409,6 +419,8 @@ impl Editor {
             // Ctrl+Shift+Z also redoes, in terminals that tell it apart
             // from Ctrl+Z.
             KeyCode::Char('z' | 'Z') if ctrl && shift => return self.run(Cmd::Redo),
+            // (The kitty keyboard protocol reports it as Ctrl+"Z".)
+            KeyCode::Char('Z') if ctrl => return self.run(Cmd::Redo),
             KeyCode::Char('z') if ctrl => return self.run(Cmd::Undo),
             KeyCode::Char('y') if ctrl => return self.run(Cmd::Redo),
             KeyCode::Char('s') if ctrl => return self.run(Cmd::Save),
@@ -1134,5 +1146,29 @@ mod tests {
         let mut h = Harness::new("# Title");
         assert!(matches!(h.ctrl('r'), Action::None));
         assert!(h.screen_row(10).contains("No saves yet."));
+    }
+
+    #[test]
+    fn hints_and_saved_state_hide_until_ctrl_is_held() {
+        let mut h = Harness::new("# Title\nSome text");
+        h.editor.show_chrome = false;
+        h.draw();
+        assert_eq!(h.screen_row(10), "");
+        assert_eq!(h.screen_row(11), "");
+        // Hidden hints can't be clicked.
+        h.mouse(MouseEventKind::Down(MouseButton::Left), 40, 11);
+        assert!(h.screen().contains("Some text"));
+        // Passing messages still show.
+        h.ctrl('x');
+        assert!(h.screen_row(10).contains("Select some text to cut."));
+        // So does naming a save, with its own hints.
+        h.ctrl('s');
+        assert!(h.screen().contains("Name this save"));
+        assert_ne!(h.screen_row(11), "");
+        h.press(KeyCode::Esc);
+        h.editor.show_chrome = true;
+        h.draw();
+        assert!(h.screen_row(10).ends_with("● Never saved"));
+        assert!(h.screen_row(11).contains("Ctrl+S"));
     }
 }
