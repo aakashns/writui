@@ -12,16 +12,17 @@ file is the source of truth for what's next.
 
 ## Next up
 
-M0 is split into three PRs:
+M0 is done once the autosave / undo / hint bar PR (`0.3.0`) is merged.
+PRs can be bigger from here on (see CLAUDE.md), so next:
 
-1. ~~Vault create/unlock + post list~~ — PR #2
-2. ~~The editor~~ — PR #3
-3. **Autosave, undo/redo, editor hint bar.** Autosave needs the event loop
-   to wake up on a timer (it currently blocks waiting for input).
-
-Releases are already going out: `v0.1.0` was released by hand after PR #4,
-and the install script / `writui upgrade` / automatic releases PR bumps to
-`0.2.0`. PR 3 bumps the minor version again, and merging it releases it.
+1. **M1 — saves and history, as one PR:** Ctrl+S names and records a save,
+   the "changed since last save" indicator, and the history view (full text,
+   restore into the draft; restoring is an edit, so it can be undone).
+2. **`writui upgrade` migrates the vault right away** (M4): after swapping
+   in the new binary, ask for the password and run the new binary to
+   migrate, with the usual backup → check → delete-backup. The creator
+   chose this over migrating on next unlock (PR #5's question). Small
+   enough to go in with another PR.
 
 ## M0 — Writing core
 
@@ -38,9 +39,9 @@ The smallest thing that can replace another writing app.
 - [x] Editor: centred 68-char column, soft wrap, cursor movement, scrolling
 - [x] Editor: mouse click to place cursor, scroll wheel
 - [x] Editor: reopening a post puts the cursor back where it was left
-- [ ] Undo / redo
-- [ ] Draft autosave (debounced + on quit)
-- [ ] Hint bar with the shortcuts for the current screen
+- [x] Undo / redo
+- [x] Draft autosave (debounced + on quit)
+- [x] Hint bar with the shortcuts for the current screen
 - [x] First ship: GitHub release `v0.1.0`
 
 ## M1 — Saves and history
@@ -75,8 +76,8 @@ The repo went public early (during M0), so most of this is already done.
 - [x] Make the repo public
 - [x] One-line install script (`curl … | bash`)
 - [x] `writui upgrade` and `writui --version`
+- [ ] `writui upgrade` asks for the password and migrates the vault right away
 - [x] Migration backups deleted once the migrated vault passes integrity checks
-- [ ] Homebrew tap (maybe)
 
 ## M5 — Selection and clipboard
 
@@ -122,6 +123,7 @@ Needed before the chat sidebar, so the LLM can see what's selected.
 
 ## Later
 
+- [ ] Homebrew tap (maybe)
 - [ ] Auto-lock after inactivity
 - [ ] Change password
 - [ ] Diffs between versions

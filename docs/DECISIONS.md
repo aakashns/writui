@@ -194,3 +194,30 @@ Before migrating a vault that holds data, it's still copied to
 `integrity_check` must both pass before the backup is deleted. If a
 migration or a check fails, the backup is kept and the error names it.
 Brand new vaults aren't backed up or checked.
+
+## Autosave: a timer in the event loop, debounced
+
+The event loop used to block until the next key or mouse event. Now, while
+the open post has unstored edits, it waits only until the draft is due
+(`event::poll` with a timeout), then stores it. Due means 1 second after the
+last edit, or 5 seconds after the first unstored one if typing doesn't
+pause, so a crash or a closed terminal window loses at most a few seconds.
+Each store writes the body (only if it differs from what's stored, so
+undoing back to it doesn't bump "last updated") and the cursor. If storing
+fails, the editor shows the error and tries again 5 seconds later; leaving
+the editor still refuses to leave unsaved writing, as before.
+
+## Undo: snapshots of the rope, grouped by word
+
+Each undo step keeps the whole buffer (rope + cursor) from before the edit.
+`ropey` ropes share unchanged nodes between clones, so a snapshot costs
+roughly the size of the change rather than the size of the post, and
+restoring is exact, with no inverse operations to get wrong. Typing groups
+into one step per word plus its trailing whitespace; runs of Backspace or
+Delete group too; Enter, Tab, paste and any cursor move between edits start
+new steps. 1000 steps are kept. History is per editor session: leaving the
+post drops it (saves in M1 cover going back further).
+
+Redo is Ctrl+Y. Ctrl+Shift+Z also works where the terminal reports Shift
+with Ctrl+letter; most don't without the kitty keyboard protocol, which we
+don't enable, so it's not what the hint bar shows.
