@@ -27,7 +27,7 @@ use super::hints::{HintBar, hint};
 use super::widgets::{COLUMN_WIDTH, truncate};
 use crate::vault::{Post, Save, TITLE_PREFIX, title_from_first_line};
 use autosave::Autosave;
-use buffer::{Buffer, MIN};
+use buffer::Buffer;
 use clipboard::Clipboard;
 use history::{History, Outcome};
 use undo::{Kind, Undo};
@@ -437,7 +437,7 @@ impl Editor {
             KeyCode::Down => self.move_rows(1),
             KeyCode::PageUp => self.page(-1),
             KeyCode::PageDown => self.page(1),
-            KeyCode::Home if ctrl => self.step(|b| b.set_cursor(MIN)),
+            KeyCode::Home if ctrl => self.step(|b| b.set_cursor(0)),
             KeyCode::End if ctrl => self.step(|b| b.set_cursor(b.len())),
             KeyCode::Home => self.row_start(),
             KeyCode::End => self.row_end(),
@@ -599,7 +599,7 @@ impl Editor {
         let goal = *self.goal.get_or_insert_with(|| x_of(rope, self.rows[row], pos));
         let pos = match row.checked_add_signed(by).and_then(|r| self.rows.get(r)) {
             Some(&target) => pos_at_x(rope, target, goal),
-            None if by < 0 => MIN,
+            None if by < 0 => 0,
             None => self.buffer.len(),
         };
         self.buffer.set_cursor(pos);
@@ -1028,8 +1028,10 @@ mod tests {
         assert!(h.screen_row(10).contains("Copied."));
         h.key(KeyCode::Backspace);
         assert_eq!(h.editor.text(), "# ");
-        h.ctrl('v');
-        assert_eq!(h.editor.text(), "# Title\nHello world");
+        h.ctrl('v'); // the copy included the "# ", which Backspace kept
+        assert_eq!(h.editor.text(), "# # Title\nHello world");
+        h.ctrl('z');
+        h.typed("Title\nHello world");
         // Cut a word and put it back somewhere else.
         h.with(KeyCode::Left, KeyModifiers::ALT | KeyModifiers::SHIFT);
         h.ctrl('x');

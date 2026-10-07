@@ -182,8 +182,10 @@ GitHub API for the latest release and download from it; `sha2` to check the
 download against `SHA256SUMS`. The new binary is written next to the running
 one and renamed over it, which is atomic and fine on macOS and Linux even
 while it runs. Debug builds refuse to upgrade, so `target/debug` is never
-overwritten. Upgrade doesn't touch the vault (it would need the password);
-migrations run on the next unlock, as before. Subcommands use clap's
+overwritten. Upgrade doesn't touch the vault itself (it would need the password);
+migrations run on the next unlock, as before. (Since 0.5.0 it then runs the
+new binary as a hidden `writui migrate`, which asks for the password with
+`rpassword` and opens the vault; skipping is always safe.) Subcommands use clap's
 `Subcommand`, ready for the planned `list` / `show` / `export`.
 
 ## Migration backups are deleted after a verified migration

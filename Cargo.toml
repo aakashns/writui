@@ -16,6 +16,7 @@ jiff = "0.2.37"
 rand = "0.10.3"
 ratatui = "0.30.2"
 ropey = { version = "1.6", default-features = false, features = ["simd"] }
+rpassword = "7.5.4"
 rusqlite = { version = "0.40.2", features = ["bundled-sqlcipher-vendored-openssl"] }
 serde = { version = "1.0.229", features = ["derive"] }
 sha2 = "0.11.0"

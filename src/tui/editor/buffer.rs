@@ -1,7 +1,8 @@
 //! The text being edited and the cursor, with the edits that can be made.
 //!
 //! The text always starts with the `# ` title prefix: nothing here removes
-//! it or puts the cursor inside it.
+//! it, and the cursor is never inside it, except as the end of a selection
+//! (so that selecting and copying a post includes its `# `).
 
 use std::ops::Range;
 
@@ -54,7 +55,13 @@ impl Buffer {
     }
 
     pub fn set_cursor(&mut self, pos: usize) {
-        self.cursor = pos.clamp(MIN, self.len());
+        self.cursor = pos.clamp(self.floor(), self.len());
+    }
+
+    /// The first position the cursor can go to: before the `# ` only while
+    /// selecting.
+    fn floor(&self) -> usize {
+        if self.anchor.is_some() { 0 } else { MIN }
     }
 
     /// The selected chars, if any.
@@ -78,29 +85,35 @@ impl Buffer {
         if self.anchor == Some(self.cursor) {
             self.anchor = None;
         }
+        if self.anchor.is_none() {
+            self.cursor = self.cursor.max(MIN);
+        }
     }
 
     pub fn clear_selection(&mut self) {
         self.anchor = None;
+        self.cursor = self.cursor.max(MIN);
     }
 
     /// Select `from..to`, with the cursor at `to`.
     pub fn select(&mut self, from: usize, to: usize) {
         self.set_cursor(to);
-        self.anchor = Some(from.clamp(MIN, self.len()));
+        self.anchor = Some(from.min(self.len()));
         self.settle();
     }
 
     pub fn select_all(&mut self) {
-        self.select(MIN, self.len());
+        self.select(0, self.len());
     }
 
-    /// Delete the selection, if any, leaving the cursor where it was.
+    /// Delete the selection, if any, except for the `# `.
     pub fn delete_selection(&mut self) -> bool {
         let Some(range) = self.selection() else { return false };
         self.anchor = None;
-        self.cursor = range.start;
-        self.rope.remove(range);
+        self.cursor = range.start.max(MIN);
+        if range.end > self.cursor {
+            self.rope.remove(self.cursor..range.end);
+        }
         true
     }
 
@@ -206,13 +219,13 @@ impl Buffer {
         while to < end && is_word(self.rope.char(to)) == class {
             to += 1;
         }
-        self.snap(from).max(MIN)..self.snap(to)
+        self.snap(from)..self.snap(to)
     }
 
     /// The chars of the line (paragraph) at `pos`, without its newline.
     pub fn line_at(&self, pos: usize) -> Range<usize> {
         let line = self.rope.char_to_line(pos);
-        self.rope.line_to_char(line).max(MIN)..self.line_end(line)
+        self.rope.line_to_char(line)..self.line_end(line)
     }
 
     /// Where a line ends, before its newline.
@@ -226,7 +239,7 @@ impl Buffer {
     }
 
     pub fn left(&mut self) {
-        self.cursor = self.prev_boundary(self.cursor).max(MIN);
+        self.cursor = self.prev_boundary(self.cursor).max(self.floor());
     }
 
     pub fn right(&mut self) {
@@ -391,8 +404,9 @@ mod tests {
         assert_eq!(b.text(), "# Title\nBye world");
         assert_eq!(b.selection(), None);
         b.select_all();
-        assert_eq!(b.selection(), Some(MIN..b.len())); // never takes the "# "
-        b.backspace();
+        assert_eq!(b.selection(), Some(0..b.len())); // includes the "# "
+        b.backspace(); // but that stays
+        assert_eq!(b.cursor(), MIN);
         assert_eq!(b.text(), "# ");
         // Selecting nothing selects nothing, and a stale anchor is dropped.
         b.insert("ab");
@@ -436,10 +450,11 @@ mod tests {
     fn words_and_lines_at_a_position() {
         let b = Buffer::new("# One  two!\nnext", None);
         assert_eq!(b.word_at(3), 2..5); // "One"
+        assert_eq!(b.word_at(0), 0..2); // "# "
         assert_eq!(b.word_at(5), 5..7); // the spaces
         assert_eq!(b.word_at(10), 10..11); // "!"
         assert_eq!(b.word_at(11), 10..11); // end of line: the word before
-        assert_eq!(b.line_at(4), MIN..11);
+        assert_eq!(b.line_at(4), 0..11);
         assert_eq!(b.line_at(14), 12..16);
     }
 }
