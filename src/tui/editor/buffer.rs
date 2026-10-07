@@ -11,6 +11,7 @@ use crate::vault::{TITLE_PREFIX, with_title_prefix};
 /// The first position the cursor can be at: just after `# `.
 pub const MIN: usize = TITLE_PREFIX.len();
 
+#[derive(Clone)]
 pub struct Buffer {
     rope: Rope,
     /// A char index, always on a grapheme boundary and never before `MIN`.

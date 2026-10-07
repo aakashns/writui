@@ -128,6 +128,9 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   The scroll wheel moves the view, not the cursor.
 - Keyboard: the usual arrows, word / line / paragraph movement, Home/End,
   undo/redo, select with Shift.
+  - Undo is Ctrl+Z, redo Ctrl+Y (Ctrl+Shift+Z too, where the terminal tells
+    it apart from Ctrl+Z). Typing undoes a word at a time; a run of
+    Backspaces is one step. Undo history lasts while the post is open.
   - Up/Down move by row on screen and keep the cursor's column.
   - Home/End go to the start/end of the row on screen; Ctrl+Home/Ctrl+End
     to the start/end of the post. PageUp/PageDown move a screenful.
@@ -151,8 +154,10 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 **Details**
 
-- The draft saves itself continuously while editing (and on quit). Coming
-  back to a post always shows the current draft.
+- The draft saves itself continuously while editing: a second after typing
+  pauses, at least every 5 seconds during long stretches of typing, and on
+  leaving the editor or quitting. Coming back to a post always shows the
+  current draft. If storing fails, the editor says so and keeps trying.
 - **Save** (Ctrl+S) asks for a name and records a full snapshot of the post
   with the time.
 - The editor shows when the draft has changed since the last save.
@@ -332,11 +337,13 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - `writui --version` prints the version.
 - `writui upgrade` checks GitHub for a newer release, shows "0.1.0 → 0.2.0"
   and a link to what's new, asks before upgrading (`--yes` skips that), then
-  downloads it, checks its checksum and replaces itself. It doesn't need the
-  password: the vault is migrated the next time it's unlocked, by the new
-  version. Migrations back the vault up first, check the migrated vault's
-  integrity, and only then delete the backup; if anything fails, the backup
-  stays and the error says where it is.
+  downloads it, checks its checksum and replaces itself. Then it asks for
+  the vault password and has the new version migrate the vault right away,
+  if the new version needs to (decided after v0.2.0; until then, the vault
+  is migrated the next time it's unlocked). Migrations back the vault up
+  first, check the migrated vault's integrity, and only then delete the
+  backup; if anything fails, the backup stays and the error says where it
+  is.
 
 ## Not now
 

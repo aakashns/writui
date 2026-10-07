@@ -71,8 +71,11 @@ README.md     for people using writui; CONTRIBUTING.md for working on it
 > feel the scope is too big. I don't want too much to change at once, I
 > don't want to lose control over what's happening.
 
-1. Branch off `main` for each PR. Keep PRs small and reviewable; split a
-   milestone into several PRs whenever it grows.
+> also, remove the small pr rule, i think prs are getting too small, just say
+> prs should not be unreasonably large
+
+1. Branch off `main` for each PR. PRs shouldn't be unreasonably large; a
+   PR can cover a whole milestone, or several related items.
 2. Verify with `cargo test`, `cargo clippy --all-targets`, and by driving the
    real app in tmux against a throwaway vault:
    - `tmux new-session -d -s w -x 100 -y 30 "target/debug/writui --db /tmp/x/writui.db"`,

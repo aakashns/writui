@@ -95,9 +95,13 @@ the password each time it starts.
 
 - **Posts** are listed with the most recently changed first. Open one with
   Enter or a click, start a new one with Ctrl+N.
-- **Writing:** type away. Your post is saved when you go back to the list
-  (Esc) or quit (Ctrl+Q). When you reopen a post, the cursor is where you
-  left it.
+- **Writing:** type away. Your post saves itself as you go: a second after
+  you stop typing, every few seconds while you keep typing, and when you go
+  back to the list (Esc) or quit (Ctrl+Q). When you reopen a post, the
+  cursor is where you left it.
+- **Undo** with Ctrl+Z and **redo** with Ctrl+Y (or Ctrl+Shift+Z, in
+  terminals that tell it apart from Ctrl+Z). Undo goes back a word at a
+  time while typing.
 - **Deleting** (Ctrl+D) moves a post to the Trash, where you can restore it
   for 30 days.
 

@@ -1,8 +1,12 @@
 //! The post editing screen: the text in a centred column, soft-wrapped, with
-//! the cursor, scrolling and the mouse.
+//! the cursor, scrolling, the mouse, and undo.
 
+mod autosave;
 mod buffer;
+mod history;
 mod wrap;
+
+use std::time::Instant;
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{
@@ -18,7 +22,9 @@ use super::Action;
 use super::hints::{HintBar, hint};
 use super::widgets::{COLUMN_WIDTH, truncate};
 use crate::vault::{Post, TITLE_PREFIX};
+use autosave::Autosave;
 use buffer::{Buffer, MIN};
+use history::{History, Kind};
 use wrap::{Row, TAB_WIDTH, layout, pos_at_x, row_of, x_of};
 
 /// What the Tab key types.
@@ -31,6 +37,8 @@ const SCROLL_MARGIN: usize = 3;
 #[derive(Clone, Copy)]
 enum Cmd {
     Back,
+    Undo,
+    Redo,
     Quit,
 }
 
@@ -39,6 +47,8 @@ pub struct Editor {
     /// The text as last stored in the vault.
     stored: String,
     buffer: Buffer,
+    history: History,
+    autosave: Autosave,
     /// The rows on screen for the current text and width.
     rows: Vec<Row>,
     /// `rows` needs rebuilding (the text or the width changed).
@@ -68,6 +78,8 @@ impl Editor {
             post_id: post.id,
             buffer: Buffer::new(&post.body, post.cursor),
             stored: post.body,
+            history: History::default(),
+            autosave: Autosave::default(),
             rows: Vec::new(),
             stale: true,
             width: COLUMN_WIDTH as usize,
@@ -99,12 +111,24 @@ impl Editor {
         self.buffer.text() != self.stored
     }
 
-    pub fn mark_stored(&mut self, text: String) {
-        self.stored = text;
+    /// When the draft should next be stored, if it has unstored edits.
+    pub fn autosave_due(&self) -> Option<Instant> {
+        self.autosave.due()
     }
 
-    /// Shown above the hint bar (e.g. the draft couldn't be stored).
-    pub fn set_error(&mut self, error: String) {
+    /// The draft in the vault is now `text` (or already was, if `None`).
+    pub fn mark_stored(&mut self, text: Option<String>) {
+        if let Some(text) = text {
+            self.stored = text;
+        }
+        self.autosave.stored();
+        self.error = None;
+    }
+
+    /// Storing the draft failed; say so above the hint bar, and try again
+    /// a little later.
+    pub fn store_failed(&mut self, error: String) {
+        self.autosave.failed(Instant::now());
         self.error = Some(error);
     }
 
@@ -162,7 +186,12 @@ impl Editor {
         self.hints.render(
             frame,
             hint_area,
-            &[hint("Esc", "back to posts", Cmd::Back), hint("Ctrl+Q", "quit", Cmd::Quit)],
+            &[
+                hint("Esc", "back to posts", Cmd::Back),
+                hint("Ctrl+Z", "undo", Cmd::Undo),
+                hint("Ctrl+Y", "redo", Cmd::Redo),
+                hint("Ctrl+Q", "quit", Cmd::Quit),
+            ],
         );
     }
 
@@ -170,7 +199,7 @@ impl Editor {
         match event {
             Event::Key(key) => return self.key(key),
             Event::Mouse(mouse) => return self.mouse(mouse),
-            Event::Paste(text) => self.edit(|b| b.insert(&text)),
+            Event::Paste(text) => self.edit(Kind::Other, |b| b.insert(&text)),
             _ => {}
         }
         Action::None
@@ -179,15 +208,22 @@ impl Editor {
     fn key(&mut self, key: KeyEvent) -> Action {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let alt = key.modifiers.contains(KeyModifiers::ALT);
+        let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         match key.code {
             KeyCode::Esc => return self.run(Cmd::Back),
+            // Ctrl+Shift+Z also redoes, in terminals that tell it apart
+            // from Ctrl+Z.
+            KeyCode::Char('z' | 'Z') if ctrl && shift => return self.run(Cmd::Redo),
+            KeyCode::Char('z') if ctrl => return self.run(Cmd::Undo),
+            KeyCode::Char('y') if ctrl => return self.run(Cmd::Redo),
             KeyCode::Char(ch) if !ctrl && !alt => {
-                self.edit(|b| b.insert(ch.encode_utf8(&mut [0; 4])))
+                let kind = Kind::Type { space: ch.is_whitespace() };
+                self.edit(kind, |b| b.insert(ch.encode_utf8(&mut [0; 4])))
             }
-            KeyCode::Enter => self.edit(|b| b.insert("\n")),
-            KeyCode::Tab => self.edit(|b| b.insert(TAB)),
-            KeyCode::Backspace => self.edit(Buffer::backspace),
-            KeyCode::Delete => self.edit(Buffer::delete),
+            KeyCode::Enter => self.edit(Kind::Other, |b| b.insert("\n")),
+            KeyCode::Tab => self.edit(Kind::Other, |b| b.insert(TAB)),
+            KeyCode::Backspace => self.edit(Kind::Backspace, Buffer::backspace),
+            KeyCode::Delete => self.edit(Kind::Delete, Buffer::delete),
             KeyCode::Left => self.step(Buffer::left),
             KeyCode::Right => self.step(Buffer::right),
             KeyCode::Up => self.move_rows(-1),
@@ -225,14 +261,43 @@ impl Editor {
 
     fn run(&mut self, cmd: Cmd) -> Action {
         match cmd {
-            Cmd::Back => Action::BackToList(Some(self.post_id)),
-            Cmd::Quit => Action::Quit,
+            Cmd::Back => return Action::BackToList(Some(self.post_id)),
+            Cmd::Undo => {
+                if let Some(prev) = self.history.undo(self.buffer.clone()) {
+                    self.replace(prev);
+                }
+            }
+            Cmd::Redo => {
+                if let Some(next) = self.history.redo(self.buffer.clone()) {
+                    self.replace(next);
+                }
+            }
+            Cmd::Quit => return Action::Quit,
+        }
+        Action::None
+    }
+
+    /// Change the text (recording it for undo), then re-wrap and scroll to
+    /// the cursor.
+    fn edit(&mut self, kind: Kind, f: impl FnOnce(&mut Buffer)) {
+        let before = self.buffer.clone();
+        f(&mut self.buffer);
+        // Every edit changes the length; if it didn't, nothing happened
+        // (e.g. Backspace at the very start).
+        if self.buffer.len() != before.len() {
+            self.history.edited(kind, before, &self.buffer);
+            self.changed_text();
         }
     }
 
-    /// Change the text, then re-wrap and scroll to the cursor.
-    fn edit(&mut self, f: impl FnOnce(&mut Buffer)) {
-        f(&mut self.buffer);
+    /// Swap in an earlier or later version of the text, for undo and redo.
+    fn replace(&mut self, buffer: Buffer) {
+        self.buffer = buffer;
+        self.changed_text();
+    }
+
+    fn changed_text(&mut self) {
+        self.autosave.edited(Instant::now());
         self.stale = true;
         self.follow = true;
         self.goal = None;
@@ -379,6 +444,12 @@ mod tests {
             self.draw();
         }
 
+        fn ctrl(&mut self, ch: char) {
+            let key = KeyEvent::new_with_kind(KeyCode::Char(ch), KeyModifiers::CONTROL, KeyEventKind::Press);
+            self.editor.handle(Event::Key(key));
+            self.draw();
+        }
+
         fn mouse(&mut self, kind: MouseEventKind, column: u16, row: u16) {
             let mouse = MouseEvent { kind, column, row, modifiers: KeyModifiers::NONE };
             self.editor.handle(Event::Mouse(mouse));
@@ -507,5 +578,45 @@ mod tests {
         assert!(h.editor.changed());
         h.key(KeyCode::Delete);
         assert_eq!(h.editor.text(), "# ");
+    }
+
+    #[test]
+    fn undo_and_redo_with_keys_and_hints() {
+        let mut h = Harness::new("# Title\n");
+        h.typed("Hello world");
+        h.ctrl('z');
+        assert_eq!(h.editor.text(), "# Title\nHello ");
+        assert_eq!(h.cursor(), (LEFT + 6, 2));
+        h.ctrl('z');
+        h.ctrl('z'); // nothing more to undo
+        assert_eq!(h.editor.text(), "# Title\n");
+        h.ctrl('y');
+        assert_eq!(h.editor.text(), "# Title\nHello ");
+        // The hint bar is on the last row; its hints can be clicked.
+        let hints = h.screen_row(11);
+        let redo = hints.find("Ctrl+Y").unwrap() as u16;
+        h.mouse(MouseEventKind::Down(MouseButton::Left), redo, 11);
+        assert_eq!(h.editor.text(), "# Title\nHello world");
+        let undo = hints.find("Ctrl+Z").unwrap() as u16;
+        h.mouse(MouseEventKind::Down(MouseButton::Left), undo + 2, 11);
+        assert_eq!(h.editor.text(), "# Title\nHello ");
+    }
+
+    #[test]
+    fn edits_are_due_for_autosave() {
+        let mut h = Harness::new("# Title");
+        assert_eq!(h.editor.autosave_due(), None);
+        h.key(KeyCode::Right); // moving isn't an edit
+        h.key(KeyCode::Backspace);
+        h.key(KeyCode::Backspace);
+        assert_eq!(h.editor.text(), "# Tit");
+        let due = h.editor.autosave_due().unwrap();
+        assert!(due > Instant::now() && due <= Instant::now() + autosave::PAUSE);
+        h.editor.mark_stored(Some(h.editor.text()));
+        assert_eq!(h.editor.autosave_due(), None);
+        assert!(!h.editor.changed());
+        h.ctrl('z'); // undo is an edit too
+        assert!(h.editor.changed());
+        assert!(h.editor.autosave_due().is_some());
     }
 }
