@@ -17,7 +17,7 @@ use std::path::Path;
 use anyhow::{Context, Result, anyhow, bail};
 use argon2::{Algorithm, Argon2, Params, Version};
 use jiff::Timestamp;
-use rusqlite::{Connection, ErrorCode, OpenFlags, params};
+use rusqlite::{Connection, ErrorCode, OpenFlags, OptionalExtension, params};
 use zeroize::Zeroizing;
 
 const SALT_LEN: usize = 16;
@@ -76,6 +76,16 @@ pub struct PostSummary {
     pub updated_at: Timestamp,
     /// Set for posts in the Trash.
     pub deleted_at: Option<Timestamp>,
+}
+
+/// A named snapshot of a post, made with Ctrl+S.
+#[derive(Debug, Clone)]
+pub struct Save {
+    pub id: i64,
+    pub name: String,
+    pub created_at: Timestamp,
+    /// The full text; left empty in lists of saves.
+    pub body: String,
 }
 
 #[derive(Debug, Clone)]
@@ -225,16 +235,76 @@ impl Vault {
         Ok(())
     }
 
-    /// Permanently delete a post that's in the Trash.
+    /// Permanently delete a post that's in the Trash, with its saves.
     pub fn delete_post_forever(&self, id: i64) -> Result<()> {
-        self.conn.execute("DELETE FROM posts WHERE id = ?1 AND deleted_at IS NOT NULL", [id])?;
+        self.delete_posts_where("id = ?1 AND deleted_at IS NOT NULL", id)?;
         Ok(())
     }
 
     /// Permanently delete posts that have been in the Trash too long.
     fn purge_expired(&self) -> Result<usize> {
         let cutoff = now_millis() - DELETED_RETENTION_DAYS * 24 * 60 * 60 * 1000;
-        Ok(self.conn.execute("DELETE FROM posts WHERE deleted_at < ?1", [cutoff])?)
+        self.delete_posts_where("deleted_at < ?1", cutoff)
+    }
+
+    /// Delete the posts matching `filter` (with one parameter) and their
+    /// saves, all or nothing.
+    fn delete_posts_where(&self, filter: &str, param: i64) -> Result<usize> {
+        let tx = self.conn.unchecked_transaction()?;
+        tx.execute(&format!("DELETE FROM saves WHERE post_id IN (SELECT id FROM posts WHERE {filter})"), [param])?;
+        let count = tx.execute(&format!("DELETE FROM posts WHERE {filter}"), [param])?;
+        tx.commit()?;
+        Ok(count)
+    }
+
+    /// Record a save of a post: `body` under `name`, now.
+    pub fn create_save(&self, post_id: i64, name: &str, body: &str) -> Result<Save> {
+        let body = with_title_prefix(body);
+        let now = now_millis();
+        self.conn.execute(
+            "INSERT INTO saves (post_id, name, body, created_at) VALUES (?1, ?2, ?3, ?4)",
+            params![post_id, name, body, now],
+        )?;
+        let id = self.conn.last_insert_rowid();
+        Ok(Save { id, name: name.to_string(), created_at: from_millis(now)?, body })
+    }
+
+    /// A post's saves, newest first, without their text.
+    pub fn list_saves(&self, post_id: i64) -> Result<Vec<Save>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, name, created_at FROM saves WHERE post_id = ?1
+             ORDER BY created_at DESC, id DESC",
+        )?;
+        let rows = stmt.query_map([post_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+        rows.map(|row| {
+            let (id, name, created_at) = row?;
+            Ok(Save { id, name, created_at: from_millis(created_at)?, body: String::new() })
+        })
+        .collect()
+    }
+
+    /// One save, with its full text.
+    pub fn save(&self, id: i64) -> Result<Save> {
+        let (name, created_at, body): (String, i64, String) = self
+            .conn
+            .query_row("SELECT name, created_at, body FROM saves WHERE id = ?1", [id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })
+            .with_context(|| format!("loading save {id}"))?;
+        Ok(Save { id, name, created_at: from_millis(created_at)?, body })
+    }
+
+    /// A post's most recent save, with its full text.
+    pub fn latest_save(&self, post_id: i64) -> Result<Option<Save>> {
+        let id: Option<i64> = self
+            .conn
+            .query_row(
+                "SELECT id FROM saves WHERE post_id = ?1 ORDER BY created_at DESC, id DESC LIMIT 1",
+                [post_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        id.map(|id| self.save(id)).transpose()
     }
 }
 
@@ -455,6 +525,55 @@ mod tests {
 
         let vault = Vault::open(&path, "pw").unwrap();
         assert_eq!(ids(vault.list_deleted().unwrap()), [recent]);
+    }
+
+    fn save_count(vault: &Vault) -> i64 {
+        vault.conn.query_row("SELECT count(*) FROM saves", [], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn saves_are_listed_newest_first() {
+        let (_dir, path) = temp_vault();
+        let vault = Vault::create(&path, "pw").unwrap();
+        let post = vault.create_post().unwrap();
+        let other = vault.create_post().unwrap();
+        assert!(vault.latest_save(post).unwrap().is_none());
+
+        let first = vault.create_save(post, "First draft", "# Hi\none").unwrap();
+        let second = vault.create_save(post, "", "# Hi\ntwo").unwrap();
+        vault.create_save(other, "Elsewhere", "# Other").unwrap();
+        let saves = vault.list_saves(post).unwrap();
+        assert_eq!(saves.iter().map(|s| s.id).collect::<Vec<_>>(), [second.id, first.id]);
+        assert_eq!(saves[1].name, "First draft");
+        assert_eq!(saves[1].body, ""); // lists leave the text out
+
+        assert_eq!(vault.save(first.id).unwrap().body, "# Hi\none");
+        let latest = vault.latest_save(post).unwrap().unwrap();
+        assert_eq!((latest.id, latest.body.as_str()), (second.id, "# Hi\ntwo"));
+        // Saving doesn't touch the draft.
+        assert_eq!(vault.post(post).unwrap().body, "# ");
+    }
+
+    #[test]
+    fn deleting_a_post_forever_deletes_its_saves() {
+        let (_dir, path) = temp_vault();
+        let vault = Vault::create(&path, "pw").unwrap();
+        let gone = vault.create_post().unwrap();
+        let kept = vault.create_post().unwrap();
+        vault.create_save(gone, "a", "# a").unwrap();
+        vault.create_save(kept, "b", "# b").unwrap();
+        vault.delete_post(gone).unwrap();
+        assert_eq!(save_count(&vault), 2); // still restorable, with its saves
+        vault.delete_post_forever(gone).unwrap();
+        assert_eq!(save_count(&vault), 1);
+        assert_eq!(vault.list_saves(kept).unwrap().len(), 1);
+
+        // Purging after 30 days too.
+        vault.delete_post(kept).unwrap();
+        vault.conn.execute("UPDATE posts SET deleted_at = 0", []).unwrap();
+        drop(vault);
+        let vault = Vault::open(&path, "pw").unwrap();
+        assert_eq!(save_count(&vault), 0);
     }
 
     #[test]

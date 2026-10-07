@@ -1,9 +1,10 @@
 //! The post editing screen: the text in a centred column, soft-wrapped, with
-//! the cursor, scrolling, the mouse, and undo.
+//! the cursor, scrolling, the mouse, undo, and saves.
 
 mod autosave;
 mod buffer;
 mod history;
+mod undo;
 mod wrap;
 
 use std::time::Instant;
@@ -19,16 +20,21 @@ use ratatui::widgets::Paragraph;
 use ropey::Rope;
 
 use super::Action;
+use super::dialog::{Button, Dialog};
 use super::hints::{HintBar, hint};
 use super::widgets::{COLUMN_WIDTH, truncate};
-use crate::vault::{Post, TITLE_PREFIX};
+use crate::vault::{Post, Save, TITLE_PREFIX, title_from_first_line};
 use autosave::Autosave;
 use buffer::{Buffer, MIN};
-use history::{History, Kind};
+use history::{History, Outcome};
+use undo::{Kind, Undo};
 use wrap::{Row, TAB_WIDTH, layout, pos_at_x, row_of, x_of};
 
 /// What the Tab key types.
 const TAB: &str = "  ";
+
+/// The longest name a save can have.
+const MAX_SAVE_NAME: usize = 80;
 
 /// Rows kept between the cursor and the top or bottom edge when scrolling to
 /// follow it. The text can also scroll this far past its last row.
@@ -37,6 +43,10 @@ const SCROLL_MARGIN: usize = 3;
 #[derive(Clone, Copy)]
 enum Cmd {
     Back,
+    Save,
+    ConfirmSave,
+    CancelDialog,
+    History,
     Undo,
     Redo,
     Quit,
@@ -46,8 +56,10 @@ pub struct Editor {
     post_id: i64,
     /// The text as last stored in the vault.
     stored: String,
+    /// The post's most recent save, with its text.
+    last_save: Option<Save>,
     buffer: Buffer,
-    history: History,
+    undo: Undo,
     autosave: Autosave,
     /// The rows on screen for the current text and width.
     rows: Vec<Row>,
@@ -68,17 +80,24 @@ pub struct Editor {
     /// The column kept while moving up and down past shorter rows.
     goal: Option<usize>,
     error: Option<String>,
+    /// A passing message (e.g. "Saved"), until the next key or click.
+    notice: Option<String>,
+    /// Naming a save.
+    dialog: Option<Dialog<Cmd>>,
+    /// The post's history, shown instead of the post while open.
+    history: Option<History>,
     hints: HintBar<Cmd>,
 }
 
 impl Editor {
     /// Opens with the cursor where it was left (or at the end of the post).
-    pub fn new(post: Post) -> Self {
+    pub fn new(post: Post, last_save: Option<Save>) -> Self {
         Editor {
+            last_save,
             post_id: post.id,
             buffer: Buffer::new(&post.body, post.cursor),
             stored: post.body,
-            history: History::default(),
+            undo: Undo::default(),
             autosave: Autosave::default(),
             rows: Vec::new(),
             stale: true,
@@ -89,6 +108,9 @@ impl Editor {
             opening: true,
             goal: None,
             error: None,
+            notice: None,
+            dialog: None,
+            history: None,
             hints: HintBar::default(),
         }
     }
@@ -109,6 +131,38 @@ impl Editor {
     /// The text differs from what's stored in the vault.
     pub fn changed(&self) -> bool {
         self.buffer.text() != self.stored
+    }
+
+    /// The text differs from the most recent save (or there are no saves).
+    fn unsaved(&self) -> bool {
+        self.last_save.as_ref().is_none_or(|save| *self.buffer.rope() != save.body.as_str())
+    }
+
+    /// A save of the post was just made.
+    pub fn saved(&mut self, save: Save) {
+        self.notice = Some(match save.name.as_str() {
+            "" => "Saved.".to_string(),
+            name => format!("Saved “{name}”."),
+        });
+        self.last_save = Some(save);
+    }
+
+    /// Something went wrong outside of storing the draft, e.g. saving.
+    pub fn set_error(&mut self, error: String) {
+        self.error = Some(error);
+    }
+
+    /// Show the post's history (newest save first).
+    pub fn show_history(&mut self, saves: Vec<Save>) {
+        let title = title_from_first_line(&self.buffer.rope().line(0).to_string());
+        self.history = Some(History::new(title, saves, self.unsaved()));
+    }
+
+    /// Open a save (with its text) in the history, to read.
+    pub fn show_save(&mut self, save: Save) {
+        if let Some(history) = &mut self.history {
+            history.read(save);
+        }
     }
 
     /// When the draft should next be stored, if it has unstored edits.
@@ -133,6 +187,10 @@ impl Editor {
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
+        if let Some(history) = &mut self.history {
+            history.render(frame);
+            return;
+        }
         let [_, body, status, hint_area] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Fill(1),
@@ -179,15 +237,43 @@ impl Editor {
             frame.set_cursor_position(Position::new(left + cursor_x as u16, y));
         }
 
-        if let Some(error) = &self.error {
-            let area = Rect { x: left, width: width as u16, ..status };
-            frame.render_widget(Paragraph::new(truncate(error, width).red()), area);
+        // The status row: a message on the left, whether the post has
+        // changed since its last save on the right.
+        let state = match &self.last_save {
+            _ if self.unsaved() => {
+                let what = if self.last_save.is_some() { "Changed since last save" } else { "Never saved" };
+                Line::from(vec!["● ".yellow(), what.dim()])
+            }
+            Some(save) if save.name.is_empty() => Line::from("Saved".dim()),
+            Some(save) => Line::from(format!("Saved · {}", truncate(&save.name, width / 3)).dim()),
+            None => Line::default(),
+        };
+        let state_width = state.width();
+        let area = Rect { x: left, width: width as u16, ..status };
+        frame.render_widget(Paragraph::new(state).right_aligned(), area);
+        let room = width.saturating_sub(state_width + 2);
+        let message = match (&self.error, &self.notice) {
+            (Some(error), _) => Some(truncate(error, room).red()),
+            (None, Some(notice)) => Some(truncate(notice, room).dim()),
+            (None, None) => None,
+        };
+        if let Some(message) = message {
+            frame.render_widget(Paragraph::new(message), area);
+        }
+
+        if let Some(dialog) = &mut self.dialog {
+            dialog.render(frame);
+            let hints = dialog.hints();
+            self.hints.render(frame, hint_area, &hints);
+            return;
         }
         self.hints.render(
             frame,
             hint_area,
             &[
                 hint("Esc", "back to posts", Cmd::Back),
+                hint("Ctrl+S", "save", Cmd::Save),
+                hint("Ctrl+R", "history", Cmd::History),
                 hint("Ctrl+Z", "undo", Cmd::Undo),
                 hint("Ctrl+Y", "redo", Cmd::Redo),
                 hint("Ctrl+Q", "quit", Cmd::Quit),
@@ -196,6 +282,35 @@ impl Editor {
     }
 
     pub fn handle(&mut self, event: Event) -> Action {
+        if let Some(history) = &mut self.history {
+            return match history.handle(event) {
+                Outcome::None => Action::None,
+                Outcome::Close => {
+                    self.history = None;
+                    Action::None
+                }
+                Outcome::Load(id) => Action::LoadSave(id),
+                Outcome::Restore(save) => {
+                    self.history = None;
+                    self.restore(save);
+                    Action::None
+                }
+                Outcome::Quit => Action::Quit,
+            };
+        }
+        if let Some(dialog) = &mut self.dialog {
+            let mut cmd = dialog.handle(event.clone());
+            if cmd.is_none()
+                && let Event::Mouse(mouse) = event
+                && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+            {
+                cmd = self.hints.hit(mouse.column, mouse.row);
+            }
+            return cmd.map_or(Action::None, |cmd| self.run(cmd));
+        }
+        if let Event::Key(_) | Event::Mouse(MouseEvent { kind: MouseEventKind::Down(_), .. }) = event {
+            self.notice = None;
+        }
         match event {
             Event::Key(key) => return self.key(key),
             Event::Mouse(mouse) => return self.mouse(mouse),
@@ -216,6 +331,8 @@ impl Editor {
             KeyCode::Char('z' | 'Z') if ctrl && shift => return self.run(Cmd::Redo),
             KeyCode::Char('z') if ctrl => return self.run(Cmd::Undo),
             KeyCode::Char('y') if ctrl => return self.run(Cmd::Redo),
+            KeyCode::Char('s') if ctrl => return self.run(Cmd::Save),
+            KeyCode::Char('r') if ctrl => return self.run(Cmd::History),
             KeyCode::Char(ch) if !ctrl && !alt => {
                 let kind = Kind::Type { space: ch.is_whitespace() };
                 self.edit(kind, |b| b.insert(ch.encode_utf8(&mut [0; 4])))
@@ -263,18 +380,58 @@ impl Editor {
         match cmd {
             Cmd::Back => return Action::BackToList(Some(self.post_id)),
             Cmd::Undo => {
-                if let Some(prev) = self.history.undo(self.buffer.clone()) {
+                if let Some(prev) = self.undo.undo(self.buffer.clone()) {
                     self.replace(prev);
                 }
             }
             Cmd::Redo => {
-                if let Some(next) = self.history.redo(self.buffer.clone()) {
+                if let Some(next) = self.undo.redo(self.buffer.clone()) {
                     self.replace(next);
                 }
             }
+            Cmd::Save if !self.unsaved() => {
+                self.notice = Some("Nothing has changed since the last save.".into());
+            }
+            Cmd::Save => {
+                let dialog = Dialog::new(
+                    "Save",
+                    vec![Line::from("Name this save, like a commit message.".dim())],
+                    vec![
+                        Button { label: "Save", key: "", cmd: Cmd::ConfirmSave, danger: false },
+                        Button { label: "Cancel", key: "", cmd: Cmd::CancelDialog, danger: false },
+                    ],
+                    0,
+                    1,
+                );
+                self.dialog = Some(dialog.with_input("e.g. First draft", MAX_SAVE_NAME));
+            }
+            Cmd::ConfirmSave => {
+                if let Some(dialog) = self.dialog.take() {
+                    return Action::SavePost { name: dialog.input().trim().to_string() };
+                }
+            }
+            Cmd::CancelDialog => self.dialog = None,
+            Cmd::History if self.last_save.is_none() => {
+                self.notice = Some("No saves yet. Ctrl+S saves the post.".into());
+            }
+            Cmd::History => return Action::ShowHistory,
             Cmd::Quit => return Action::Quit,
         }
         Action::None
+    }
+
+    /// Replace the text with a save's, as one step that can be undone.
+    fn restore(&mut self, save: Save) {
+        let before = self.buffer.clone();
+        self.buffer = Buffer::new(&save.body, Some(before.cursor()));
+        if self.buffer.rope() != before.rope() {
+            self.undo.edited(Kind::Other, before, &self.buffer);
+            self.changed_text();
+        }
+        self.notice = Some(match save.name.as_str() {
+            "" => "Restored the save. Ctrl+Z undoes it.".to_string(),
+            name => format!("Restored “{name}”. Ctrl+Z undoes it."),
+        });
     }
 
     /// Change the text (recording it for undo), then re-wrap and scroll to
@@ -285,7 +442,7 @@ impl Editor {
         // Every edit changes the length; if it didn't, nothing happened
         // (e.g. Backspace at the very start).
         if self.buffer.len() != before.len() {
-            self.history.edited(kind, before, &self.buffer);
+            self.undo.edited(kind, before, &self.buffer);
             self.changed_text();
         }
     }
@@ -428,7 +585,7 @@ mod tests {
         }
 
         fn at(body: &str, cursor: Option<usize>) -> Self {
-            let editor = Editor::new(Post { id: 1, body: body.into(), cursor });
+            let editor = Editor::new(Post { id: 1, body: body.into(), cursor }, None);
             let mut h = Harness { editor, terminal: Terminal::new(TestBackend::new(80, 12)).unwrap() };
             h.draw();
             h
@@ -444,10 +601,22 @@ mod tests {
             self.draw();
         }
 
-        fn ctrl(&mut self, ch: char) {
+        fn ctrl(&mut self, ch: char) -> Action {
             let key = KeyEvent::new_with_kind(KeyCode::Char(ch), KeyModifiers::CONTROL, KeyEventKind::Press);
-            self.editor.handle(Event::Key(key));
+            let action = self.editor.handle(Event::Key(key));
             self.draw();
+            action
+        }
+
+        fn press(&mut self, code: KeyCode) -> Action {
+            let key = KeyEvent::new_with_kind(code, KeyModifiers::NONE, KeyEventKind::Press);
+            let action = self.editor.handle(Event::Key(key));
+            self.draw();
+            action
+        }
+
+        fn screen(&self) -> String {
+            (0..12).map(|y| self.screen_row(y)).collect::<Vec<_>>().join("\n")
         }
 
         fn mouse(&mut self, kind: MouseEventKind, column: u16, row: u16) {
@@ -618,5 +787,66 @@ mod tests {
         h.ctrl('z'); // undo is an edit too
         assert!(h.editor.changed());
         assert!(h.editor.autosave_due().is_some());
+    }
+
+    fn save(id: i64, name: &str, body: &str) -> Save {
+        Save { id, name: name.into(), created_at: jiff::Timestamp::now(), body: body.into() }
+    }
+
+    #[test]
+    fn ctrl_s_names_a_save() {
+        let mut h = Harness::new("# Title\nSome text");
+        assert!(h.screen_row(10).ends_with("● Never saved"));
+        h.ctrl('s');
+        assert!(h.screen().contains("Name this save"));
+        h.typed("First draft");
+        let action = h.press(KeyCode::Enter);
+        assert!(matches!(action, Action::SavePost { ref name } if name == "First draft"));
+        // The app records it and tells the editor.
+        h.editor.saved(save(1, "First draft", "# Title\nSome text"));
+        h.draw();
+        assert!(h.screen_row(10).ends_with("Saved · First draft"));
+        assert!(h.screen_row(10).contains("Saved “First draft”."));
+        // Nothing new to save.
+        h.ctrl('s');
+        assert!(h.screen_row(10).contains("Nothing has changed since the last save."));
+        h.typed("!");
+        assert!(h.screen_row(10).ends_with("● Changed since last save"));
+        // Esc cancels naming a save.
+        h.ctrl('s');
+        assert!(matches!(h.press(KeyCode::Esc), Action::None));
+        assert!(!h.screen().contains("Name this save"));
+    }
+
+    #[test]
+    fn history_restores_a_save_and_undo_takes_it_back() {
+        let first = save(1, "First draft", "# Title\nOld text");
+        let editor = Editor::new(Post { id: 1, body: "# Title\nNew text".into(), cursor: None }, Some(first.clone()));
+        let mut h = Harness { editor, terminal: Terminal::new(TestBackend::new(80, 12)).unwrap() };
+        h.draw();
+        assert!(matches!(h.ctrl('r'), Action::ShowHistory));
+        h.editor.show_history(vec![first.clone()]);
+        h.draw();
+        assert!(h.screen().contains("Saves of “Title”"));
+        assert!(h.screen().contains("First draft"));
+        assert!(matches!(h.press(KeyCode::Enter), Action::LoadSave(1)));
+        h.editor.show_save(first);
+        h.draw();
+        assert!(h.screen().contains("Old text"));
+        h.press(KeyCode::Enter);
+        assert!(h.screen().contains("Replace the draft with “First draft”?"));
+        assert!(h.screen().contains("The draft has changes since the last save."));
+        h.press(KeyCode::Char('y'));
+        assert_eq!(h.editor.text(), "# Title\nOld text");
+        assert!(h.screen_row(10).contains("Restored “First draft”."));
+        h.ctrl('z');
+        assert_eq!(h.editor.text(), "# Title\nNew text");
+    }
+
+    #[test]
+    fn history_needs_a_save() {
+        let mut h = Harness::new("# Title");
+        assert!(matches!(h.ctrl('r'), Action::None));
+        assert!(h.screen_row(10).contains("No saves yet."));
     }
 }

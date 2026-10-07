@@ -390,6 +390,24 @@ fn when(ts: Timestamp, now: Timestamp, tz: &TimeZone) -> String {
     }
 }
 
+/// When a save was made, to the minute: "just now", "5 min ago", "2:05 PM",
+/// "Oct 2, 2:05 PM", "Oct 2, 2025, 2:05 PM".
+pub fn save_time(ts: Timestamp, now: Timestamp, tz: &TimeZone) -> String {
+    let secs = now.duration_since(ts).as_secs();
+    if secs < 60 * 60 {
+        return when(ts, now, tz);
+    }
+    let then = ts.to_zoned(tz.clone());
+    let today = now.to_zoned(tz.clone()).date();
+    if then.date() == today {
+        then.strftime("%-I:%M %p").to_string()
+    } else if then.year() == today.year() {
+        then.strftime("%b %-d, %-I:%M %p").to_string()
+    } else {
+        then.strftime("%b %-d, %Y, %-I:%M %p").to_string()
+    }
+}
+
 /// How long until a deleted post is gone for good: "30 days left".
 fn days_left(deleted_at: Timestamp, now: Timestamp) -> String {
     let days_gone = now.duration_since(deleted_at).as_secs() / (24 * 60 * 60);
@@ -417,6 +435,16 @@ mod tests {
         assert_eq!(when(at("2026-10-02T23:00:00Z"), now, &tz), "Yesterday");
         assert_eq!(when(at("2026-03-14T10:00:00Z"), now, &tz), "Mar 14");
         assert_eq!(when(at("2025-03-14T10:00:00Z"), now, &tz), "Mar 14, 2025");
+    }
+
+    #[test]
+    fn save_times_are_exact() {
+        let tz = TimeZone::UTC;
+        let now = at("2026-10-03T14:30:00Z");
+        assert_eq!(save_time(at("2026-10-03T14:05:00Z"), now, &tz), "25 min ago");
+        assert_eq!(save_time(at("2026-10-03T09:05:00Z"), now, &tz), "9:05 AM");
+        assert_eq!(save_time(at("2026-10-02T23:00:00Z"), now, &tz), "Oct 2, 11:00 PM");
+        assert_eq!(save_time(at("2025-03-14T10:00:00Z"), now, &tz), "Mar 14, 2025, 10:00 AM");
     }
 
     #[test]

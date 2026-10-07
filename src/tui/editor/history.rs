@@ -1,191 +1,314 @@
-//! Undo and redo. Each step keeps the whole buffer (text and cursor) from
-//! before an edit; ropes share their unchanged parts, so that's cheap.
+//! A post's history: its saves, newest first. Open one to read its full
+//! text, and restore it into the draft from there.
 //!
-//! Typing is grouped into one step per word (with the spaces after it), and
-//! runs of Backspace or Delete into one step each. Moving the cursor
-//! between edits starts a new step.
+//! It's shown by the editor, on top of the post, so the post (and its undo
+//! history) is still there when you come back.
 
-use super::buffer::Buffer;
+use jiff::Timestamp;
+use jiff::tz::TimeZone;
+use ratatui::Frame;
+use ratatui::crossterm::event::{Event, KeyCode, MouseButton, MouseEventKind};
+use ratatui::layout::{Constraint, Layout, Position, Rect};
+use ratatui::style::{Style, Stylize};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{List, ListItem, ListState, Paragraph};
+use ropey::Rope;
 
-/// Steps kept for undo; the oldest are dropped past this.
-const LIMIT: usize = 1000;
+use super::super::dialog::{Button, Dialog};
+use super::super::hints::{HintBar, hint};
+use super::super::list::{display_title, save_time};
+use super::super::widgets::{COLUMN_WIDTH, column, truncate};
+use super::row_line;
+use super::wrap::{Row, layout};
+use crate::vault::Save;
 
-#[derive(Clone, Copy, PartialEq)]
-pub enum Kind {
-    /// Typing a character; `space` if it's whitespace.
-    Type { space: bool },
-    Backspace,
-    Delete,
-    /// Anything else (Enter, Tab, paste) is always a step of its own.
-    Other,
+/// What the editor should do after an event.
+pub enum Outcome {
+    None,
+    /// Back to the post.
+    Close,
+    /// Load this save's full text, to read it.
+    Load(i64),
+    /// Replace the draft with this save.
+    Restore(Save),
+    Quit,
 }
 
-#[derive(Default)]
+#[derive(Clone, Copy)]
+enum Cmd {
+    Open,
+    Back,
+    Restore,
+    ConfirmRestore,
+    CancelDialog,
+    Quit,
+}
+
 pub struct History {
-    undo: Vec<Buffer>,
-    redo: Vec<Buffer>,
-    /// The last edit, and where it left the cursor.
-    last: Option<(Kind, usize)>,
+    title: String,
+    saves: Vec<Save>,
+    state: ListState,
+    rows_area: Rect,
+    /// The save being read, if one is open.
+    reading: Option<Reading>,
+    /// The draft has changes since the last save.
+    draft_unsaved: bool,
+    dialog: Option<Dialog<Cmd>>,
+    hints: HintBar<Cmd>,
+}
+
+/// A save's full text, laid out like the editor does.
+struct Reading {
+    save: Save,
+    rope: Rope,
+    rows: Vec<Row>,
+    width: usize,
+    top: usize,
+    height: usize,
 }
 
 impl History {
-    /// Record an edit of `kind` that changed `before` into `after`.
-    pub fn edited(&mut self, kind: Kind, before: Buffer, after: &Buffer) {
-        if !self.continues(kind, before.cursor()) {
-            if self.undo.len() == LIMIT {
-                self.undo.remove(0);
-            }
-            self.undo.push(before);
+    pub fn new(title: String, saves: Vec<Save>, draft_unsaved: bool) -> Self {
+        let state = ListState::default().with_selected((!saves.is_empty()).then_some(0));
+        History {
+            title,
+            saves,
+            state,
+            rows_area: Rect::default(),
+            reading: None,
+            draft_unsaved,
+            dialog: None,
+            hints: HintBar::default(),
         }
-        self.redo.clear();
-        self.last = Some((kind, after.cursor()));
     }
 
-    /// The buffer from before the last step, if any; `current` becomes
-    /// what redo goes back to.
-    pub fn undo(&mut self, current: Buffer) -> Option<Buffer> {
-        let prev = self.undo.pop()?;
-        self.redo.push(current);
-        self.last = None;
-        Some(prev)
+    /// Open a save (with its text) to read.
+    pub fn read(&mut self, save: Save) {
+        let rope = Rope::from_str(&save.body);
+        self.reading = Some(Reading { save, rope, rows: Vec::new(), width: 0, top: 0, height: 0 });
     }
 
-    pub fn redo(&mut self, current: Buffer) -> Option<Buffer> {
-        let next = self.redo.pop()?;
-        self.undo.push(current);
-        self.last = None;
-        Some(next)
-    }
+    pub fn render(&mut self, frame: &mut Frame) {
+        let [_, header, subheader, _, body, _, hint_area] = Layout::vertical([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Fill(1),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
+        .areas(frame.area());
+        let now = Timestamp::now();
+        let tz = TimeZone::system();
 
-    /// Whether an edit of `kind` at `cursor` belongs to the current step.
-    fn continues(&self, kind: Kind, cursor: usize) -> bool {
-        let Some((last, at)) = self.last else {
-            return false;
+        let hints = if let Some(reading) = &mut self.reading {
+            let name = save_name(&reading.save.name);
+            let width = (COLUMN_WIDTH as usize).min(body.width.saturating_sub(1) as usize).max(1);
+            let col = column(header, width as u16);
+            frame.render_widget(Paragraph::new(Line::from(name.bold())), col);
+            let when = format!("Saved {}", save_time(reading.save.created_at, now, &tz));
+            frame.render_widget(Paragraph::new(when.dim()), column(subheader, width as u16));
+            reading.render(frame, body, width);
+            vec![
+                hint("Enter", "restore", Cmd::Restore),
+                hint("Esc", "back to saves", Cmd::Back),
+                hint("Ctrl+Q", "quit", Cmd::Quit),
+            ]
+        } else {
+            let col = column(body, COLUMN_WIDTH);
+            frame.render_widget(Paragraph::new("History".bold()), column(header, COLUMN_WIDTH));
+            let of = format!("Saves of “{}”", display_title(&self.title));
+            let of = truncate(&of, COLUMN_WIDTH as usize);
+            frame.render_widget(Paragraph::new(of.dim()), column(subheader, COLUMN_WIDTH));
+            let width = col.width as usize;
+            let items: Vec<ListItem> = self
+                .saves
+                .iter()
+                .map(|save| ListItem::new(save_line(save, &save_time(save.created_at, now, &tz), width)))
+                .collect();
+            self.rows_area = Rect { height: (items.len() as u16).min(col.height), ..col };
+            frame.render_stateful_widget(
+                List::new(items).highlight_style(Style::new().reversed()),
+                self.rows_area,
+                &mut self.state,
+            );
+            vec![
+                hint("Enter", "read", Cmd::Open),
+                hint("Esc", "back to post", Cmd::Back),
+                hint("Ctrl+Q", "quit", Cmd::Quit),
+            ]
         };
-        if at != cursor {
-            return false;
+
+        if let Some(dialog) = &mut self.dialog {
+            dialog.render(frame);
+            let hints = dialog.hints();
+            self.hints.render(frame, hint_area, &hints);
+        } else {
+            self.hints.render(frame, hint_area, &hints);
         }
-        match (last, kind) {
-            // A new word starts a new step.
-            (Kind::Type { space: true }, Kind::Type { space: false }) => false,
-            (Kind::Type { .. }, Kind::Type { .. }) => true,
-            (Kind::Backspace, Kind::Backspace) | (Kind::Delete, Kind::Delete) => true,
-            _ => false,
+    }
+
+    pub fn handle(&mut self, event: Event) -> Outcome {
+        if let Some(dialog) = &mut self.dialog {
+            let mut cmd = dialog.handle(event.clone());
+            if cmd.is_none()
+                && let Event::Mouse(mouse) = event
+                && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+            {
+                cmd = self.hints.hit(mouse.column, mouse.row);
+            }
+            return cmd.map_or(Outcome::None, |cmd| self.run(cmd));
         }
+        match event {
+            Event::Key(key) => match key.code {
+                KeyCode::Enter if self.reading.is_some() => self.run(Cmd::Restore),
+                KeyCode::Enter => self.run(Cmd::Open),
+                KeyCode::Esc => self.run(Cmd::Back),
+                KeyCode::Up => self.scroll(-1),
+                KeyCode::Down => self.scroll(1),
+                KeyCode::PageUp => self.scroll(-self.page()),
+                KeyCode::PageDown => self.scroll(self.page()),
+                KeyCode::Home => self.scroll(isize::MIN / 2),
+                KeyCode::End => self.scroll(isize::MAX / 2),
+                _ => Outcome::None,
+            },
+            Event::Mouse(mouse) => match mouse.kind {
+                MouseEventKind::ScrollUp => self.scroll(-1),
+                MouseEventKind::ScrollDown => self.scroll(1),
+                MouseEventKind::Down(MouseButton::Left) => {
+                    if let Some(cmd) = self.hints.hit(mouse.column, mouse.row) {
+                        return self.run(cmd);
+                    }
+                    if self.reading.is_some()
+                        || !self.rows_area.contains(Position::new(mouse.column, mouse.row))
+                    {
+                        return Outcome::None;
+                    }
+                    // Like the post list: select on the first click, open
+                    // on the second.
+                    let index = self.state.offset() + (mouse.row - self.rows_area.y) as usize;
+                    if self.state.selected() == Some(index) {
+                        return self.run(Cmd::Open);
+                    }
+                    self.state.select(Some(index));
+                    Outcome::None
+                }
+                _ => Outcome::None,
+            },
+            _ => Outcome::None,
+        }
+    }
+
+    fn run(&mut self, cmd: Cmd) -> Outcome {
+        match cmd {
+            Cmd::Open => match self.state.selected().and_then(|i| self.saves.get(i)) {
+                Some(save) => Outcome::Load(save.id),
+                None => Outcome::None,
+            },
+            Cmd::Back if self.reading.is_some() => {
+                self.reading = None;
+                Outcome::None
+            }
+            Cmd::Back => Outcome::Close,
+            Cmd::Restore => {
+                if let Some(reading) = &self.reading {
+                    self.dialog = Some(restore_dialog(&reading.save, self.draft_unsaved));
+                }
+                Outcome::None
+            }
+            Cmd::ConfirmRestore => {
+                self.dialog = None;
+                match self.reading.take() {
+                    Some(reading) => Outcome::Restore(reading.save),
+                    None => Outcome::None,
+                }
+            }
+            Cmd::CancelDialog => {
+                self.dialog = None;
+                Outcome::None
+            }
+            Cmd::Quit => Outcome::Quit,
+        }
+    }
+
+    /// Scroll the text being read, or move through the list of saves.
+    fn scroll(&mut self, by: isize) -> Outcome {
+        match &mut self.reading {
+            Some(reading) => reading.top = reading.top.saturating_add_signed(by).min(reading.max_top()),
+            None => {
+                let last = self.saves.len().saturating_sub(1);
+                let current = self.state.selected().unwrap_or(0);
+                self.state.select(Some(current.saturating_add_signed(by).min(last)));
+            }
+        }
+        Outcome::None
+    }
+
+    fn page(&self) -> isize {
+        let height = match &self.reading {
+            Some(reading) => reading.height,
+            None => self.rows_area.height as usize,
+        };
+        height.saturating_sub(1).max(1) as isize
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// A buffer and its history, editing the way the editor does.
-    struct Doc {
-        buffer: Buffer,
-        history: History,
-    }
-
-    impl Doc {
-        fn new(text: &str) -> Self {
-            Doc { buffer: Buffer::new(text, None), history: History::default() }
+impl Reading {
+    fn render(&mut self, frame: &mut Frame, body: Rect, width: usize) {
+        if width != self.width {
+            self.width = width;
+            self.rows = layout(&self.rope, width);
         }
-
-        fn edit(&mut self, kind: Kind, f: impl FnOnce(&mut Buffer)) {
-            let before = self.buffer.clone();
-            f(&mut self.buffer);
-            self.history.edited(kind, before, &self.buffer);
-        }
-
-        fn typed(&mut self, text: &str) {
-            for ch in text.chars() {
-                let kind = Kind::Type { space: ch.is_whitespace() };
-                self.edit(kind, |b| b.insert(ch.encode_utf8(&mut [0; 4])));
-            }
-        }
-
-        fn undo(&mut self) -> String {
-            if let Some(prev) = self.history.undo(self.buffer.clone()) {
-                self.buffer = prev;
-            }
-            self.buffer.text()
-        }
-
-        fn redo(&mut self) -> String {
-            if let Some(next) = self.history.redo(self.buffer.clone()) {
-                self.buffer = next;
-            }
-            self.buffer.text()
-        }
+        self.height = body.height as usize;
+        self.top = self.top.min(self.max_top());
+        let left = body.x + body.width.saturating_sub(width as u16) / 2;
+        let area = Rect::new(left, body.y, (width as u16 + 1).min(body.right() - left), body.height);
+        let lines: Vec<Line> =
+            self.rows.iter().skip(self.top).take(self.height).map(|row| row_line(&self.rope, row)).collect();
+        frame.render_widget(Paragraph::new(lines), area);
     }
 
-    #[test]
-    fn typing_undoes_a_word_at_a_time() {
-        let mut d = Doc::new("# ");
-        d.typed("Hello there world");
-        assert_eq!(d.undo(), "# Hello there ");
-        assert_eq!(d.undo(), "# Hello ");
-        assert_eq!(d.undo(), "# ");
-        assert_eq!(d.undo(), "# "); // nothing left
-        assert_eq!(d.redo(), "# Hello ");
-        assert_eq!(d.buffer.cursor(), 8);
-        assert_eq!(d.redo(), "# Hello there ");
-        assert_eq!(d.redo(), "# Hello there world");
-        assert_eq!(d.redo(), "# Hello there world"); // nothing left
+    /// The furthest it scrolls: the last row at the bottom.
+    fn max_top(&self) -> usize {
+        self.rows.len().saturating_sub(self.height)
     }
+}
 
-    #[test]
-    fn undo_puts_the_cursor_back() {
-        let mut d = Doc::new("# Title\nbody");
-        d.buffer.set_cursor(7);
-        d.typed("d");
-        d.buffer.set_cursor(d.buffer.len());
-        d.undo();
-        assert_eq!(d.buffer.text(), "# Title\nbody");
-        assert_eq!(d.buffer.cursor(), 7);
-    }
+/// A save's name, or a placeholder if it was saved without one.
+fn save_name(name: &str) -> Span<'static> {
+    if name.is_empty() { Span::raw("No name").italic() } else { Span::raw(name.to_string()) }
+}
 
-    #[test]
-    fn deleting_is_one_step_per_run() {
-        let mut d = Doc::new("# one two");
-        d.edit(Kind::Backspace, Buffer::backspace);
-        d.edit(Kind::Backspace, Buffer::backspace);
-        d.edit(Kind::Backspace, Buffer::backspace);
-        d.typed("X");
-        assert_eq!(d.buffer.text(), "# one X");
-        assert_eq!(d.undo(), "# one ");
-        assert_eq!(d.undo(), "# one two");
-    }
+/// A row in the list: the name on the left, `right` (a time) right-aligned
+/// and dim.
+fn save_line(save: &Save, right: &str, width: usize) -> Line<'static> {
+    let right_width = right.chars().count();
+    let room = width.saturating_sub(right_width + 2);
+    let name = if save.name.is_empty() {
+        save_name("").dim()
+    } else {
+        Span::raw(truncate(&save.name, room))
+    };
+    let pad = width.saturating_sub(name.width() + right_width);
+    Line::from(vec![name, Span::raw(" ".repeat(pad)), Span::raw(right.to_string()).dim()])
+}
 
-    #[test]
-    fn moving_the_cursor_starts_a_new_step() {
-        let mut d = Doc::new("# ab");
-        d.typed("c");
-        d.buffer.set_cursor(2);
-        d.typed("x");
-        assert_eq!(d.undo(), "# abc");
-        assert_eq!(d.undo(), "# ab");
+fn restore_dialog(save: &Save, draft_unsaved: bool) -> Dialog<Cmd> {
+    let name = if save.name.is_empty() { "this save".to_string() } else { format!("“{}”", truncate(&save.name, 30)) };
+    let mut lines = vec![Line::from(format!("Replace the draft with {name}?"))];
+    if draft_unsaved {
+        lines.push(Line::from("The draft has changes since the last save.".dim()));
     }
-
-    #[test]
-    fn enter_and_paste_are_steps_of_their_own() {
-        let mut d = Doc::new("# ");
-        d.typed("Hi");
-        d.edit(Kind::Other, |b| b.insert("\n"));
-        d.typed("there");
-        d.edit(Kind::Other, |b| b.insert(" pasted text"));
-        assert_eq!(d.undo(), "# Hi\nthere");
-        assert_eq!(d.undo(), "# Hi\n");
-        assert_eq!(d.undo(), "# Hi");
-    }
-
-    #[test]
-    fn a_new_edit_clears_redo() {
-        let mut d = Doc::new("# ");
-        d.typed("one ");
-        d.typed("two");
-        d.undo();
-        d.typed("three");
-        assert_eq!(d.redo(), "# one three");
-        assert_eq!(d.undo(), "# one ");
-    }
+    lines.push(Line::from("Ctrl+Z in the editor undoes this.".dim()));
+    Dialog::new(
+        "Restore",
+        lines,
+        vec![
+            Button { label: "Restore", key: "y", cmd: Cmd::ConfirmRestore, danger: false },
+            Button { label: "Cancel", key: "n", cmd: Cmd::CancelDialog, danger: false },
+        ],
+        0,
+        1,
+    )
 }
