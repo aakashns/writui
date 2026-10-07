@@ -3,19 +3,24 @@
 //! Downloads the same files as `install.sh` (the binary for this platform and
 //! `SHA256SUMS`), checks the binary against its checksum, and swaps it in
 //! with a rename, so writui is never left half-written. The vault isn't
-//! touched here: a new version migrates it (with a backup) on the next
-//! unlock.
+//! touched by the old binary: once the new one is in place, it's run as
+//! `writui migrate` to update the vault (with a backup) right away. If that
+//! doesn't happen, the vault is updated on the next unlock instead.
 
 use std::env;
 use std::fs;
 use std::io::{self, BufRead, IsTerminal, Write};
-use std::path::Path;
-use std::process;
+use std::path::{Path, PathBuf};
+use std::process::{self, Command};
 use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use zeroize::Zeroizing;
+
+use crate::config;
+use crate::vault::{OpenError, Vault};
 
 const REPO: &str = "aakashns/writui";
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -29,7 +34,7 @@ struct Release {
     html_url: String,
 }
 
-pub fn run(yes: bool) -> Result<()> {
+pub fn run(yes: bool, db: Option<PathBuf>) -> Result<()> {
     if cfg!(debug_assertions) {
         bail!("upgrade is turned off in debug builds, since it would replace the binary in target/");
     }
@@ -80,11 +85,49 @@ pub fn run(yes: bool) -> Result<()> {
 
     replace(&exe, &bytes)?;
     println!("Upgraded {} to writui {latest}.", exe.display());
-    println!(
-        "If this version stores the vault differently, it updates your vault the next \
-         time you unlock it, after making a backup."
-    );
+
+    // Let the new version bring the vault up to date now, while we're here.
+    let mut migrate = Command::new(&exe);
+    if let Some(db) = &db {
+        migrate.arg("--db").arg(db);
+    }
+    if !matches!(migrate.arg("migrate").status(), Ok(status) if status.success()) {
+        println!(
+            "Your vault wasn't updated now; writui updates it, after making a backup, the \
+             next time you unlock it."
+        );
+    }
     Ok(())
+}
+
+/// `writui migrate`: ask for the password and open the vault, which updates
+/// it to this version's format (backing it up first, and deleting the backup
+/// once the updated vault checks out). Leaving the password empty skips it.
+/// Always fine to skip: the next unlock does the same.
+pub fn migrate(db: Option<PathBuf>) -> Result<()> {
+    let path = config::vault_path(db)?;
+    if !path.exists() || !io::stdin().is_terminal() {
+        return Ok(());
+    }
+    println!("Updating your vault ({}).", path.display());
+    for _ in 0..3 {
+        let password = Zeroizing::new(
+            rpassword::prompt_password("Vault password (leave empty to do it on next unlock): ")
+                .context("reading the password")?,
+        );
+        if password.is_empty() {
+            bail!("skipped");
+        }
+        match Vault::open(&path, &password) {
+            Ok(_) => {
+                println!("Vault is up to date.");
+                return Ok(());
+            }
+            Err(OpenError::WrongPassword) => println!("Wrong password."),
+            Err(err) => bail!("couldn't update the vault: {err}"),
+        }
+    }
+    bail!("too many wrong passwords")
 }
 
 /// The release file for this computer, as named by the release workflow.

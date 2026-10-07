@@ -28,6 +28,9 @@ enum Command {
         #[arg(short, long)]
         yes: bool,
     },
+    /// Update the vault to this version's format (run by `upgrade`).
+    #[command(hide = true)]
+    Migrate,
 }
 
 fn main() -> Result<()> {
@@ -37,6 +40,7 @@ fn main() -> Result<()> {
             let vault_path = config::vault_path(cli.db)?;
             tui::run(vault_path)
         }
-        Some(Command::Upgrade { yes }) => upgrade::run(yes),
+        Some(Command::Upgrade { yes }) => upgrade::run(yes, cli.db),
+        Some(Command::Migrate) => upgrade::migrate(cli.db),
     }
 }

@@ -12,22 +12,10 @@ file is the source of truth for what's next.
 
 ## Next up
 
-M0 shipped in `0.3.0`. M1 (saves and history) is in the `0.4.0` PR.
-Next:
+M0 shipped in `0.3.0`, M1 in `0.4.0`, M5 (selection and clipboard) and the
+upgrade-migrates-the-vault change are in the `0.5.0` PR. Next:
 
-1. **M5 — selection and clipboard, as one PR.** Moved up ahead of M2:
-
-   > yes, let's move up m5 do it next, i like selecting things and deleting
-
-   Shift+arrows / Shift+Home/End select, mouse drag and double-click
-   select, typing or Backspace/Delete replaces the selection, copy / cut /
-   paste with the system clipboard, word / paragraph movement.
-2. **`writui upgrade` migrates the vault right away** (M4): after swapping
-   in the new binary, ask for the password and run the new binary to
-   migrate, with the usual backup → check → delete-backup. The creator
-   chose this over migrating on next unlock (PR #5's question). Small
-   enough to go in with another PR.
-3. Then M2 (live markdown formatting) and on in order.
+1. **M2 — live markdown formatting**, then M3 and on in order.
 
 ## M0 — Writing core
 
@@ -63,9 +51,9 @@ Needed before the chat sidebar, so the LLM can see what's selected.
 (Until then, Shift+drag, or Option+drag in iTerm2, uses the terminal's own
 selection to copy.)
 
-- [ ] Mouse drag select, double-click word, Shift+movement select
-- [ ] Copy / cut / paste with the system clipboard
-- [ ] Word / paragraph movement
+- [x] Mouse drag select, double-click word, Shift+movement select
+- [x] Copy / cut / paste with the system clipboard
+- [x] Word / paragraph movement
 
 ## M2 — Live markdown formatting
 
@@ -93,7 +81,7 @@ The repo went public early (during M0), so most of this is already done.
 - [x] Make the repo public
 - [x] One-line install script (`curl … | bash`)
 - [x] `writui upgrade` and `writui --version`
-- [ ] `writui upgrade` asks for the password and migrates the vault right away
+- [x] `writui upgrade` asks for the password and migrates the vault right away
 - [x] Migration backups deleted once the migrated vault passes integrity checks
 
 ## M6 — LLM chat sidebar

@@ -182,8 +182,10 @@ GitHub API for the latest release and download from it; `sha2` to check the
 download against `SHA256SUMS`. The new binary is written next to the running
 one and renamed over it, which is atomic and fine on macOS and Linux even
 while it runs. Debug builds refuse to upgrade, so `target/debug` is never
-overwritten. Upgrade doesn't touch the vault (it would need the password);
-migrations run on the next unlock, as before. Subcommands use clap's
+overwritten. Upgrade doesn't touch the vault itself (it would need the password);
+migrations run on the next unlock, as before. (Since 0.5.0 it then runs the
+new binary as a hidden `writui migrate`, which asks for the password with
+`rpassword` and opens the vault; skipping is always safe.) Subcommands use clap's
 `Subcommand`, ready for the planned `list` / `show` / `export`.
 
 ## Migration backups are deleted after a verified migration
@@ -240,3 +242,17 @@ of its own, so the open post, its undo history and autosave all carry on
 underneath. Restoring replaces the text as one undo step. The shortcut is
 Ctrl+R: Ctrl+H is Backspace in many terminals, and Ctrl+R matches the
 shell's history search.
+
+## Selection and the clipboard
+
+The selection is an "anchor" kept next to the cursor in the editor's text
+buffer: the selection runs between them, so moving the cursor with Shift
+held extends it and every edit simply clears it. Edits that replace a
+selection are always a separate undo step. The system clipboard is reached
+with the `arboard` crate (no image support, to keep it small); it's opened
+on first use and kept for the whole run, because on Linux the program that
+copied serves the clipboard. OSC 52 (terminal-side clipboard) was passed
+over: it can't be read back, so it couldn't do Ctrl+V. Selection is drawn
+with the reverse-video attribute, so it works in any terminal colour scheme.
+Terminals disagree about word-movement keys (Option+Arrow arrives as Alt+B/F
+in some), so several are accepted.

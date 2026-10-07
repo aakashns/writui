@@ -141,7 +141,20 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - The cursor is a blinking bar in the editor.
 - If the draft can't be stored when leaving the editor, the editor stays
   open and says so (a second Ctrl+Q quits anyway).
-- Copy / cut / paste with the system clipboard.
+- Selection: Shift+movement, drag, double-click a word, triple-click a
+  paragraph, Ctrl+A for everything. A selection can include the title's
+  `# ` (so copying a whole post gives its markdown), but that `# ` is never
+  deleted or replaced. Pasting into an empty post (or over a selection of
+  everything) leaves off the pasted text's own leading `#` or `# `, so a
+  copied post pastes back as itself. The selection is drawn reversed, and
+  typing, Backspace or Delete replaces it (as one undo step). Left/Right
+  drop it at its near end; Esc drops it before it leaves the post.
+- Word movement is Alt+Left/Right (also Ctrl, and Alt+B/F, since terminals
+  differ); paragraph movement is Alt/Ctrl+Up/Down, to the start or end of
+  the paragraph (a paragraph is a line of the stored text, not a screen row).
+- Copy / cut / paste with the system clipboard: Ctrl+C / Ctrl+X / Ctrl+V.
+  If there's no system clipboard (e.g. no display), they still work inside
+  writui. Pasting from the terminal (Cmd+V) also works.
 
 ## Drafts and saves
 
@@ -346,8 +359,9 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   and a link to what's new, asks before upgrading (`--yes` skips that), then
   downloads it, checks its checksum and replaces itself. Then it asks for
   the vault password and has the new version migrate the vault right away,
-  if the new version needs to (decided after v0.2.0; until then, the vault
-  is migrated the next time it's unlocked). Migrations back the vault up
+  if the new version needs to (done in 0.5.0; before that, the vault was
+  migrated the next time it was unlocked). An empty password skips it, and
+  so does running without a terminal; the next unlock migrates as before. Migrations back the vault up
   first, check the migrated vault's integrity, and only then delete the
   backup; if anything fails, the backup stays and the error says where it
   is.
