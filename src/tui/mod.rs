@@ -10,6 +10,7 @@ mod widgets;
 
 use std::io::stdout;
 use std::path::PathBuf;
+use std::time::Instant;
 
 use anyhow::{Context, Result};
 use ratatui::crossterm::event::{
@@ -38,6 +39,13 @@ pub enum Action {
     DeletePostForever { id: i64, select: Option<i64> },
     /// Go back to the list, highlighting this post.
     BackToList(Option<i64>),
+}
+
+/// Whether the draft is being stored because the editor is being left.
+#[derive(Clone, Copy)]
+enum Leaving {
+    Yes,
+    No,
 }
 
 enum Screen {
@@ -120,10 +128,28 @@ impl App {
                 self.perform(action)?;
                 continue;
             }
+            // Wait for input, but wake up to store the draft when it's due.
+            let due = self.autosave_due();
+            if due.is_some_and(|due| due <= Instant::now()) {
+                self.store_draft(Leaving::No);
+                continue;
+            }
+            if let Some(due) = due
+                && !event::poll(due.saturating_duration_since(Instant::now()))?
+            {
+                continue;
+            }
             let action = self.handle(event::read()?);
             self.apply(action)?;
         }
         Ok(())
+    }
+
+    fn autosave_due(&self) -> Option<Instant> {
+        match &self.screen {
+            Screen::Editor(editor) => editor.autosave_due(),
+            _ => None,
+        }
     }
 
     fn render(&mut self, frame: &mut Frame) {
@@ -161,7 +187,7 @@ impl App {
         match action {
             Action::None => {}
             Action::Quit => {
-                if self.store_draft() || self.quit_unsaved {
+                if self.store_draft(Leaving::Yes) || self.quit_unsaved {
                     self.quit = true;
                 } else {
                     self.quit_unsaved = true;
@@ -197,7 +223,7 @@ impl App {
                 self.show_trash(select, Some(format!("Deleted “{title}” forever.")))?;
             }
             Action::BackToList(select) => {
-                if self.store_draft() {
+                if self.store_draft(Leaving::Yes) {
                     self.show_list(select, None)?;
                 }
             }
@@ -262,7 +288,7 @@ impl App {
     /// the cursor is. If storing the draft fails, the editor stays open and
     /// says so, so no writing is lost. Returns whether it's safe to leave
     /// the editor.
-    fn store_draft(&mut self) -> bool {
+    fn store_draft(&mut self, leaving: Leaving) -> bool {
         let Screen::Editor(editor) = &mut self.screen else {
             return true;
         };
@@ -270,20 +296,29 @@ impl App {
         if editor.changed() {
             let text = editor.text();
             match vault.and_then(|vault| vault.update_post_body(editor.post_id(), &text)) {
-                Ok(()) => editor.mark_stored(text),
+                Ok(()) => editor.mark_stored(Some(text)),
                 Err(err) => {
-                    editor.set_error(format!(
-                        "Couldn't save the draft: {err:#}. Ctrl+Q again quits without saving."
-                    ));
+                    editor.store_failed(match leaving {
+                        Leaving::Yes => format!(
+                            "Couldn't save the draft: {err:#}. Ctrl+Q again quits without saving."
+                        ),
+                        Leaving::No => {
+                            format!("Couldn't save the draft: {err:#}. Trying again shortly.")
+                        }
+                    });
                     return false;
                 }
             }
+        } else {
+            // E.g. undone back to what's stored.
+            editor.mark_stored(None);
         }
         // Only a convenience: failing to remember it shouldn't keep you in
         // the editor.
         if let Some(vault) = &self.vault {
             let _ = vault.set_post_cursor(editor.post_id(), editor.cursor());
         }
+        self.quit_unsaved = false;
         true
     }
 
