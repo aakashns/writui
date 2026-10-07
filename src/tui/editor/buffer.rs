@@ -126,6 +126,21 @@ impl Buffer {
         self.cursor += text.chars().count();
     }
 
+    /// Paste `text` over the selection. Into an empty post, a pasted post's
+    /// own `# ` (the first thing in it, after any spaces) is left off, since
+    /// the post has one already.
+    pub fn paste(&mut self, text: &str) {
+        self.delete_selection();
+        let text = clean(text);
+        let trimmed = text.trim_start();
+        match trimmed.strip_prefix('#') {
+            Some(rest) if self.rope == TITLE_PREFIX => {
+                self.insert(rest.strip_prefix(' ').unwrap_or(rest));
+            }
+            _ => self.insert(&text),
+        }
+    }
+
     /// Delete the selection, or the grapheme before the cursor (joining
     /// lines at a line start).
     pub fn backspace(&mut self) {
@@ -416,6 +431,29 @@ mod tests {
         b.insert("c");
         b.left();
         assert_eq!(b.selection(), None);
+    }
+
+    #[test]
+    fn pasting_a_post_into_an_empty_one_drops_its_hash() {
+        for (pasted, expected) in [
+            ("# Title\nText", "# Title\nText"),
+            ("#Title", "# Title"),
+            ("  \n# Title", "# Title"),
+            ("## Sub", "# # Sub"),
+            ("Plain # text", "# Plain # text"),
+        ] {
+            let mut b = Buffer::new("# ", None);
+            b.paste(pasted);
+            assert_eq!(b.text(), expected, "pasting {pasted:?}");
+        }
+        // Only into an empty post.
+        let mut b = Buffer::new("# Hi", None);
+        b.paste("# Title");
+        assert_eq!(b.text(), "# Hi# Title");
+        // Over a selection of everything, it counts as empty.
+        b.select_all();
+        b.paste("# New");
+        assert_eq!(b.text(), "# New");
     }
 
     #[test]

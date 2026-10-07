@@ -112,7 +112,8 @@ the password each time it starts.
   paragraph, or hold Shift while moving (Ctrl+A selects everything).
   Typing or Backspace replaces what's selected. Ctrl+C copies, Ctrl+X cuts
   and Ctrl+V pastes, using the system clipboard (your terminal's own paste,
-  like Cmd+V, works too). Esc drops the selection.
+  like Cmd+V, works too). Esc drops the selection. Copying a whole post and pasting it into an empty
+  one gives the same post, not a doubled `# `.
 - **Moving by word and paragraph:** Option+Left/Right (Ctrl+Left/Right on
   Linux and Windows) jump by word, Option+Up/Down (Ctrl+Up/Down) by
   paragraph. Add Shift to select as you go.

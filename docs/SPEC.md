@@ -144,7 +144,9 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - Selection: Shift+movement, drag, double-click a word, triple-click a
   paragraph, Ctrl+A for everything. A selection can include the title's
   `# ` (so copying a whole post gives its markdown), but that `# ` is never
-  deleted or replaced. The selection is drawn reversed, and
+  deleted or replaced. Pasting into an empty post (or over a selection of
+  everything) leaves off the pasted text's own leading `#` or `# `, so a
+  copied post pastes back as itself. The selection is drawn reversed, and
   typing, Backspace or Delete replaces it (as one undo step). Left/Right
   drop it at its near end; Esc drops it before it leaves the post.
 - Word movement is Alt+Left/Right (also Ctrl, and Alt+B/F, since terminals

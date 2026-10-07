@@ -364,7 +364,7 @@ impl Editor {
         match event {
             Event::Key(key) => return self.key(key),
             Event::Mouse(mouse) => return self.mouse(mouse),
-            Event::Paste(text) => self.edit(Kind::Other, |b| b.insert(&text)),
+            Event::Paste(text) => self.edit(Kind::Other, |b| b.paste(&text)),
             _ => {}
         }
         Action::None
@@ -530,7 +530,7 @@ impl Editor {
             Cmd::Paste => {
                 let text = self.clipboard.paste();
                 if !text.is_empty() {
-                    self.edit(Kind::Other, |b| b.insert(&text));
+                    self.edit(Kind::Other, |b| b.paste(&text));
                 }
             }
             Cmd::Deselect => self.buffer.clear_selection(),
@@ -1029,9 +1029,7 @@ mod tests {
         h.key(KeyCode::Backspace);
         assert_eq!(h.editor.text(), "# ");
         h.ctrl('v'); // the copy included the "# ", which Backspace kept
-        assert_eq!(h.editor.text(), "# # Title\nHello world");
-        h.ctrl('z');
-        h.typed("Title\nHello world");
+        assert_eq!(h.editor.text(), "# Title\nHello world"); // not "# # Title"
         // Cut a word and put it back somewhere else.
         h.with(KeyCode::Left, KeyModifiers::ALT | KeyModifiers::SHIFT);
         h.ctrl('x');
