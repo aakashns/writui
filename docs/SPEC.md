@@ -141,7 +141,16 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - The cursor is a blinking bar in the editor.
 - If the draft can't be stored when leaving the editor, the editor stays
   open and says so (a second Ctrl+Q quits anyway).
-- Copy / cut / paste with the system clipboard.
+- Selection: Shift+movement, drag, double-click a word, triple-click a
+  paragraph, Ctrl+A for everything. The selection is drawn reversed, and
+  typing, Backspace or Delete replaces it (as one undo step). Left/Right
+  drop it at its near end; Esc drops it before it leaves the post.
+- Word movement is Alt+Left/Right (also Ctrl, and Alt+B/F, since terminals
+  differ); paragraph movement is Alt/Ctrl+Up/Down, to the start or end of
+  the paragraph (a paragraph is a line of the stored text, not a screen row).
+- Copy / cut / paste with the system clipboard: Ctrl+C / Ctrl+X / Ctrl+V.
+  If there's no system clipboard (e.g. no display), they still work inside
+  writui. Pasting from the terminal (Cmd+V) also works.
 
 ## Drafts and saves
 

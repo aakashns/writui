@@ -265,7 +265,7 @@ impl Reading {
         let left = body.x + body.width.saturating_sub(width as u16) / 2;
         let area = Rect::new(left, body.y, (width as u16 + 1).min(body.right() - left), body.height);
         let lines: Vec<Line> =
-            self.rows.iter().skip(self.top).take(self.height).map(|row| row_line(&self.rope, row)).collect();
+            self.rows.iter().skip(self.top).take(self.height).map(|row| row_line(&self.rope, row, None)).collect();
         frame.render_widget(Paragraph::new(lines), area);
     }
 

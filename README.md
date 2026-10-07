@@ -107,8 +107,14 @@ the password each time it starts.
 - **Undo** with Ctrl+Z and **redo** with Ctrl+Y (or Ctrl+Shift+Z, in
   terminals that tell it apart from Ctrl+Z). Undo goes back a word at a
   time while typing.
-- **Copying text:** writui doesn't have its own selection yet. Hold Shift
-  (Option in iTerm2) while dragging to select with your terminal instead.
+- **Selecting:** drag with the mouse, double-click a word, triple-click a
+  paragraph, or hold Shift while moving (Ctrl+A selects everything).
+  Typing or Backspace replaces what's selected. Ctrl+C copies, Ctrl+X cuts
+  and Ctrl+V pastes, using the system clipboard (your terminal's own paste,
+  like Cmd+V, works too). Esc drops the selection.
+- **Moving by word and paragraph:** Option+Left/Right (Ctrl+Left/Right on
+  Linux and Windows) jump by word, Option+Up/Down (Ctrl+Up/Down) by
+  paragraph. Add Shift to select as you go.
 - **Deleting** (Ctrl+D) moves a post to the Trash, where you can restore it
   for 30 days.
 

@@ -3,19 +3,21 @@
 
 mod autosave;
 mod buffer;
+mod clipboard;
 mod history;
 mod undo;
 mod wrap;
 
-use std::time::Instant;
+use std::ops::Range;
+use std::time::{Duration, Instant};
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use ratatui::layout::{Constraint, Layout, Position, Rect};
-use ratatui::style::Stylize;
-use ratatui::text::Line;
+use ratatui::style::{Style, Stylize};
+use ratatui::text::{Line, Span};
 use ratatui::widgets::Paragraph;
 use ropey::Rope;
 
@@ -26,12 +28,17 @@ use super::widgets::{COLUMN_WIDTH, truncate};
 use crate::vault::{Post, Save, TITLE_PREFIX, title_from_first_line};
 use autosave::Autosave;
 use buffer::{Buffer, MIN};
+use clipboard::Clipboard;
 use history::{History, Outcome};
 use undo::{Kind, Undo};
 use wrap::{Row, TAB_WIDTH, layout, pos_at_x, row_of, x_of};
 
 /// What the Tab key types.
 const TAB: &str = "  ";
+
+/// Clicks this close together (in time, and in place) make a double or
+/// triple click.
+const MULTI_CLICK: Duration = Duration::from_millis(500);
 
 /// The longest name a save can have.
 const MAX_SAVE_NAME: usize = 80;
@@ -49,7 +56,20 @@ enum Cmd {
     History,
     Undo,
     Redo,
+    Copy,
+    Cut,
+    Paste,
+    Deselect,
     Quit,
+}
+
+#[derive(Clone, Copy)]
+struct Click {
+    at: Instant,
+    column: u16,
+    row: u16,
+    /// 1 for a click, 2 for a double click, 3 for a triple click.
+    count: u8,
 }
 
 pub struct Editor {
@@ -79,6 +99,11 @@ pub struct Editor {
     opening: bool,
     /// The column kept while moving up and down past shorter rows.
     goal: Option<usize>,
+    clipboard: Clipboard,
+    /// The last left click, to tell double and triple clicks.
+    last_click: Option<Click>,
+    /// The left button is held down after a single click: moving selects.
+    dragging: bool,
     error: Option<String>,
     /// A passing message (e.g. "Saved"), until the next key or click.
     notice: Option<String>,
@@ -107,6 +132,9 @@ impl Editor {
             follow: true,
             opening: true,
             goal: None,
+            clipboard: Clipboard::default(),
+            last_click: None,
+            dragging: false,
             error: None,
             notice: None,
             dialog: None,
@@ -229,8 +257,14 @@ impl Editor {
         }
 
         let rope = self.buffer.rope();
-        let lines: Vec<Line> =
-            self.rows.iter().skip(self.top).take(height).map(|row| row_line(rope, row)).collect();
+        let selection = self.buffer.selection();
+        let lines: Vec<Line> = self
+            .rows
+            .iter()
+            .skip(self.top)
+            .take(height)
+            .map(|row| row_line(rope, row, selection.as_ref()))
+            .collect();
         frame.render_widget(Paragraph::new(lines), self.text_area);
         if (self.top..self.top + height).contains(&cursor_row) {
             let y = body.y + (cursor_row - self.top) as u16;
@@ -267,6 +301,21 @@ impl Editor {
             self.hints.render(frame, hint_area, &hints);
             return;
         }
+        if self.buffer.selection().is_some() {
+            self.hints.render(
+                frame,
+                hint_area,
+                &[
+                    hint("Esc", "deselect", Cmd::Deselect),
+                    hint("Ctrl+C", "copy", Cmd::Copy),
+                    hint("Ctrl+X", "cut", Cmd::Cut),
+                    hint("Ctrl+V", "paste", Cmd::Paste),
+                    hint("Ctrl+Z", "undo", Cmd::Undo),
+                    hint("Ctrl+Q", "quit", Cmd::Quit),
+                ],
+            );
+            return;
+        }
         self.hints.render(
             frame,
             hint_area,
@@ -276,6 +325,7 @@ impl Editor {
                 hint("Ctrl+R", "history", Cmd::History),
                 hint("Ctrl+Z", "undo", Cmd::Undo),
                 hint("Ctrl+Y", "redo", Cmd::Redo),
+                hint("Ctrl+V", "paste", Cmd::Paste),
                 hint("Ctrl+Q", "quit", Cmd::Quit),
             ],
         );
@@ -324,7 +374,37 @@ impl Editor {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+        let moving = match key.code {
+            KeyCode::Left
+            | KeyCode::Right
+            | KeyCode::Up
+            | KeyCode::Down
+            | KeyCode::Home
+            | KeyCode::End
+            | KeyCode::PageUp
+            | KeyCode::PageDown => true,
+            // Option+Left / Option+Right, in terminals that send them so.
+            KeyCode::Char('b' | 'f') => alt,
+            _ => false,
+        };
+        if moving {
+            let selection = self.buffer.selection();
+            if shift {
+                self.buffer.begin_select();
+            } else if let (Some(range), KeyCode::Left | KeyCode::Right) = (selection, key.code)
+                && !ctrl
+                && !alt
+            {
+                // Left and Right just drop the selection, at its near end.
+                self.step(|b| b.set_cursor(if key.code == KeyCode::Left { range.start } else { range.end }));
+                self.buffer.clear_selection();
+                return Action::None;
+            } else {
+                self.buffer.clear_selection();
+            }
+        }
         match key.code {
+            KeyCode::Esc if self.buffer.selection().is_some() => return self.run(Cmd::Deselect),
             KeyCode::Esc => return self.run(Cmd::Back),
             // Ctrl+Shift+Z also redoes, in terminals that tell it apart
             // from Ctrl+Z.
@@ -333,6 +413,10 @@ impl Editor {
             KeyCode::Char('y') if ctrl => return self.run(Cmd::Redo),
             KeyCode::Char('s') if ctrl => return self.run(Cmd::Save),
             KeyCode::Char('r') if ctrl => return self.run(Cmd::History),
+            KeyCode::Char('c') if ctrl => return self.run(Cmd::Copy),
+            KeyCode::Char('x') if ctrl => return self.run(Cmd::Cut),
+            KeyCode::Char('v') if ctrl => return self.run(Cmd::Paste),
+            KeyCode::Char('a') if ctrl => self.step(Buffer::select_all),
             KeyCode::Char(ch) if !ctrl && !alt => {
                 let kind = Kind::Type { space: ch.is_whitespace() };
                 self.edit(kind, |b| b.insert(ch.encode_utf8(&mut [0; 4])))
@@ -341,6 +425,12 @@ impl Editor {
             KeyCode::Tab => self.edit(Kind::Other, |b| b.insert(TAB)),
             KeyCode::Backspace => self.edit(Kind::Backspace, Buffer::backspace),
             KeyCode::Delete => self.edit(Kind::Delete, Buffer::delete),
+            KeyCode::Left if ctrl || alt => self.step(Buffer::word_left),
+            KeyCode::Right if ctrl || alt => self.step(Buffer::word_right),
+            KeyCode::Char('b') => self.step(Buffer::word_left),
+            KeyCode::Char('f') => self.step(Buffer::word_right),
+            KeyCode::Up if ctrl || alt => self.step(Buffer::paragraph_left),
+            KeyCode::Down if ctrl || alt => self.step(Buffer::paragraph_right),
             KeyCode::Left => self.step(Buffer::left),
             KeyCode::Right => self.step(Buffer::right),
             KeyCode::Up => self.move_rows(-1),
@@ -352,6 +442,9 @@ impl Editor {
             KeyCode::Home => self.row_start(),
             KeyCode::End => self.row_end(),
             _ => {}
+        }
+        if moving && shift {
+            self.buffer.settle();
         }
         Action::None
     }
@@ -371,6 +464,8 @@ impl Editor {
                 }
                 self.click(mouse.column, mouse.row);
             }
+            MouseEventKind::Drag(MouseButton::Left) if self.dragging => self.drag(mouse.column, mouse.row),
+            MouseEventKind::Up(MouseButton::Left) => self.dragging = false,
             _ => {}
         }
         Action::None
@@ -415,6 +510,30 @@ impl Editor {
                 self.notice = Some("No saves yet. Ctrl+S saves the post.".into());
             }
             Cmd::History => return Action::ShowHistory,
+            Cmd::Copy => match self.buffer.selected_text() {
+                Some(text) => {
+                    self.clipboard.copy(&text);
+                    self.notice = Some("Copied.".into());
+                }
+                None => self.notice = Some("Select some text to copy.".into()),
+            },
+            Cmd::Cut => match self.buffer.selected_text() {
+                Some(text) => {
+                    self.clipboard.copy(&text);
+                    self.edit(Kind::Other, |b| {
+                        b.delete_selection();
+                    });
+                    self.notice = Some("Cut. Ctrl+V pastes it.".into());
+                }
+                None => self.notice = Some("Select some text to cut.".into()),
+            },
+            Cmd::Paste => {
+                let text = self.clipboard.paste();
+                if !text.is_empty() {
+                    self.edit(Kind::Other, |b| b.insert(&text));
+                }
+            }
+            Cmd::Deselect => self.buffer.clear_selection(),
             Cmd::Quit => return Action::Quit,
         }
         Action::None
@@ -438,10 +557,13 @@ impl Editor {
     /// the cursor.
     fn edit(&mut self, kind: Kind, f: impl FnOnce(&mut Buffer)) {
         let before = self.buffer.clone();
+        // Replacing a selection is a step of its own.
+        let replacing = before.selection().is_some();
+        let kind = if replacing { Kind::Other } else { kind };
         f(&mut self.buffer);
-        // Every edit changes the length; if it didn't, nothing happened
-        // (e.g. Backspace at the very start).
-        if self.buffer.len() != before.len() {
+        // Every edit changes the length, unless it replaced a selection; if
+        // not, nothing happened (e.g. Backspace at the very start).
+        if replacing || self.buffer.len() != before.len() {
             self.undo.edited(kind, before, &self.buffer);
             self.changed_text();
         }
@@ -507,20 +629,69 @@ impl Editor {
     }
 
     /// Put the cursor where the text was clicked. Beside a row means its
-    /// start or end; below the text, the very end.
+    /// start or end; below the text, the very end. Double-click selects a
+    /// word, triple-click a paragraph; otherwise dragging selects.
     fn click(&mut self, column: u16, row: u16) {
         let area = self.text_area;
         if row < area.y || row >= area.bottom() {
             return;
         }
-        self.refresh();
-        let index = self.top + (row - area.y) as usize;
-        let pos = match self.rows.get(index) {
-            Some(&r) => pos_at_x(self.buffer.rope(), r, column.saturating_sub(area.x) as usize),
-            None => self.buffer.len(),
+        let pos = self.pos_at(column, row);
+        let now = Instant::now();
+        let count = match self.last_click {
+            Some(last) if now - last.at < MULTI_CLICK && (last.column, last.row) == (column, row) => last.count % 3 + 1,
+            _ => 1,
         };
-        self.buffer.set_cursor(pos);
+        self.last_click = Some(Click { at: now, column, row, count });
         self.goal = None;
+        match count {
+            1 => {
+                self.buffer.clear_selection();
+                self.buffer.set_cursor(pos);
+                self.dragging = true;
+            }
+            2 => {
+                let word = self.buffer.word_at(pos);
+                self.buffer.select(word.start, word.end);
+            }
+            _ => {
+                let line = self.buffer.line_at(pos);
+                self.buffer.select(line.start, line.end);
+            }
+        }
+    }
+
+    /// Extend the selection to the dragged-to cell. Dragging past the top
+    /// or bottom of the text scrolls it.
+    fn drag(&mut self, column: u16, row: u16) {
+        let area = self.text_area;
+        self.refresh();
+        let row = if row < area.y {
+            self.top = self.top.saturating_sub(1);
+            area.y
+        } else if row >= area.bottom() {
+            if self.top < self.max_top() {
+                self.top += 1;
+            }
+            area.bottom() - 1
+        } else {
+            row
+        };
+        let pos = self.pos_at(column, row);
+        self.buffer.begin_select();
+        self.buffer.set_cursor(pos);
+        self.buffer.settle();
+        self.goal = None;
+    }
+
+    /// The text position at a cell of the text area (below the text: its end).
+    fn pos_at(&mut self, column: u16, row: u16) -> usize {
+        self.refresh();
+        let index = self.top + row.saturating_sub(self.text_area.y) as usize;
+        match self.rows.get(index) {
+            Some(&r) => pos_at_x(self.buffer.rope(), r, column.saturating_sub(self.text_area.x) as usize),
+            None => self.buffer.len(),
+        }
     }
 
     fn refresh(&mut self) {
@@ -552,16 +723,32 @@ fn margin(height: usize) -> usize {
     SCROLL_MARGIN.min(height.saturating_sub(1) / 2)
 }
 
-/// One row of text. The title is bold, with a dim placeholder while empty.
-fn row_line(rope: &Rope, row: &Row) -> Line<'static> {
-    let text = rope.slice(row.start..row.end).to_string().replace('\t', &" ".repeat(TAB_WIDTH));
-    if row.line > 0 {
-        Line::from(text)
-    } else if text == TITLE_PREFIX && row.last {
-        Line::from(vec![text.bold(), "Title".dim()])
-    } else {
-        Line::from(text.bold())
+/// One row of text, with the selected part reversed. The title is bold, with
+/// a dim placeholder while empty.
+fn row_line(rope: &Rope, row: &Row, selection: Option<&Range<usize>>) -> Line<'static> {
+    let base = if row.line == 0 { Style::new().bold() } else { Style::new() };
+    let text = |start, end| rope.slice(start..end).to_string().replace('\t', &" ".repeat(TAB_WIDTH));
+    let selected = selection
+        .map(|s| s.start.max(row.start)..s.end.min(row.end))
+        .filter(|s| s.start < s.end);
+    let mut spans = Vec::new();
+    match selected {
+        None => spans.push(Span::styled(text(row.start, row.end), base)),
+        Some(s) => {
+            spans.push(Span::styled(text(row.start, s.start), base));
+            spans.push(Span::styled(text(s.start, s.end), base.reversed()));
+            spans.push(Span::styled(text(s.end, row.end), base));
+        }
     }
+    // A selection that runs on past the end of the line takes the newline,
+    // which shows as a selected space (so blank lines show up too).
+    if row.last && selection.is_some_and(|s| s.start <= row.end && s.end > row.end) {
+        spans.push(Span::styled(" ", Style::new().reversed()));
+    }
+    if row.line == 0 && row.last && rope.slice(row.start..row.end) == TITLE_PREFIX {
+        spans.push("Title".dim());
+    }
+    Line::from(spans)
 }
 
 #[cfg(test)]
@@ -787,6 +974,105 @@ mod tests {
         h.ctrl('z'); // undo is an edit too
         assert!(h.editor.changed());
         assert!(h.editor.autosave_due().is_some());
+    }
+
+    impl Harness {
+        fn with(&mut self, code: KeyCode, modifiers: KeyModifiers) {
+            let key = KeyEvent::new_with_kind(code, modifiers, KeyEventKind::Press);
+            self.editor.handle(Event::Key(key));
+            self.draw();
+        }
+
+        fn shift(&mut self, code: KeyCode) {
+            self.with(code, KeyModifiers::SHIFT);
+        }
+    }
+
+    fn selected(h: &Harness) -> Option<String> {
+        h.editor.buffer.selected_text()
+    }
+
+    #[test]
+    fn shift_movement_selects() {
+        let mut h = Harness::new("# Title\nHello world");
+        h.shift(KeyCode::Left);
+        h.shift(KeyCode::Left);
+        assert_eq!(selected(&h).as_deref(), Some("ld"));
+        h.shift(KeyCode::Right);
+        assert_eq!(selected(&h).as_deref(), Some("d"));
+        h.with(KeyCode::Left, KeyModifiers::SHIFT | KeyModifiers::ALT);
+        assert_eq!(selected(&h).as_deref(), Some("world"));
+        // The selection is drawn reversed.
+        let buffer = h.terminal.backend().buffer();
+        assert!(buffer[(LEFT + 6, 2)].modifier.contains(ratatui::style::Modifier::REVERSED));
+        assert!(!buffer[(LEFT + 5, 2)].modifier.contains(ratatui::style::Modifier::REVERSED));
+        // Plain Left drops it, at its start.
+        h.key(KeyCode::Left);
+        assert_eq!(selected(&h), None);
+        assert_eq!(h.cursor(), (LEFT + 6, 2));
+        h.shift(KeyCode::Up);
+        assert_eq!(selected(&h).as_deref(), Some("e\nHello "));
+        // Typing replaces the selection, as one undo step.
+        h.typed("x");
+        assert_eq!(h.editor.text(), "# Titlxworld");
+        h.ctrl('z');
+        assert_eq!(h.editor.text(), "# Title\nHello world");
+    }
+
+    #[test]
+    fn select_all_cut_and_paste() {
+        let mut h = Harness::new("# Title\nHello world");
+        h.ctrl('a');
+        assert!(h.screen_row(11).contains("Ctrl+C"));
+        h.ctrl('c');
+        assert!(h.screen_row(10).contains("Copied."));
+        h.key(KeyCode::Backspace);
+        assert_eq!(h.editor.text(), "# ");
+        h.ctrl('v');
+        assert_eq!(h.editor.text(), "# Title\nHello world");
+        // Cut a word and put it back somewhere else.
+        h.with(KeyCode::Left, KeyModifiers::ALT | KeyModifiers::SHIFT);
+        h.ctrl('x');
+        assert_eq!(h.editor.text(), "# Title\nHello ");
+        h.with(KeyCode::Up, KeyModifiers::ALT);
+        h.ctrl('v');
+        assert_eq!(h.editor.text(), "# Title\nworldHello ");
+        // Paste over a selection.
+        h.shift(KeyCode::Right);
+        h.ctrl('v');
+        assert_eq!(h.editor.text(), "# Title\nworldworldello ");
+    }
+
+    #[test]
+    fn esc_deselects_before_leaving() {
+        let mut h = Harness::new("# Title");
+        h.ctrl('a');
+        assert!(matches!(h.press(KeyCode::Esc), Action::None));
+        assert_eq!(selected(&h), None);
+        assert!(matches!(h.press(KeyCode::Esc), Action::BackToList(_)));
+    }
+
+    #[test]
+    fn mouse_selects_by_drag_word_and_paragraph() {
+        let mut h = Harness::new("# Title\nHello there world\nsecond");
+        let down = MouseEventKind::Down(MouseButton::Left);
+        h.mouse(down, LEFT + 6, 2);
+        h.mouse(MouseEventKind::Drag(MouseButton::Left), LEFT + 11, 2);
+        h.mouse(MouseEventKind::Up(MouseButton::Left), LEFT + 11, 2);
+        assert_eq!(selected(&h).as_deref(), Some("there"));
+        // A plain click clears it; two more make a double click on a word.
+        h.mouse(down, LEFT + 1, 2);
+        assert_eq!(selected(&h), None);
+        h.mouse(MouseEventKind::Up(MouseButton::Left), LEFT + 1, 2);
+        h.mouse(down, LEFT + 1, 2);
+        assert_eq!(selected(&h).as_deref(), Some("Hello"));
+        h.mouse(down, LEFT + 1, 2); // triple
+        assert_eq!(selected(&h).as_deref(), Some("Hello there world"));
+        // Dragging down past the text selects to its end.
+        h.mouse(MouseEventKind::Up(MouseButton::Left), LEFT + 1, 2);
+        h.mouse(down, LEFT + 2, 1);
+        h.mouse(MouseEventKind::Drag(MouseButton::Left), 30, 8);
+        assert_eq!(selected(&h).as_deref(), Some("Title\nHello there world\nsecond"));
     }
 
     fn save(id: i64, name: &str, body: &str) -> Save {
