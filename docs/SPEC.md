@@ -159,10 +159,17 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   leaving the editor or quitting. Coming back to a post always shows the
   current draft. If storing fails, the editor says so and keeps trying.
 - **Save** (Ctrl+S) asks for a name and records a full snapshot of the post
-  with the time.
-- The editor shows when the draft has changed since the last save.
-- History: a list of a post's saves (name + time). Pick one to view its full
-  text, and restore it into the draft if wanted.
+  with the time. The name can be left empty. If nothing changed since the
+  last save, Ctrl+S just says so.
+- The editor shows when the draft has changed since the last save: a line
+  under the text reads "● Changed since last save" (or "● Never saved"), or
+  "Saved · <name>" when it matches.
+- History (Ctrl+R): a list of a post's saves (name + time), newest first.
+  Pick one to view its full text, and restore it into the draft if wanted.
+  Restoring asks first, and is an ordinary edit: Ctrl+Z undoes it. The
+  history opens over the post, so its undo history survives the visit.
+- Saves are kept as long as the post; deleting a post forever deletes its
+  saves too.
 
   > Full text first, that's what I really need.
 

@@ -221,3 +221,22 @@ post drops it (saves in M1 cover going back further).
 Redo is Ctrl+Y. Ctrl+Shift+Z also works where the terminal reports Shift
 with Ctrl+letter; most don't without the kitty keyboard protocol, which we
 don't enable, so it's not what the hint bar shows.
+
+## Saves: a `saves` table of full snapshots
+
+Migration 4 adds `saves (id, post_id, name, body, created_at)`, indexed by
+post and time. Each save is the post's full text, not a diff: posts are
+small, full text is what the history view shows, and diffs can be computed
+later from neighbouring saves. Saving also stores the draft. "Changed since
+last save" compares the editor's text with the newest save's text (loaded
+when the post opens), so it's exact, including after undoing back to it.
+Deleting a post forever (or the 30-day purge) deletes its saves in the same
+transaction; SQLite's foreign keys stay off, so this is done explicitly.
+
+## History opens over the editor; Ctrl+R
+
+The history view lives inside the editor screen rather than being a screen
+of its own, so the open post, its undo history and autosave all carry on
+underneath. Restoring replaces the text as one undo step. The shortcut is
+Ctrl+R: Ctrl+H is Backspace in many terminals, and Ctrl+R matches the
+shell's history search.
