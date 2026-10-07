@@ -69,6 +69,11 @@ impl<C: Copy> HintBar<C> {
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
+    /// Draw nothing: no hint can be clicked.
+    pub fn hide(&mut self) {
+        self.hits.clear();
+    }
+
     /// The command under a mouse click, if any.
     pub fn hit(&self, column: u16, row: u16) -> Option<C> {
         let pos = Position::new(column, row);

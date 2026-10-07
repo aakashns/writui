@@ -256,3 +256,21 @@ over: it can't be read back, so it couldn't do Ctrl+V. Selection is drawn
 with the reverse-video attribute, so it works in any terminal colour scheme.
 Terminals disagree about word-movement keys (Option+Arrow arrives as Alt+B/F
 in some), so several are accepted.
+
+## Hints show while Ctrl is held: the kitty keyboard protocol
+
+Terminals normally send nothing when Ctrl alone is pressed. The kitty
+keyboard protocol can report every key, modifiers included, with press and
+release events, so writui turns it on (when the terminal answers the query
+for it) with "report all keys", "event types" and "alternate keys". That
+changes how all keys arrive: held keys come as repeats (treated as presses),
+releases are ignored, Shift+letter arrives as the shifted character
+(Ctrl+Shift+Z arrives as Ctrl+"Z", so that's redo too), and Caps Lock no
+longer capitalises on its own, so writui does it. Every key and mouse event
+carries the held modifiers, so a missed Ctrl release corrects itself on the
+next event. Where the protocol isn't available, hints always show.
+
+Risk: in this mode, characters typed with Option on macOS (em dash, é)
+arrive as Option+key; crossterm can't read the "associated text" that would
+carry the composed character. To check per terminal; if it's lost, the fix
+is to parse that text ourselves or drop "report all keys".

@@ -15,10 +15,12 @@ use std::time::Instant;
 use anyhow::{Context, Result};
 use ratatui::crossterm::event::{
     self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-    Event, KeyCode, KeyEventKind, KeyModifiers,
+    Event, KeyCode, KeyEventKind, KeyEventState, KeyModifiers, KeyboardEnhancementFlags,
+    ModifierKeyCode, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use ratatui::crossterm::cursor::SetCursorStyle;
 use ratatui::crossterm::execute;
+use ratatui::crossterm::terminal::supports_keyboard_enhancement;
 use ratatui::{DefaultTerminal, Frame};
 use zeroize::Zeroizing;
 
@@ -64,27 +66,63 @@ enum Screen {
 pub fn run(vault_path: PathBuf) -> Result<()> {
     let mut terminal = ratatui::init();
     execute!(stdout(), EnableMouseCapture, EnableBracketedPaste)?;
+    // Terminals that speak the kitty keyboard protocol can report Ctrl
+    // being pressed and let go on its own, so the editor can keep its hints
+    // out of sight until Ctrl is held.
+    let ctrl_reported = supports_keyboard_enhancement().unwrap_or(false);
+    if ctrl_reported {
+        execute!(
+            stdout(),
+            PushKeyboardEnhancementFlags(
+                KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES
+                    | KeyboardEnhancementFlags::REPORT_EVENT_TYPES
+                    | KeyboardEnhancementFlags::REPORT_ALL_KEYS_AS_ESCAPE_CODES
+                    | KeyboardEnhancementFlags::REPORT_ALTERNATE_KEYS
+            )
+        )?;
+    }
     // ratatui's own panic hook restores the screen; also give the terminal
-    // its mouse back.
+    // its mouse and keyboard back.
     let hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let _ = execute!(
-            stdout(),
-            DisableMouseCapture,
-            DisableBracketedPaste,
-            SetCursorStyle::DefaultUserShape
-        );
+        give_back_terminal(ctrl_reported);
         hook(info);
     }));
-    let result = App::new(vault_path).run(&mut terminal);
+    let result = App::new(vault_path, ctrl_reported).run(&mut terminal);
+    give_back_terminal(ctrl_reported);
+    ratatui::restore();
+    result
+}
+
+fn give_back_terminal(ctrl_reported: bool) {
+    if ctrl_reported {
+        let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
+    }
     let _ = execute!(
         stdout(),
         DisableMouseCapture,
         DisableBracketedPaste,
         SetCursorStyle::DefaultUserShape
     );
-    ratatui::restore();
-    result
+}
+
+/// Smooth over the keyboard protocol: with every key reported as a code,
+/// Caps Lock no longer capitalises letters, so do that here.
+fn normalize(event: Event) -> Event {
+    match event {
+        Event::Key(mut key)
+            if key.state.contains(KeyEventState::CAPS_LOCK)
+                && !key.modifiers.contains(KeyModifiers::SHIFT) =>
+        {
+            if let KeyCode::Char(ch) = key.code
+                && ch.is_lowercase()
+            {
+                key.code = KeyCode::Char(ch.to_uppercase().next().unwrap_or(ch));
+            }
+            Event::Key(key)
+        }
+        event => event,
+    }
 }
 
 struct App {
@@ -99,11 +137,15 @@ struct App {
     /// The cursor is currently a bar (in the editor) rather than the
     /// terminal's own shape.
     bar_cursor: bool,
+    /// The terminal reports Ctrl on its own (see `run`).
+    ctrl_reported: bool,
+    /// Ctrl is held down right now.
+    ctrl_held: bool,
     quit: bool,
 }
 
 impl App {
-    fn new(vault_path: PathBuf) -> Self {
+    fn new(vault_path: PathBuf, ctrl_reported: bool) -> Self {
         let screen = if vault_path.exists() {
             Screen::Unlock(unlock::Unlock::default())
         } else {
@@ -116,6 +158,8 @@ impl App {
             pending: None,
             quit_unsaved: false,
             bar_cursor: false,
+            ctrl_reported,
+            ctrl_held: false,
             quit: false,
         }
     }
@@ -163,13 +207,32 @@ impl App {
             Screen::Setup(screen) => screen.render(frame),
             Screen::Unlock(screen) => screen.render(frame),
             Screen::List(screen) => screen.render(frame),
-            Screen::Editor(screen) => screen.render(frame),
+            Screen::Editor(screen) => {
+                // Hints and the saved state stay hidden unless Ctrl is held,
+                // where the terminal can tell us.
+                screen.show_chrome = !self.ctrl_reported || self.ctrl_held;
+                screen.render(frame)
+            }
         }
     }
 
     fn handle(&mut self, event: Event) -> Action {
+        let event = normalize(event);
+        if let Event::Mouse(mouse) = &event {
+            self.ctrl_held = mouse.modifiers.contains(KeyModifiers::CONTROL);
+        }
         if let Event::Key(key) = &event {
-            if key.kind != KeyEventKind::Press {
+            if let KeyCode::Modifier(ModifierKeyCode::LeftControl | ModifierKeyCode::RightControl) =
+                key.code
+            {
+                self.ctrl_held = key.kind != KeyEventKind::Release;
+                return Action::None;
+            }
+            // Every key says which modifiers are down, so a missed release
+            // (e.g. while another window had focus) puts itself right.
+            self.ctrl_held = key.modifiers.contains(KeyModifiers::CONTROL);
+            // Held-down keys repeat; other modifiers on their own do nothing.
+            if key.kind == KeyEventKind::Release || matches!(key.code, KeyCode::Modifier(_)) {
                 return Action::None;
             }
             let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
@@ -355,5 +418,38 @@ impl App {
         let last_save = vault.latest_save(id)?;
         self.screen = Screen::Editor(Box::new(editor::Editor::new(post, last_save)));
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ratatui::crossterm::event::KeyEvent;
+
+    use super::*;
+
+    fn key(code: KeyCode, modifiers: KeyModifiers, kind: KeyEventKind) -> Event {
+        Event::Key(KeyEvent::new_with_kind(code, modifiers, kind))
+    }
+
+    #[test]
+    fn ctrl_is_tracked_on_its_own() {
+        let mut app = App::new(PathBuf::from("/nonexistent/writui.db"), true);
+        let ctrl = KeyCode::Modifier(ModifierKeyCode::LeftControl);
+        app.handle(key(ctrl, KeyModifiers::CONTROL, KeyEventKind::Press));
+        assert!(app.ctrl_held);
+        app.handle(key(ctrl, KeyModifiers::NONE, KeyEventKind::Release));
+        assert!(!app.ctrl_held);
+        // A missed release puts itself right on the next key.
+        app.handle(key(ctrl, KeyModifiers::CONTROL, KeyEventKind::Press));
+        app.handle(key(KeyCode::Char('a'), KeyModifiers::NONE, KeyEventKind::Press));
+        assert!(!app.ctrl_held);
+    }
+
+    #[test]
+    fn caps_lock_capitalises() {
+        let mut event = KeyEvent::new_with_kind(KeyCode::Char('a'), KeyModifiers::NONE, KeyEventKind::Press);
+        event.state = KeyEventState::CAPS_LOCK;
+        let Event::Key(key) = normalize(Event::Key(event)) else { panic!() };
+        assert_eq!(key.code, KeyCode::Char('A'));
     }
 }

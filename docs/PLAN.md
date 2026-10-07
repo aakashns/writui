@@ -12,10 +12,11 @@ file is the source of truth for what's next.
 
 ## Next up
 
-M0 shipped in `0.3.0`, M1 in `0.4.0`, M5 (selection and clipboard) and the
-upgrade-migrates-the-vault change are in the `0.5.0` PR. Next:
+M5 (selection and clipboard) and `writui upgrade` migrating right away
+shipped in `0.5.0`. Zen editor (hints and saved state only while Ctrl is
+held) is in the `0.6.0` PR. Next:
 
-1. **M2 — live markdown formatting**, then M3 and on in order.
+1. M2 (live markdown formatting) and on in order.
 
 ## M0 — Writing core
 
@@ -35,6 +36,7 @@ The smallest thing that can replace another writing app.
 - [x] Undo / redo
 - [x] Draft autosave (debounced + on quit)
 - [x] Hint bar with the shortcuts for the current screen
+- [x] Zen editor: hints and saved state only while Ctrl is held
 - [x] First ship: GitHub release `v0.1.0`
 
 ## M1 — Saves and history
