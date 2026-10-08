@@ -14,7 +14,7 @@ docs/         SPEC.md (what we're building), PLAN.md (milestones, what's
               next), DECISIONS.md (technical choices and why)
 site/         the project site, writui.com (Zola)
 install.sh    the one-line installer for macOS and Linux
-.github/      CI, release and site workflows
+.github/      CI and release workflows
 ```
 
 `CLAUDE.md` describes the day-to-day workflow in detail: how PRs are put
@@ -77,12 +77,15 @@ GitHub release. PRs that keep the version (docs only) release nothing.
 ## The site
 
 [writui.com](https://writui.com) is built from `site/` with
-[Zola](https://www.getzola.org) (`brew install zola`) and published to
-GitHub Pages by `.github/workflows/site.yml` whenever `site/` changes on
-`main`. To preview it:
+[Zola](https://www.getzola.org) (`brew install zola`) and served by
+Cloudflare Workers. Cloudflare's Git integration builds it with
+`site/build.sh` and deploys it with `npx wrangler deploy` (configured in
+`site/wrangler.jsonc`) on every push to `main`; pull requests get a preview
+link. To preview it locally:
 
 ```sh
 zola --root site serve      # then open http://127.0.0.1:1111
+site/build.sh               # or build it into site/public, as Cloudflare does
 ```
 
 - **Blog posts** are written in writui and exported as markdown

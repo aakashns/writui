@@ -440,3 +440,18 @@ the site workflow also runs when `install.sh` changes. The script always
 fetches the latest release, so the copy on `main` and the one attached to
 each release behave the same, and the release URL keeps working.
 
+## The project site moves to Cloudflare Workers
+
+Replaces the GitHub Pages publishing above (creator's call: Pages was slow
+to get writui.com a certificate). writui.com's DNS is on Cloudflare, and
+the site is a Worker with static assets only, no code. Everything for it
+lives in `site/`: `wrangler.jsonc` (the Worker's name, `public/` as the
+assets, Zola's `404.html` for missing pages, and writui.com as its custom
+domain) and `build.sh`. Cloudflare's Git integration runs `build.sh` then
+`npx wrangler deploy`, with `site` as the root directory, on every push to
+`main`, and gives other branches preview links; there's no site workflow
+in GitHub Actions any more. Cloudflare's Workers build image has no Zola,
+so `build.sh` downloads the latest release (creator's call: latest, not
+pinned); a Zola release with breaking changes fails the build and leaves
+the last deploy live. `install.sh` at the repo root is still served from
+the symlink in `site/static/`.

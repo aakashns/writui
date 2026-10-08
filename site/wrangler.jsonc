@@ -1,0 +1,12 @@
+// writui.com on Cloudflare Workers: serves the built site (public/, made by
+// build.sh) as static files. Cloudflare builds and deploys it on every push
+// to main; see CONTRIBUTING.md.
+{
+  "name": "writui",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./public",
+    "not_found_handling": "404-page"
+  },
+  "routes": [{ "pattern": "writui.com", "custom_domain": true }]
+}
