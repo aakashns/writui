@@ -467,3 +467,12 @@ Tab completion in path fields works like a shell's: complete as far as the
 matches agree and list them, then go through them. Matching ignores case
 only when nothing matches exactly. Enter keeps the picked match (instead
 of exporting), so a folder can be completed into with another Tab.
+
+## The title line, the title field, and `site/post.sh`
+
+Exports with front matter can keep the `# Title` line too (a second
+checkbox, off at first, remembered with the front matter one; migration 6
+adds it, rather than changing migration 5, which dev vaults may have run).
+The front matter's `title` is always the post's title, even if edited by
+hand in the dialog (creator's call), so the two can't drift apart.
+`site/post.sh` is gone: exports now carry the front matter Zola needs.

@@ -29,10 +29,10 @@ pub fn suggest(title: &str, body: &str, today: Date) -> String {
 /// last time (`same_post`), or another post was, most recently.
 ///
 /// The fields of the last export are kept, in their order, with the ones
-/// writui fills in brought up to date: `updated` is today, and the title,
-/// description and slug follow the post again unless they were changed by
-/// hand. For the same post, `date` stays; for another, it's today, and
-/// the title, description and slug are this post's. Fields writui fills in
+/// writui fills in brought up to date: `title` is the post's, `updated` is
+/// today, and the description and slug follow the post again unless they
+/// were changed by hand. For the same post, `date` stays; for another,
+/// it's today, and the description and slug are this post's. Fields writui fills in
 /// that weren't suggested last time (e.g. the file was imported without
 /// them) are added after the others it fills in; ones taken out by hand
 /// stay out.
@@ -53,9 +53,9 @@ pub fn front_matter(suggested: &str, last: Option<&ExportSettings>, same_post: b
             after_suggested = out.len() + 1;
         }
         let keep = match key.as_deref() {
-            Some("updated") => false,
+            Some("title" | "updated") => false,
             Some("date") => same_post,
-            Some(key @ ("title" | "description" | "slug")) => {
+            Some(key @ ("description" | "slug")) => {
                 same_post && before.get(key).map(|text| value(text)) != Some(value(&text))
             }
             _ => true,
@@ -331,6 +331,7 @@ mod tests {
             front_matter: front_matter.into(),
             suggested: suggested.into(),
             with_front_matter: true,
+            keep_title: false,
         }
     }
 
@@ -351,11 +352,12 @@ mod tests {
         // Quoted differently is still unchanged.
         let typed = "title: Old\nslug: 'old'";
         assert_eq!(front_matter(now, Some(&settings(typed, then)), true), "title: \"New\"\nslug: new");
-        // Changed by hand, reordered or removed: kept so.
+        // Changed by hand, reordered or removed: kept so, except the
+        // title, which is always the post's.
         let typed = "slug: mine\ntitle: \"Mine\"\ndate: 2026-01-01\nupdated: 2026-01-01";
         assert_eq!(
             front_matter(now, Some(&settings(typed, then)), true),
-            "slug: mine\ntitle: \"Mine\"\ndate: 2026-01-01\nupdated: 2026-10-08"
+            "slug: mine\ntitle: \"New\"\ndate: 2026-01-01\nupdated: 2026-10-08"
         );
         // From another post: its own fields are this post's, the rest stays.
         let typed = "title: \"Mine\"\ndate: 2026-01-01\nauthor: Me\ntags:\n- a\n- b";

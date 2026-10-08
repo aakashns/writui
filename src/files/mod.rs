@@ -145,11 +145,12 @@ pub fn common_prefix(items: &[String]) -> String {
 
 /// The file's contents: the post's markdown, ending with a newline as text
 /// files do. With front matter, that goes first, between `---` lines, and
-/// takes the place of the `# Title` line.
-pub fn contents(body: &str, front_matter: Option<&str>) -> String {
+/// takes the place of the `# Title` line unless `keep_title`.
+pub fn contents(body: &str, front_matter: Option<&str>, keep_title: bool) -> String {
     let mut text = match front_matter.map(str::trim).filter(|text| !text.is_empty()) {
         Some(front_matter) => {
-            let rest = body.lines().skip(1).skip_while(|line| line.trim().is_empty()).collect::<Vec<_>>().join("\n");
+            let skip = usize::from(!keep_title);
+            let rest = body.lines().skip(skip).skip_while(|line| line.trim().is_empty()).collect::<Vec<_>>().join("\n");
             if rest.is_empty() {
                 format!("---\n{front_matter}\n---\n")
             } else {
@@ -182,6 +183,8 @@ pub struct Imported {
     pub had_front_matter: bool,
     /// Its front matter was TOML, turned into YAML.
     pub converted: bool,
+    /// It had front matter, and the `# Title` line too.
+    pub had_title_line: bool,
 }
 
 /// The file a typed import path means (see `absolute`).
@@ -225,8 +228,9 @@ pub fn read(path: &Path) -> Result<Imported, String> {
     let heading = rest.lines().next().and_then(|line| line.strip_prefix(TITLE_PREFIX)).map(str::trim);
     let from_front_matter = front_matter.as_deref().and_then(|f| front_matter::get(f, "title")).filter(|t| !t.is_empty());
     let title = from_front_matter.clone().or(heading.map(str::to_string)).unwrap_or_else(|| title_from_file_name(path));
+    let title_line = heading.is_some_and(|heading| from_front_matter.is_none() || heading == title);
     let rest = match heading {
-        Some(heading) if from_front_matter.is_none() || heading == title => {
+        Some(_) if title_line => {
             rest.split_once('\n').map_or("", |(_, rest)| rest).trim_start_matches(['\n', ' ', '\t'])
         }
         _ => rest,
@@ -239,6 +243,7 @@ pub fn read(path: &Path) -> Result<Imported, String> {
         body,
         had_front_matter: front_matter.is_some(),
         converted: toml && front_matter.as_deref().is_some_and(|f| !f.is_empty()),
+        had_title_line: title_line && front_matter.is_some(),
         front_matter: front_matter.unwrap_or_default(),
     })
 }
@@ -293,21 +298,29 @@ mod tests {
 
     #[test]
     fn files_end_with_a_newline() {
-        assert_eq!(contents("# Title\nText", None), "# Title\nText\n");
-        assert_eq!(contents("# Title\nText\n", None), "# Title\nText\n");
+        assert_eq!(contents("# Title\nText", None, false), "# Title\nText\n");
+        assert_eq!(contents("# Title\nText\n", None, false), "# Title\nText\n");
     }
 
     #[test]
     fn front_matter_takes_the_place_of_the_title() {
         let fm = "title: \"Title\"";
-        assert_eq!(contents("# Title\n\n\nText\n\nMore", Some(fm)), "---\ntitle: \"Title\"\n---\n\nText\n\nMore\n");
-        assert_eq!(contents("# Title", Some(fm)), "---\ntitle: \"Title\"\n---\n");
+        assert_eq!(contents("# Title\n\n\nText\n\nMore", Some(fm), false), "---\ntitle: \"Title\"\n---\n\nText\n\nMore\n");
+        assert_eq!(contents("# Title", Some(fm), false), "---\ntitle: \"Title\"\n---\n");
+        // Or kept, after it.
+        assert_eq!(contents("# Title\n\nText", Some(fm), true), "---\ntitle: \"Title\"\n---\n\n# Title\n\nText\n");
         // Empty front matter is none at all.
-        assert_eq!(contents("# Title\nText", Some(" \n")), "# Title\nText\n");
+        assert_eq!(contents("# Title\nText", Some(" \n"), false), "# Title\nText\n");
     }
 
     fn settings(path: PathBuf) -> ExportSettings {
-        ExportSettings { path, front_matter: String::new(), suggested: String::new(), with_front_matter: true }
+        ExportSettings {
+            path,
+            front_matter: String::new(),
+            suggested: String::new(),
+            with_front_matter: true,
+            keep_title: false,
+        }
     }
 
     #[test]
@@ -351,10 +364,11 @@ mod tests {
         let file = import("a.md", "---\ntitle: \"Hi\"\ndate: 2026-01-01\n---\n\n# Hi\n\nText\n");
         assert_eq!((file.title.as_str(), file.body.as_str()), ("Hi", "# Hi\n\nText"));
         assert_eq!(file.front_matter, "title: \"Hi\"\ndate: 2026-01-01");
-        assert!(file.had_front_matter && !file.converted);
+        assert!(file.had_front_matter && file.had_title_line && !file.converted);
         // A different heading stays in the text.
         let file = import("a.md", "---\ntitle: Hi\n---\n# Part one\nText");
         assert_eq!(file.body, "# Hi\n\n# Part one\nText");
+        assert!(!file.had_title_line);
         let file = import("a.md", "\u{feff}# Plain\r\n\r\nText\r\n");
         assert_eq!((file.body.as_str(), file.had_front_matter), ("# Plain\n\nText", false));
         let file = import("morning-pages.md", "Just text");

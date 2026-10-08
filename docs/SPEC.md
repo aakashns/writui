@@ -367,18 +367,20 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
     again goes through them (Shift+Tab back), Enter keeps one, and they can
     be clicked. Ctrl+W deletes back a folder.
   - **The front matter**, YAML between `---` lines, which takes the place of
-    the `# Title` line (site generators show the title themselves). It can
+    the `# Title` line (site generators show the title themselves), unless
+    "Keep the # title line" is checked (it isn't at first): then the line
+    comes after the front matter. It can
     be edited freely (add `tags`, `author`, anything) and turned off. writui
     suggests `title`, `date` and `updated` (today), `description` (the
     first 160 characters of the text, without markdown, cut at a word) and
     `slug` (the file name's logic).
   - **Remembered per post**, in the vault: the file, the front matter, and
-    whether it was on. Exporting again keeps the front matter as it was
-    left, except that `updated` is today, and `title`, `description` and
-    `slug` follow the post unless they were changed by hand. `date` stays.
-    Fields taken out stay out. A post exported for the first time gets the
-    extra fields (e.g. `author`, `tags`) of the latest export, and whether
-    front matter was on (creator's call).
+    both checkboxes. Exporting again keeps the front matter as it was left,
+    except that `title` is always the post's title, `updated` is today, and
+    `description` and `slug` follow the post unless they were changed by
+    hand. `date` stays. Fields taken out stay out. A post exported for the
+    first time gets the extra fields (e.g. `author`, `tags`) and the
+    checkboxes of the latest export (creator's call).
   - It asks before replacing a file (Cancel is the default, and goes back
     to the dialog). The file ends with a newline.
 - **Import markdown** (on the list, below "New post", or Ctrl+O): makes a
@@ -390,7 +392,8 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
     kept twice.
   - The front matter is kept, and the file is remembered as the post's own,
     so the next export goes back to it with that front matter (adding the
-    suggested fields the file didn't have). TOML front matter (`+++`, as
+    suggested fields the file didn't have). If the file had front matter
+    and a `# Title` line too, "Keep the # title line" starts checked. TOML front matter (`+++`, as
     Zola also takes) is turned into YAML (creator's call); what can't be
     turned into YAML is kept as comments.
   - Importing a file that's already a post's (imported from or exported to
@@ -460,8 +463,8 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   releases page.
 - Posts live in the encrypted vault, but the blog lives in the public repo —
   so blog posts get into `site/content/blog/` via "export as markdown",
-  with front matter (Zola reads YAML front matter). Plain exports can go
-  through `site/post.sh`, which adds the title and date Zola needs.
+  with front matter (Zola reads YAML front matter), and are edited by
+  importing them and exporting them back.
 - A "writui site" preview preset matching the site's CSS, so blog posts can be
   previewed exactly as they'll look.
 

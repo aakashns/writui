@@ -42,6 +42,8 @@ const MIGRATIONS: &[&str] = &[
         exported_at       INTEGER NOT NULL
     );
     CREATE INDEX exports_exported_at ON exports (exported_at);",
+    // 6: whether an export with front matter kept the `# Title` line too.
+    "ALTER TABLE exports ADD COLUMN keep_title INTEGER NOT NULL DEFAULT 0;",
 ];
 
 /// Bring the vault's schema up to date. If the vault already holds data, it's

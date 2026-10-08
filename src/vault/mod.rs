@@ -99,6 +99,8 @@ pub struct ExportSettings {
     /// were changed by hand.
     pub suggested: String,
     pub with_front_matter: bool,
+    /// With front matter, the `# Title` line was kept too.
+    pub keep_title: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -333,19 +335,22 @@ impl Vault {
     }
 
     fn exports_where(&self, filter: &str, param: i64) -> Result<Option<ExportSettings>> {
-        let row: Option<(String, String, String, bool)> = self
+        let row: Option<(String, String, String, bool, bool)> = self
             .conn
             .query_row(
-                &format!("SELECT path, front_matter, suggested, with_front_matter FROM exports WHERE {filter}"),
+                &format!(
+                    "SELECT path, front_matter, suggested, with_front_matter, keep_title FROM exports WHERE {filter}"
+                ),
                 [param],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
             )
             .optional()?;
-        Ok(row.map(|(path, front_matter, suggested, with_front_matter)| ExportSettings {
+        Ok(row.map(|(path, front_matter, suggested, with_front_matter, keep_title)| ExportSettings {
             path: PathBuf::from(path),
             front_matter,
             suggested,
             with_front_matter,
+            keep_title,
         }))
     }
 
@@ -395,16 +400,17 @@ impl Vault {
     /// Remember how a post was just exported.
     pub fn record_export(&self, post_id: i64, settings: &ExportSettings) -> Result<()> {
         self.conn.execute(
-            "INSERT INTO exports (post_id, path, front_matter, suggested, with_front_matter, exported_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+            "INSERT INTO exports (post_id, path, front_matter, suggested, with_front_matter, keep_title, exported_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT (post_id) DO UPDATE SET path = ?2, front_matter = ?3, suggested = ?4,
-                 with_front_matter = ?5, exported_at = ?6",
+                 with_front_matter = ?5, keep_title = ?6, exported_at = ?7",
             params![
                 post_id,
                 settings.path.to_string_lossy(),
                 settings.front_matter,
                 settings.suggested,
                 settings.with_front_matter,
+                settings.keep_title,
                 now_millis()
             ],
         )?;
@@ -694,6 +700,7 @@ mod tests {
             front_matter: format!("title: \"{path}\""),
             suggested: "title: \"Hi\"".into(),
             with_front_matter,
+            keep_title: !with_front_matter,
         };
         vault.record_export(first, &settings("/a/first.md", true)).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(2));
@@ -723,6 +730,7 @@ mod tests {
             front_matter: "date: 2026-01-01".into(),
             suggested: String::new(),
             with_front_matter: true,
+            keep_title: false,
         };
         let id = vault.import_post("# Hi\n\nOne", &settings, None, "Before importing hi.md").unwrap();
         assert_eq!(vault.post(id).unwrap().body, "# Hi\n\nOne");

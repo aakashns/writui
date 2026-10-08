@@ -758,6 +758,7 @@ impl Editor {
         };
         let text = front_matter::front_matter(&suggested, last, same_post);
         let on = last.is_none_or(|last| last.with_front_matter);
+        let keep_title = last.is_some_and(|last| last.keep_title);
         let path = files::default_path(&title, self.exports.this_post.as_ref(), self.exports.latest.as_ref());
         let form = FileDialog::new(
             "Export as markdown",
@@ -766,7 +767,7 @@ impl Editor {
             "Export",
             &path,
         )
-        .with_front_matter(&text, on);
+        .with_front_matter(&text, on, keep_title);
         self.exporting = Some(Exporting { form, suggested });
     }
 
@@ -807,17 +808,18 @@ impl Editor {
     fn export(&mut self, path: &std::path::Path) -> Action {
         let body = self.buffer.text();
         let Some(exporting) = &mut self.exporting else { return Action::None };
-        let (on, front_matter) = exporting.form.front_matter().unwrap_or_default();
-        let contents = files::contents(&body, on.then_some(front_matter.as_str()));
+        let Some(choice) = exporting.form.front_matter() else { return Action::None };
+        let contents = files::contents(&body, choice.on.then_some(choice.text.as_str()), choice.keep_title);
         if let Err(error) = files::write(path, &contents) {
             exporting.form.set_error(error);
             return Action::None;
         }
         let settings = ExportSettings {
             path: path.to_path_buf(),
-            front_matter,
+            front_matter: choice.text,
             suggested: std::mem::take(&mut exporting.suggested),
-            with_front_matter: on,
+            with_front_matter: choice.on,
+            keep_title: choice.keep_title,
         };
         self.exporting = None;
         self.notice = Some(format!("Exported to {}", files::display(path)));
@@ -1708,7 +1710,7 @@ mod tests {
         // from the post.
         let screen = h.all();
         assert!(screen.contains("Export as markdown"), "{screen}");
-        assert!(screen.contains("[x] Front matter"));
+        assert!(screen.contains("[x] Front matter") && screen.contains("[ ] Keep the # title line"));
         assert!(screen.contains("title: \"My Post\"") && screen.contains("slug: my-post"));
         assert!(screen.contains("description: \"Hello there\""));
         assert!(screen.contains("Tab complete"));
@@ -1720,6 +1722,7 @@ mod tests {
         h.key(KeyCode::Tab);
         assert_eq!(h.form().path(), format!("{folder}/"));
         // Add a field at the end of the front matter, and export.
+        h.key(KeyCode::Down);
         h.key(KeyCode::Down);
         h.key(KeyCode::Down);
         for _ in 0..4 {
@@ -1749,6 +1752,18 @@ mod tests {
         assert!(!h.all().contains("Replace file?"));
         assert!(h.editor.exporting.is_some());
         assert_eq!(std::fs::read_to_string(&file).unwrap(), expected);
+        // Keeping the title line: after the front matter.
+        h.key(KeyCode::Down);
+        h.key(KeyCode::Down);
+        h.key(KeyCode::Char(' '));
+        assert!(h.all().contains("[x] Keep the # title line"));
+        h.ctrl('s');
+        h.key(KeyCode::Char('y'));
+        let kept = std::fs::read_to_string(&file).unwrap();
+        assert!(kept.ends_with("---\n\n# My Post\n\nHello **there** again\n"), "{kept}");
+        // Both are remembered.
+        h.ctrl('S');
+        assert!(h.all().contains("[x] Front matter") && h.all().contains("[x] Keep the # title line"));
         // Without front matter, it's the post as it is.
         h.key(KeyCode::Down);
         h.key(KeyCode::Char(' '));

@@ -434,6 +434,7 @@ impl App {
                 &file.front_matter,
             ),
             with_front_matter: file.had_front_matter,
+            keep_title: file.had_title_line,
         };
         let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let version_name: String = format!("Before importing {name}").chars().take(80).collect();

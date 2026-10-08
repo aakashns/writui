@@ -1,6 +1,6 @@
 //! The dialog for exporting a post to a file, or importing one: a path
 //! (Tab completes it), and for exports, the front matter to put at the top
-//! (which can be turned off). ↑/↓ move between them, Enter in the path or
+//! (which can be turned off), and whether the `# Title` line stays too. ↑/↓ move between them, Enter in the path or
 //! Ctrl+S anywhere goes ahead, Esc cancels, and everything can be clicked.
 
 use ratatui::Frame;
@@ -24,6 +24,8 @@ const MAX_FRONT_MATTER_ROWS: u16 = 12;
 enum Focus {
     Path,
     Toggle,
+    /// Keep the `# Title` line too.
+    TitleToggle,
     FrontMatter,
     Button(usize),
 }
@@ -48,7 +50,15 @@ pub enum Outcome {
 
 struct FrontMatter {
     on: bool,
+    keep_title: bool,
     text: TextArea,
+}
+
+/// What the export dialog says about front matter.
+pub struct FrontMatterChoice {
+    pub on: bool,
+    pub keep_title: bool,
+    pub text: String,
 }
 
 pub struct FileDialog {
@@ -64,6 +74,7 @@ pub struct FileDialog {
     error: Option<String>,
     path_area: Rect,
     toggle_area: Rect,
+    title_toggle_area: Rect,
     buttons: Vec<Rect>,
 }
 
@@ -80,13 +91,15 @@ impl FileDialog {
             error: None,
             path_area: Rect::default(),
             toggle_area: Rect::default(),
+            title_toggle_area: Rect::default(),
             buttons: Vec::new(),
         }
     }
 
-    /// Add the front matter, `on` or off at first.
-    pub fn with_front_matter(mut self, text: &str, on: bool) -> Self {
-        self.front_matter = Some(FrontMatter { on, text: TextArea::new(text) });
+    /// Add the front matter, `on` or off at first, and whether the
+    /// `# Title` line stays too.
+    pub fn with_front_matter(mut self, text: &str, on: bool, keep_title: bool) -> Self {
+        self.front_matter = Some(FrontMatter { on, keep_title, text: TextArea::new(text) });
         self
     }
 
@@ -94,9 +107,10 @@ impl FileDialog {
         self.path.value()
     }
 
-    /// Whether the front matter is on, and what it says.
-    pub fn front_matter(&self) -> Option<(bool, String)> {
-        self.front_matter.as_ref().map(|f| (f.on, f.text.text()))
+    /// Whether the front matter is on, what it says, and whether the
+    /// `# Title` line stays too.
+    pub fn front_matter(&self) -> Option<FrontMatterChoice> {
+        self.front_matter.as_ref().map(|f| FrontMatterChoice { on: f.on, keep_title: f.keep_title, text: f.text.text() })
     }
 
     /// Say why going ahead didn't work, and go back to the path.
@@ -111,7 +125,7 @@ impl FileDialog {
         if let Some(front_matter) = &self.front_matter {
             order.push(Focus::Toggle);
             if front_matter.on {
-                order.push(Focus::FrontMatter);
+                order.extend([Focus::TitleToggle, Focus::FrontMatter]);
             }
         }
         order.extend([Focus::Button(0), Focus::Button(1)]);
@@ -139,10 +153,15 @@ impl FileDialog {
         self.focus = focus;
     }
 
-    fn toggle(&mut self) {
+    /// Turn the front matter, or keeping the title line, on or off.
+    fn toggle(&mut self, focus: Focus) {
         if let Some(front_matter) = &mut self.front_matter {
-            front_matter.on = !front_matter.on;
-            self.focus = Focus::Toggle;
+            match focus {
+                Focus::TitleToggle => front_matter.keep_title = !front_matter.keep_title,
+                _ => front_matter.on = !front_matter.on,
+            }
+            self.path.done();
+            self.focus = focus;
         }
     }
 
@@ -164,7 +183,9 @@ impl FileDialog {
                 hints.push(cancel);
                 hints
             }
-            Focus::Toggle => vec![hint("Space", "on/off", FormCmd::Toggle), hint("Ctrl+S", submit, FormCmd::Submit), cancel],
+            Focus::Toggle | Focus::TitleToggle => {
+                vec![hint("Space", "on/off", FormCmd::Toggle), hint("Ctrl+S", submit, FormCmd::Submit), cancel]
+            }
             Focus::FrontMatter => vec![hint("Ctrl+S", submit, FormCmd::Submit), cancel],
             Focus::Button(i) => {
                 let label = if i == 0 { submit } else { "cancel".into() };
@@ -184,7 +205,10 @@ impl FileDialog {
                 self.path.key(KeyEvent::new(KeyCode::Tab, KeyModifiers::NONE));
             }
             FormCmd::Keep => self.path.done(),
-            FormCmd::Toggle => self.toggle(),
+            FormCmd::Toggle => {
+                let focus = if self.focus == Focus::TitleToggle { Focus::TitleToggle } else { Focus::Toggle };
+                self.toggle(focus);
+            }
             FormCmd::Next => self.step(false),
         }
         Outcome::None
@@ -234,7 +258,9 @@ impl FileDialog {
         if self.path.click(column, row) || self.path_area.contains(pos) {
             self.focus = Focus::Path;
         } else if self.toggle_area.contains(pos) {
-            self.toggle();
+            self.toggle(Focus::Toggle);
+        } else if self.title_toggle_area.contains(pos) {
+            self.toggle(Focus::TitleToggle);
         } else if let Some(front_matter) = &mut self.front_matter
             && front_matter.on
             && front_matter.text.click(column, row)
@@ -268,8 +294,8 @@ impl FileDialog {
                     }
                 }
             },
-            Focus::Toggle => match key.code {
-                KeyCode::Char(' ') | KeyCode::Enter => self.toggle(),
+            focus @ (Focus::Toggle | Focus::TitleToggle) => match key.code {
+                KeyCode::Char(' ') | KeyCode::Enter => self.toggle(focus),
                 KeyCode::Up | KeyCode::BackTab => self.step(true),
                 KeyCode::Down | KeyCode::Tab => self.step(false),
                 _ => {}
@@ -305,16 +331,17 @@ impl FileDialog {
     pub fn render(&mut self, frame: &mut Frame) {
         let screen = frame.area();
         // Borders, blank, intro, blank, path, its info, blank; the front
-        // matter's switch, `---`, its lines, `---`, blank; the buttons.
+        // matter's switch, the title line's, `---`, its lines, `---`, blank;
+        // the buttons.
         let fixed: u16 = 2 + 1 + 1 + 1 + 2 + 1 + 1;
         let mut text_rows = 0;
         let mut extra = 0;
         if let Some(front_matter) = &self.front_matter {
             extra = 2;
             if front_matter.on {
-                let room = screen.height.saturating_sub(fixed + extra + 2).max(1);
+                let room = screen.height.saturating_sub(fixed + extra + 3).max(1);
                 text_rows = (front_matter.text.line_count() as u16 + 1).clamp(3, MAX_FRONT_MATTER_ROWS).min(room);
-                extra += 2 + text_rows;
+                extra += 3 + text_rows;
             }
         }
         let area = centered(screen, WIDTH, fixed + extra);
@@ -330,17 +357,23 @@ impl FileDialog {
 
         let mut y = 6;
         self.toggle_area = Rect::default();
+        self.title_toggle_area = Rect::default();
         if let Some(front_matter) = &mut self.front_matter {
-            let mark = Span::styled(
-                if front_matter.on { "[x]" } else { "[ ]" },
-                if self.focus == Focus::Toggle { Style::new().reversed() } else { Style::new() },
-            );
-            let note = if front_matter.on { "  goes first, in place of the # title line" } else { "" };
-            let line = Line::from(vec![mark, Span::raw(" Front matter"), Span::raw(note).dim()]);
+            let checkbox = |on: bool, focus: Focus, label: &'static str, note: &'static str| {
+                let style = if self.focus == focus { Style::new().reversed() } else { Style::new() };
+                let mark = Span::styled(if on { "[x]" } else { "[ ]" }, style);
+                Line::from(vec![mark, Span::raw(label), Span::raw(note).dim()])
+            };
+            let line = checkbox(front_matter.on, Focus::Toggle, " Front matter", "");
             self.toggle_area = row(y);
             frame.render_widget(Paragraph::new(line), row(y));
             y += 1;
             if front_matter.on {
+                let note = if front_matter.keep_title { "  after the front matter" } else { "  the front matter has it" };
+                let line = checkbox(front_matter.keep_title, Focus::TitleToggle, " Keep the # title line", note);
+                self.title_toggle_area = row(y);
+                frame.render_widget(Paragraph::new(line), row(y));
+                y += 1;
                 frame.render_widget(Paragraph::new("---".dim()), row(y));
                 let text_area = Rect { y: inner.y + y + 1, height: text_rows, ..inner }.intersection(inner);
                 let focused = self.focus == Focus::FrontMatter;
