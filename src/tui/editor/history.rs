@@ -18,6 +18,7 @@ use super::super::dialog::{Button, Dialog};
 use super::super::hints::{HintBar, hint};
 use super::super::list::{display_title, save_time};
 use super::super::widgets::{COLUMN_WIDTH, column, truncate};
+use super::markdown::Markup;
 use super::row_line;
 use super::wrap::{Row, layout};
 use crate::vault::Save;
@@ -61,6 +62,7 @@ pub struct History {
 struct Reading {
     save: Save,
     rope: Rope,
+    markup: Markup,
     rows: Vec<Row>,
     width: usize,
     top: usize,
@@ -85,7 +87,8 @@ impl History {
     /// Open a save (with its text) to read.
     pub fn read(&mut self, save: Save) {
         let rope = Rope::from_str(&save.body);
-        self.reading = Some(Reading { save, rope, rows: Vec::new(), width: 0, top: 0, height: 0 });
+        let markup = Markup::new(&rope);
+        self.reading = Some(Reading { save, rope, markup, rows: Vec::new(), width: 0, top: 0, height: 0 });
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
@@ -265,7 +268,7 @@ impl Reading {
         let left = body.x + body.width.saturating_sub(width as u16) / 2;
         let area = Rect::new(left, body.y, (width as u16 + 1).min(body.right() - left), body.height);
         let lines: Vec<Line> =
-            self.rows.iter().skip(self.top).take(self.height).map(|row| row_line(&self.rope, row, None)).collect();
+            self.rows.iter().skip(self.top).take(self.height).map(|row| row_line(&self.rope, &self.markup, row, None)).collect();
         frame.render_widget(Paragraph::new(lines), area);
     }
 

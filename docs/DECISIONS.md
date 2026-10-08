@@ -274,3 +274,43 @@ Risk: in this mode, characters typed with Option on macOS (em dash, é)
 arrive as Option+key; crossterm can't read the "associated text" that would
 carry the composed character. To check per terminal; if it's lost, the fix
 is to parse that text ourselves or drop "report all keys".
+
+## Live formatting: a CommonMark parser, text styles, faded symbols
+
+The editor parses the whole post with `pulldown-cmark` (CommonMark, plus
+GitHub's strikethrough, task lists and tables) each time the text changes,
+and styles the source from the parser's byte ranges. A real parser means
+text is formatted only when it will really render that way, which is the
+point ("so I know I'm getting the intended effect"); a half-typed `**bold`
+stays plain. Whatever the parser skips over between the pieces of text it
+reports is markdown syntax (`#`, `**`, `>`, bullets, a link's `](url)`), so
+it's faded, with no per-construct rules.
+
+Styles are text attributes only (bold, italic, underline, strikethrough,
+faint), never colours, except code in green: colour pulls the eye and breaks
+the flow of writing. Attributes look right in any colour scheme. Faint
+(SGR 2) works in Alacritty, Ghostty and iTerm2.
+
+Re-parsing everything is simple and fast enough: about 20 ms for a 210 KB
+post in a release build (a long book chapter), and well under a millisecond
+for a normal post. If very long posts ever feel slow, the fix is parsing
+only from the block before the edit.
+
+## Opening links: Ctrl+O and Ctrl+click, web and email only
+
+writui handles the mouse itself, so a plain click on a link must still place
+the cursor. Links open with Ctrl+O (shown in the hint bar only while the
+cursor is on a link, so it's clickable there too) or Ctrl+click. They open
+with the system's handler (`open`, `xdg-open`), which would also run files
+and apps, so only `http://`, `https://` and `mailto:` links open. OSC 8
+terminal hyperlinks (Cmd+click handled by the terminal) were passed over:
+ratatui draws cell by cell, and the escape codes would have to be smuggled
+through it. Web addresses written out in the text count as links too.
+
+## Hanging indents are layout only
+
+Wrapped rows of a list item or quote are indented to line up under its text.
+The indent is part of the soft-wrap layout (each row knows its indent), not
+spaces in the text, so the markdown saved is exactly what was typed. It's
+found from the line's own prefix (`- `, `1. `, `> `, `- [ ] `, after any
+indentation), not the parser, and never takes more than half the width.
