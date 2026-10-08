@@ -12,14 +12,14 @@ file is the source of truth for what's next.
 
 ## Next up
 
-`0.8.0` (versions instead of drafts, line ends on Ctrl/Cmd+arrows, the
-terminal title) is out. The `0.9.0` PR replaces the editor's hint bar with a
-command menu (Ctrl+K) and a post-wide bar with the word count and creation
-date, and adds copy / export as markdown. Next:
+`0.9.0` (the command menu, word count and start date in the bar, copy /
+export as markdown) is out. The `0.10.0` PR stops `writui upgrade` asking
+for the password; the vault is migrated on the next unlock instead. Next:
 
-1. The rest of M3: the project site in `site/` (Zola), deployed with GitHub
-   Pages, and the first blog / changelog post written in writui and
-   exported into `site/content/`.
+1. The rest of M3 and M4: the project site in `site/` (Zola), deployed with
+   GitHub Pages to **writui.com**, looking like the app (dark, Inter, one
+   narrow column), with the creator's first blog post, written in writui and
+   exported into `site/content/`, in the same PR.
 2. Then M6 (LLM chat sidebar) and on in order.
 
 ## M0 — Writing core
@@ -93,7 +93,8 @@ The repo went public early (during M0), so most of this is already done.
 - [x] Make the repo public
 - [x] One-line install script (`curl … | bash`)
 - [x] `writui upgrade` and `writui --version`
-- [x] `writui upgrade` asks for the password and migrates the vault right away
+- [x] ~~`writui upgrade` asks for the password and migrates the vault right away~~
+      (dropped in `0.10.0`: the next unlock migrates, without a second password)
 - [x] Migration backups deleted once the migrated vault passes integrity checks
 
 ## M6 — LLM chat sidebar

@@ -28,7 +28,8 @@ enum Command {
         #[arg(short, long)]
         yes: bool,
     },
-    /// Update the vault to this version's format (run by `upgrade`).
+    /// Does nothing. writui 0.5.0 to 0.9.0 run this on the new binary after
+    /// upgrading; the vault is now updated the next time it's unlocked.
     #[command(hide = true)]
     Migrate,
 }
@@ -40,7 +41,7 @@ fn main() -> Result<()> {
             let vault_path = config::vault_path(cli.db)?;
             tui::run(vault_path)
         }
-        Some(Command::Upgrade { yes }) => upgrade::run(yes, cli.db),
-        Some(Command::Migrate) => upgrade::migrate(cli.db),
+        Some(Command::Upgrade { yes }) => upgrade::run(yes),
+        Some(Command::Migrate) => Ok(()),
     }
 }
