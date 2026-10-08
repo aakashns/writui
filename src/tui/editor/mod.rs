@@ -465,6 +465,11 @@ impl Editor {
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         // Cmd, on macOS (elsewhere the key is the system's).
         let cmd = cfg!(target_os = "macos") && key.modifiers.contains(KeyModifiers::SUPER);
+        // Elsewhere the Super (Windows) key is the system's: keys with it do
+        // nothing here.
+        if key.modifiers.contains(KeyModifiers::SUPER) && !cmd {
+            return Action::None;
+        }
         let moving = match key.code {
             KeyCode::Left
             | KeyCode::Right
