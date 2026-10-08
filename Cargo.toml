@@ -1,6 +1,6 @@
 [package]
 name = "writui"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 description = "A terminal writing app. Markdown, encrypted, no nonsense."
 license = "MIT"
@@ -13,6 +13,7 @@ argon2 = "0.6.0"
 clap = { version = "4.6.7", features = ["derive"] }
 dirs = "7.0.0"
 jiff = "0.2.37"
+pulldown-cmark = { version = "0.13", default-features = false }
 rand = "0.10.3"
 ratatui = "0.30.2"
 ropey = { version = "1.6", default-features = false, features = ["simd"] }

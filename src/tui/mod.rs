@@ -211,6 +211,7 @@ impl App {
                 // Hints and the saved state stay hidden unless Ctrl is held,
                 // where the terminal can tell us.
                 screen.show_chrome = !self.ctrl_reported || self.ctrl_held;
+                screen.zen = self.ctrl_reported;
                 screen.render(frame)
             }
         }

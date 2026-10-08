@@ -5,6 +5,10 @@
 //! past the end of a row, so a row never starts with the space that ended
 //! the word before it.
 //!
+//! A list item or a quote wraps with a hanging indent: its later rows line
+//! up under its text, not under the bullet or the `>`. That's on screen
+//! only; the text itself has no extra spaces.
+//!
 //! Positions are char indices into the whole text, and the cursor only ever
 //! sits on grapheme boundaries (an emoji or an accented letter is one step).
 
@@ -27,6 +31,8 @@ pub struct Row {
     /// The last row of its line. The cursor can sit at `end` only on the
     /// last row; elsewhere `end` is where the next row starts.
     pub last: bool,
+    /// Blank cells before the row's text: a hanging indent.
+    pub indent: usize,
 }
 
 pub fn grapheme_width(g: &str) -> usize {
@@ -39,23 +45,60 @@ pub fn layout(rope: &Rope, width: usize) -> Vec<Row> {
     let mut line_start = 0;
     for (line, slice) in rope.lines().enumerate() {
         let text = slice.to_string();
-        let ranges = wrap_line(text.strip_suffix('\n').unwrap_or(&text), width);
+        let text = text.strip_suffix('\n').unwrap_or(&text);
+        let indent = hanging_indent(text, width);
+        let ranges = wrap_line(text, width, indent);
         let count = ranges.len();
         rows.extend(ranges.into_iter().enumerate().map(|(i, range)| Row {
             line,
             start: line_start + range.start,
             end: line_start + range.end,
             last: i + 1 == count,
+            indent: if i == 0 { 0 } else { indent },
         }));
         line_start += slice.len_chars();
     }
     rows
 }
 
-/// Split one line (without its newline) into rows. Returns char ranges
-/// within the line; an empty line is one empty row.
-pub fn wrap_line(line: &str, width: usize) -> Vec<Range<usize>> {
+/// How far a line's later rows are indented: up to the text of a list item
+/// (`- `, `1. `, `- [ ] `) or a quote (`> `), after any indentation. Never
+/// more than half the width.
+pub fn hanging_indent(line: &str, width: usize) -> usize {
+    let mut rest = line.trim_start_matches([' ', '\t']);
+    let mut marked = false;
+    while let Some(r) = rest.strip_prefix('>').or_else(|| list_marker(rest)) {
+        rest = r.trim_start_matches(' ');
+        marked = true;
+    }
+    if let Some(r) = ["[ ] ", "[x] ", "[X] "].iter().find_map(|b| rest.strip_prefix(b)) {
+        rest = r.trim_start_matches(' ');
+    }
+    if !marked || rest.is_empty() {
+        return 0;
+    }
+    let prefix = &line[..line.len() - rest.len()];
+    let indent: usize = prefix.graphemes(true).map(grapheme_width).sum();
+    if indent * 2 > width { 0 } else { indent }
+}
+
+/// The rest of `text` after a list item's bullet or number and its space.
+fn list_marker(text: &str) -> Option<&str> {
+    let digits = text.len() - text.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+    let rest = match digits {
+        0 => text.strip_prefix(['-', '*', '+'])?,
+        1..=9 => text[digits..].strip_prefix(['.', ')'])?,
+        _ => return None,
+    };
+    rest.strip_prefix(' ')
+}
+
+/// Split one line (without its newline) into rows, the later ones `indent`
+/// cells narrower. Returns char ranges within the line; an empty line is
+/// one empty row.
+pub fn wrap_line(line: &str, width: usize, indent: usize) -> Vec<Range<usize>> {
     let mut rows = Vec::new();
+    let mut width = width;
     let mut start = 0;
     let mut col = 0;
     let mut pos = 0;
@@ -64,8 +107,8 @@ pub fn wrap_line(line: &str, width: usize) -> Vec<Range<usize>> {
     let mut brk: Option<(usize, usize)> = None;
     for g in line.graphemes(true) {
         let w = grapheme_width(g);
-        let limit = if g == " " { width + 1 } else { width };
-        while col > 0 && col + w > limit {
+        let space = usize::from(g == " ");
+        while col > 0 && col + w > width + space {
             let at = match brk.take() {
                 Some((at, at_col)) => {
                     col -= at_col;
@@ -78,6 +121,9 @@ pub fn wrap_line(line: &str, width: usize) -> Vec<Range<usize>> {
             };
             rows.push(start..at);
             start = at;
+            if rows.len() == 1 {
+                width -= indent.min(width - 1);
+            }
         }
         col += w;
         pos += g.chars().count();
@@ -95,10 +141,11 @@ pub fn row_of(rows: &[Row], pos: usize) -> usize {
     rows.partition_point(|r| r.start <= pos).saturating_sub(1)
 }
 
-/// How many cells from the start of `row` the position `pos` is.
+/// How many cells from the start of `row` (its indent included) the
+/// position `pos` is.
 pub fn x_of(rope: &Rope, row: Row, pos: usize) -> usize {
     let text = rope.slice(row.start..pos.clamp(row.start, row.end)).to_string();
-    text.graphemes(true).map(grapheme_width).sum()
+    row.indent + text.graphemes(true).map(grapheme_width).sum::<usize>()
 }
 
 /// The position in `row` nearest to `x` cells from its start (e.g. for a
@@ -106,6 +153,7 @@ pub fn x_of(rope: &Rope, row: Row, pos: usize) -> usize {
 pub fn pos_at_x(rope: &Rope, row: Row, x: usize) -> usize {
     let text = rope.slice(row.start..row.end).to_string();
     let mut graphemes = text.graphemes(true).peekable();
+    let x = x.saturating_sub(row.indent);
     let mut pos = row.start;
     let mut col = 0;
     while let Some(g) = graphemes.next() {
@@ -127,7 +175,7 @@ mod tests {
 
     fn rows(line: &str, width: usize) -> Vec<String> {
         let chars: Vec<char> = line.chars().collect();
-        wrap_line(line, width).into_iter().map(|r| chars[r].iter().collect()).collect()
+        wrap_line(line, width, 0).into_iter().map(|r| chars[r].iter().collect()).collect()
     }
 
     #[test]
@@ -173,7 +221,7 @@ mod tests {
     fn layout_covers_every_line() {
         let rope = Rope::from_str("# Title\n\nthe quick brown fox");
         let rows = layout(&rope, 10);
-        let row = |line, start, end, last| Row { line, start, end, last };
+        let row = |line, start, end, last| Row { line, start, end, last, indent: 0 };
         assert_eq!(
             rows,
             [row(0, 0, 7, true), row(1, 8, 8, true), row(2, 9, 19, false), row(2, 19, 28, true)]
@@ -196,5 +244,41 @@ mod tests {
         // Past the end of an earlier row: just before its last character,
         // so the cursor stays on that row.
         assert_eq!(pos_at_x(&rope, rows[0], 50), 9);
+    }
+
+    #[test]
+    fn list_items_and_quotes_hang() {
+        assert_eq!(hanging_indent("- point", 60), 2);
+        assert_eq!(hanging_indent("  * nested", 60), 4);
+        assert_eq!(hanging_indent("12. twelfth", 60), 4);
+        assert_eq!(hanging_indent("1) first", 60), 3);
+        assert_eq!(hanging_indent("- [ ] task", 60), 6);
+        assert_eq!(hanging_indent("> quote", 60), 2);
+        assert_eq!(hanging_indent("> - quoted point", 60), 4);
+        // Not list items.
+        assert_eq!(hanging_indent("plain", 60), 0);
+        assert_eq!(hanging_indent("-not", 60), 0);
+        assert_eq!(hanging_indent("**bold**", 60), 0);
+        assert_eq!(hanging_indent("2024. A year", 60), 6);
+        assert_eq!(hanging_indent("1234567890. no", 60), 0);
+        // Just the bullet so far, or a too-wide prefix.
+        assert_eq!(hanging_indent("- ", 60), 0);
+        assert_eq!(hanging_indent("                - x", 20), 0);
+    }
+
+    #[test]
+    fn later_rows_are_narrower_by_the_indent() {
+        let line = "- the quick brown fox jumps";
+        let chars: Vec<char> = line.chars().collect();
+        let rows: Vec<String> = wrap_line(line, 12, 2).into_iter().map(|r| chars[r].iter().collect()).collect();
+        assert_eq!(rows, ["- the quick ", "brown fox ", "jumps"]);
+
+        let rope = Rope::from_str(line);
+        let rows = layout(&rope, 12);
+        assert_eq!((rows[0].indent, rows[1].indent, rows[2].indent), (0, 2, 2));
+        // The cursor and clicks count the indent.
+        assert_eq!(x_of(&rope, rows[1], 12), 2);
+        assert_eq!(pos_at_x(&rope, rows[1], 0), 12);
+        assert_eq!(pos_at_x(&rope, rows[1], 4), 14);
     }
 }

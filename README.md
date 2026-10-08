@@ -5,6 +5,9 @@ A writing app for the terminal. Markdown, encrypted, no nonsense.
 - **Private.** All your posts live in one file, encrypted with your password.
   Without the password nobody can read them.
 - **Plain markdown.** You write markdown. Each post starts with a `# Title`.
+  It stays plain markdown on screen, formatted as you type: headings and
+  bold in bold, italics in italics, code in green, with the markdown
+  symbols faded.
 - **Mouse and keyboard.** Click, scroll and press buttons with the mouse, or
   use shortcuts. The bar at the bottom of the screen always shows the
   shortcuts for where you are, and you can click those too.
@@ -77,10 +80,21 @@ There's no ready-made Windows version, but you can build writui yourself:
    cargo install --locked --git https://github.com/aakashns/writui
    ```
 
-The build takes a few minutes. writui's automated tests run on Windows, but
-it isn't regularly tried out by hand there, so please
-[report anything odd](https://github.com/aakashns/writui/issues). To upgrade,
-run the same command again.
+The build takes a few minutes. To upgrade, run the same command again.
+
+writui isn't tested on Windows automatically, or tried out there by hand
+regularly, so please
+[report anything odd](https://github.com/aakashns/writui/issues). To run its
+automated tests and checks yourself, in the same kind of PowerShell window:
+
+```sh
+git clone https://github.com/aakashns/writui
+cd writui
+cargo test
+cargo clippy --all-targets -- -D warnings
+```
+
+If both finish without errors, writui's tests pass on your computer.
 
 ## Use
 
@@ -118,6 +132,13 @@ the password each time it starts.
   and Ctrl+V pastes, using the system clipboard (your terminal's own paste,
   like Cmd+V, works too). Esc drops the selection. Copying a whole post and pasting it into an empty
   one gives the same post, not a doubled `# `.
+- **Formatting** follows standard markdown (CommonMark, plus GitHub's
+  `~~strikethrough~~`, task lists and tables), so text is formatted only
+  when it really will be: `**bold` stays plain until you close it. Wrapped
+  list items and quotes line up under their text.
+- **Links:** with the cursor on a link, Ctrl+O opens it in your browser, or
+  Ctrl+click it. That works for `[text](https://…)` links and for web
+  addresses written out in the text. Only web and email links open.
 - **Moving by word and paragraph:** Option+Left/Right (Ctrl+Left/Right on
   Linux and Windows) jump by word, Option+Up/Down (Ctrl+Up/Down) by
   paragraph. Add Shift to select as you go.

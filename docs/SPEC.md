@@ -206,13 +206,37 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 > same thing with bold, italic etc. too, so I know I'm getting the intended
 > effect.
 
+> hmm, i'm not so sure about colored headings actually, i think they disturb
+> the flow. let's just make them bold. also, can we make the urls clickable?
+> let's not color the bullet/number either. and let's not color the quoted
+> text either. i like idea of faded markdown symbols. btw, what are my color
+> optoins really, i want a non-distracting non-flow-breaking writing
+> experience
+
+> okay, your plan sounds good, but just use a different color for code.
+> green sounds fine, actually. later we can look into syntax highlighting
+> language-wise
+
+> btw, with bullets are we doing proper indentation? of the text in the
+> bullet
+
 **Details**
 
 - The markdown source is always fully visible — no hiding of `#`, `**`, etc.
-- Terminals can't change font size, so headings are distinguished with bold,
-  colour and underline per level instead.
-- Bold, italic, inline code, code blocks, links, quotes and lists get styled
-  too, using only terminal-standard colours.
+  The markdown symbols (`#`, `**`, backticks, `>`, bullets and numbers, a
+  link's `](url)`) are faded.
+- No colours, only text styles, except code: headings (every level) and bold
+  are bold, italic is italic, `~~struck~~` is struck through, link text is
+  underlined, code (inline and blocks) is green. Quote and list text is
+  plain.
+- Formatting follows CommonMark (plus GitHub's strikethrough, task lists and
+  tables), so half-typed markdown stays plain until it's complete.
+- Links open in the browser: Ctrl+O with the cursor on one, or Ctrl+click.
+  Markdown links and web addresses written out in the text both count. Only
+  `http(s)` and `mailto` links open.
+- List items and quotes wrap with a hanging indent: later rows line up under
+  the text, not the bullet. On screen only; no spaces are added to the text.
+- Later: syntax highlighting in code blocks, per language.
 
 ## Web preview
 

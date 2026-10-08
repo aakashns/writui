@@ -12,11 +12,11 @@ file is the source of truth for what's next.
 
 ## Next up
 
-M5 (selection and clipboard) and `writui upgrade` migrating right away
-shipped in `0.5.0`. Zen editor (hints and saved state only while Ctrl is
-held) is in the `0.6.0` PR. Next:
+Zen editor (hints and saved state only while Ctrl is held) shipped in
+`0.6.0`. M2 (live markdown formatting, opening links, hanging indents for
+lists) is in the `0.7.0` PR. Next:
 
-1. M2 (live markdown formatting) and on in order.
+1. M3 (copy / export as markdown, project site) and on in order.
 
 ## M0 — Writing core
 
@@ -59,9 +59,12 @@ selection to copy.)
 
 ## M2 — Live markdown formatting
 
-- [ ] Headings (per-level styles), bold, italic, inline code, code blocks
-- [ ] Links, quotes, lists, horizontal rules
-- [ ] Stays fast on long posts
+- [x] Headings, bold, italic, strikethrough, inline code, code blocks
+- [x] Links, quotes, lists, horizontal rules, tables; markdown symbols faded
+- [x] Links open in the browser (Ctrl+O, Ctrl+click)
+- [x] List items and quotes wrap with a hanging indent
+- [x] Stays fast on long posts
+- [ ] Syntax highlighting in code blocks, per language (later)
 
 ## M3 — Getting writing out + project site
 
@@ -78,7 +81,7 @@ The repo went public early (during M0), so most of this is already done.
 - [x] GitHub Actions: build, test, lint
 - [x] Release builds (macOS and Linux, each x86_64 and arm64), published
       automatically when a merge bumps the version
-- [x] Windows: build from source (README), tested in CI
+- [x] Windows: build from source (README), with how to run the tests there
 - [ ] Site deployed via GitHub Pages
 - [x] Make the repo public
 - [x] One-line install script (`curl … | bash`)

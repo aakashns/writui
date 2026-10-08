@@ -2,9 +2,11 @@
 //! the cursor, scrolling, the mouse, undo, and saves.
 
 mod autosave;
+mod browser;
 mod buffer;
 mod clipboard;
 mod history;
+mod markdown;
 mod undo;
 mod wrap;
 
@@ -18,7 +20,7 @@ use ratatui::crossterm::event::{
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Clear, Paragraph};
 use ropey::Rope;
 
 use super::Action;
@@ -30,6 +32,7 @@ use autosave::Autosave;
 use buffer::Buffer;
 use clipboard::Clipboard;
 use history::{History, Outcome};
+use markdown::Markup;
 use undo::{Kind, Undo};
 use wrap::{Row, TAB_WIDTH, layout, pos_at_x, row_of, x_of};
 
@@ -47,6 +50,10 @@ const MAX_SAVE_NAME: usize = 80;
 /// follow it. The text can also scroll this far past its last row.
 const SCROLL_MARGIN: usize = 3;
 
+/// Blank rows above the title, at the top of the post. They scroll away
+/// with the text, so further down the text uses the whole screen.
+const PAD_TOP: usize = 1;
+
 #[derive(Clone, Copy)]
 enum Cmd {
     Back,
@@ -60,6 +67,7 @@ enum Cmd {
     Cut,
     Paste,
     Deselect,
+    OpenLink,
     Quit,
 }
 
@@ -83,7 +91,9 @@ pub struct Editor {
     autosave: Autosave,
     /// The rows on screen for the current text and width.
     rows: Vec<Row>,
-    /// `rows` needs rebuilding (the text or the width changed).
+    /// How the text is formatted, and its links.
+    markup: Markup,
+    /// `rows` and `markup` need rebuilding (the text or the width changed).
     stale: bool,
     /// Wrap width in cells, from the last render.
     width: usize,
@@ -115,6 +125,9 @@ pub struct Editor {
     /// Show the hint bar and whether the post is saved; otherwise only the
     /// writing (and passing messages) are on screen.
     pub show_chrome: bool,
+    /// The hint bar and saved state show only while Ctrl is held: the text
+    /// takes the whole screen, and they're drawn over its bottom rows.
+    pub zen: bool,
 }
 
 impl Editor {
@@ -128,6 +141,7 @@ impl Editor {
             undo: Undo::default(),
             autosave: Autosave::default(),
             rows: Vec::new(),
+            markup: Markup::default(),
             stale: true,
             width: COLUMN_WIDTH as usize,
             text_area: Rect::default(),
@@ -144,6 +158,7 @@ impl Editor {
             history: None,
             hints: HintBar::default(),
             show_chrome: true,
+            zen: false,
         }
     }
 
@@ -223,13 +238,10 @@ impl Editor {
             history.render(frame);
             return;
         }
-        let [_, body, status, hint_area] = Layout::vertical([
-            Constraint::Length(1),
-            Constraint::Fill(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-        ])
-        .areas(frame.area());
+        let [above, status, hint_area] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(1), Constraint::Length(1)])
+                .areas(frame.area());
+        let body = if self.zen { frame.area() } else { above };
 
         let width = (COLUMN_WIDTH as usize).min(body.width.saturating_sub(1) as usize).max(1);
         if width != self.width {
@@ -262,22 +274,35 @@ impl Editor {
 
         let rope = self.buffer.rope();
         let selection = self.buffer.selection();
-        let lines: Vec<Line> = self
-            .rows
-            .iter()
-            .skip(self.top)
-            .take(height)
-            .map(|row| row_line(rope, row, selection.as_ref()))
+        let lines: Vec<Line> = (self.top..self.top + height)
+            .map(|i| match i.checked_sub(PAD_TOP).and_then(|i| self.rows.get(i)) {
+                Some(row) => row_line(rope, &self.markup, row, selection.as_ref()),
+                None => Line::default(),
+            })
             .collect();
         frame.render_widget(Paragraph::new(lines), self.text_area);
+
+        // In zen, the status and hint rows are drawn over the text, only
+        // while there's something to show there.
+        let chrome = self.show_chrome || self.dialog.is_some();
+        let message = self.error.is_some() || self.notice.is_some();
+        let status_covered = self.zen && (chrome || message);
+        let hints_covered = self.zen && chrome;
+        for (area, cover) in [(status, status_covered), (hint_area, hints_covered)] {
+            if cover {
+                frame.render_widget(Clear, area);
+            }
+        }
         if (self.top..self.top + height).contains(&cursor_row) {
             let y = body.y + (cursor_row - self.top) as u16;
-            frame.set_cursor_position(Position::new(left + cursor_x as u16, y));
+            let hidden = (status_covered && y == status.y) || (hints_covered && y == hint_area.y);
+            if !hidden {
+                frame.set_cursor_position(Position::new(left + cursor_x as u16, y));
+            }
         }
 
         // The status row: a message on the left, whether the post has
         // changed since its last save on the right.
-        let chrome = self.show_chrome || self.dialog.is_some();
         let state = match &self.last_save {
             _ if !chrome => Line::default(),
             _ if self.unsaved() => {
@@ -326,19 +351,22 @@ impl Editor {
             );
             return;
         }
-        self.hints.render(
-            frame,
-            hint_area,
-            &[
-                hint("Esc", "back to posts", Cmd::Back),
-                hint("Ctrl+S", "save", Cmd::Save),
-                hint("Ctrl+R", "history", Cmd::History),
-                hint("Ctrl+Z", "undo", Cmd::Undo),
-                hint("Ctrl+Y", "redo", Cmd::Redo),
-                hint("Ctrl+V", "paste", Cmd::Paste),
-                hint("Ctrl+Q", "quit", Cmd::Quit),
-            ],
-        );
+        let link = self.markup.link_at(self.buffer.cursor()).is_some();
+        let hints: Vec<_> = [
+            hint("Esc", "back", Cmd::Back),
+            hint("Ctrl+O", "open link", Cmd::OpenLink),
+            hint("Ctrl+S", "save", Cmd::Save),
+            hint("Ctrl+R", "history", Cmd::History),
+            hint("Ctrl+Z", "undo", Cmd::Undo),
+            hint("Ctrl+Y", "redo", Cmd::Redo),
+            hint("Ctrl+V", "paste", Cmd::Paste),
+            hint("Ctrl+Q", "quit", Cmd::Quit),
+        ]
+        .into_iter()
+        // Opening a link only while the cursor is on one.
+        .filter(|h| link || !matches!(h.cmd, Cmd::OpenLink))
+        .collect();
+        self.hints.render(frame, hint_area, &hints);
     }
 
     pub fn handle(&mut self, event: Event) -> Action {
@@ -428,6 +456,7 @@ impl Editor {
             KeyCode::Char('c') if ctrl => return self.run(Cmd::Copy),
             KeyCode::Char('x') if ctrl => return self.run(Cmd::Cut),
             KeyCode::Char('v') if ctrl => return self.run(Cmd::Paste),
+            KeyCode::Char('o') if ctrl => return self.run(Cmd::OpenLink),
             KeyCode::Char('a') if ctrl => self.step(Buffer::select_all),
             KeyCode::Char(ch) if !ctrl && !alt => {
                 let kind = Kind::Type { space: ch.is_whitespace() };
@@ -473,6 +502,15 @@ impl Editor {
             MouseEventKind::Down(MouseButton::Left) => {
                 if let Some(cmd) = self.hints.hit(mouse.column, mouse.row) {
                     return self.run(cmd);
+                }
+                // Ctrl+click on a link opens it.
+                if mouse.modifiers.contains(KeyModifiers::CONTROL) && self.in_text(mouse.row) {
+                    let pos = self.pos_at(mouse.column, mouse.row);
+                    if let Some(link) = self.markup.link_at(pos) {
+                        let url = link.url.clone();
+                        self.open(&url);
+                        return Action::None;
+                    }
                 }
                 self.click(mouse.column, mouse.row);
             }
@@ -546,9 +584,26 @@ impl Editor {
                 }
             }
             Cmd::Deselect => self.buffer.clear_selection(),
+            Cmd::OpenLink => match self.markup.link_at(self.buffer.cursor()) {
+                Some(link) => {
+                    let url = link.url.clone();
+                    self.open(&url);
+                }
+                None => self.notice = Some("Put the cursor on a link to open it.".into()),
+            },
             Cmd::Quit => return Action::Quit,
         }
         Action::None
+    }
+
+    /// Open a link in the browser. Only web and email links: anything else
+    /// (a file, an app) could run something.
+    fn open(&mut self, url: &str) {
+        let result = browser::open(url);
+        match result {
+            Ok(()) => self.notice = Some(format!("Opened {}", truncate(url, self.width.saturating_sub(7)))),
+            Err(error) => self.error = Some(error),
+        }
     }
 
     /// Replace the text with a save's, as one step that can be undone.
@@ -644,8 +699,7 @@ impl Editor {
     /// start or end; below the text, the very end. Double-click selects a
     /// word, triple-click a paragraph; otherwise dragging selects.
     fn click(&mut self, column: u16, row: u16) {
-        let area = self.text_area;
-        if row < area.y || row >= area.bottom() {
+        if !self.in_text(row) {
             return;
         }
         let pos = self.pos_at(column, row);
@@ -699,35 +753,43 @@ impl Editor {
     /// The text position at a cell of the text area (below the text: its end).
     fn pos_at(&mut self, column: u16, row: u16) -> usize {
         self.refresh();
-        let index = self.top + row.saturating_sub(self.text_area.y) as usize;
+        // The blank rows above the title count as its first row.
+        let index = (self.top + row.saturating_sub(self.text_area.y) as usize).saturating_sub(PAD_TOP);
         match self.rows.get(index) {
             Some(&r) => pos_at_x(self.buffer.rope(), r, column.saturating_sub(self.text_area.x) as usize),
             None => self.buffer.len(),
         }
     }
 
+    fn in_text(&self, row: u16) -> bool {
+        (self.text_area.y..self.text_area.bottom()).contains(&row)
+    }
+
     fn refresh(&mut self) {
         if self.stale {
             self.rows = layout(self.buffer.rope(), self.width);
+            self.markup = Markup::new(self.buffer.rope());
             self.stale = false;
         }
     }
 
-    /// The cursor's row and column on screen. Just after a space hanging off
-    /// the end of a full row, it shows at the start of the next row, where
-    /// the next word will go.
+    /// The cursor's row (counting the blank rows above the title) and
+    /// column on screen. Just after a space hanging off the end of a full
+    /// row, it shows at the start of the next row, where the next word will
+    /// go.
     fn cursor_cell(&self) -> (usize, usize) {
         let pos = self.buffer.cursor();
         let row = row_of(&self.rows, pos);
         let x = x_of(self.buffer.rope(), self.rows[row], pos);
-        if x > self.width { (row + 1, 0) } else { (row, x) }
+        let (row, x) = if x > self.width { (row + 1, self.rows.get(row + 1).map_or(0, |r| r.indent)) } else { (row, x) };
+        (PAD_TOP + row, x)
     }
 
     /// The furthest the text can scroll: its last row a margin above the
     /// bottom edge.
     fn max_top(&self) -> usize {
         let height = self.text_area.height as usize;
-        self.rows.len().saturating_sub(height.saturating_sub(margin(height)))
+        (PAD_TOP + self.rows.len()).saturating_sub(height.saturating_sub(margin(height)))
     }
 }
 
@@ -735,21 +797,24 @@ fn margin(height: usize) -> usize {
     SCROLL_MARGIN.min(height.saturating_sub(1) / 2)
 }
 
-/// One row of text, with the selected part reversed. The title is bold, with
-/// a dim placeholder while empty.
-fn row_line(rope: &Rope, row: &Row, selection: Option<&Range<usize>>) -> Line<'static> {
-    let base = if row.line == 0 { Style::new().bold() } else { Style::new() };
-    let text = |start, end| rope.slice(start..end).to_string().replace('\t', &" ".repeat(TAB_WIDTH));
+/// One row of text, formatted, with the selected part reversed. The title
+/// has a dim placeholder while empty.
+fn row_line(rope: &Rope, markup: &Markup, row: &Row, selection: Option<&Range<usize>>) -> Line<'static> {
+    let text = |range: Range<usize>| rope.slice(range).to_string().replace('\t', &" ".repeat(TAB_WIDTH));
     let selected = selection
         .map(|s| s.start.max(row.start)..s.end.min(row.end))
         .filter(|s| s.start < s.end);
-    let mut spans = Vec::new();
-    match selected {
-        None => spans.push(Span::styled(text(row.start, row.end), base)),
-        Some(s) => {
-            spans.push(Span::styled(text(row.start, s.start), base));
-            spans.push(Span::styled(text(s.start, s.end), base.reversed()));
-            spans.push(Span::styled(text(s.end, row.end), base));
+    let mut spans = vec![Span::raw(" ".repeat(row.indent))];
+    for (piece, style) in markup.styles(row.start..row.end) {
+        // Split each piece where the selection starts and ends.
+        let mut cuts = vec![piece.start, piece.end];
+        if let Some(s) = &selected {
+            cuts.extend([s.start, s.end].into_iter().filter(|at| piece.contains(at)));
+            cuts.sort();
+        }
+        for part in cuts.windows(2).map(|w| w[0]..w[1]).filter(|p| p.start < p.end) {
+            let inside = selected.as_ref().is_some_and(|s| s.contains(&part.start));
+            spans.push(Span::styled(text(part), if inside { style.reversed() } else { style }));
         }
     }
     // A selection that runs on past the end of the line takes the newline,
@@ -902,12 +967,14 @@ mod tests {
         for _ in 0..10 {
             h.key(KeyCode::Up);
         }
-        // Scrolled up, keeping a margin above the cursor.
-        assert_eq!(h.screen_row(4), format!("{}line 20", " ".repeat(6)));
-        assert_eq!(h.cursor(), (LEFT, 4));
+        // Scrolled up, keeping a margin above the cursor. The blank row
+        // above the title has scrolled away: the text starts on the first.
+        assert_eq!(h.screen_row(3), format!("{}line 20", " ".repeat(6)));
+        assert_eq!(h.screen_row(0), format!("{}line 17", " ".repeat(6)));
+        assert_eq!(h.cursor(), (LEFT, 3));
         // The wheel scrolls without moving the cursor.
         h.mouse(MouseEventKind::ScrollUp, 40, 5);
-        assert_eq!(h.cursor(), (LEFT, 5));
+        assert_eq!(h.cursor(), (LEFT, 4));
         h.key(KeyCode::Char('!'));
         assert_eq!(h.editor.text().lines().nth(20), Some("!line 20"));
     }
@@ -1170,5 +1237,98 @@ mod tests {
         h.draw();
         assert!(h.screen_row(10).ends_with("● Never saved"));
         assert!(h.screen_row(11).contains("Ctrl+S"));
+    }
+
+    #[test]
+    fn markdown_is_formatted_as_you_type() {
+        use ratatui::style::{Color, Modifier};
+        let mut h = Harness::new("# Title\n");
+        h.typed("Some **bold**, `code` and **unfinished");
+        let buffer = h.terminal.backend().buffer();
+        let cell = |x: u16, y: u16| &buffer[(LEFT + x, y)];
+        // The title: '#' faded, the words bold.
+        assert!(cell(0, 1).modifier.contains(Modifier::DIM));
+        assert!(cell(2, 1).modifier.contains(Modifier::BOLD));
+        // "**" faded, "bold" bold.
+        assert!(cell(5, 2).modifier.contains(Modifier::DIM));
+        assert!(cell(7, 2).modifier.contains(Modifier::BOLD));
+        // Code green, its backticks faded.
+        assert!(cell(15, 2).modifier.contains(Modifier::DIM));
+        assert_eq!(cell(16, 2).fg, Color::Green);
+        // Not closed yet: plain.
+        assert_eq!(cell(26, 2).modifier, Modifier::empty());
+        assert_eq!(cell(28, 2).modifier, Modifier::empty());
+        // Selecting keeps the formatting, reversed.
+        h.ctrl('a');
+        let buffer = h.terminal.backend().buffer();
+        let bold = &buffer[(LEFT + 7, 2)];
+        assert!(bold.modifier.contains(Modifier::BOLD | Modifier::REVERSED));
+    }
+
+    #[test]
+    fn links_open_with_ctrl_o_or_ctrl_click() {
+        let mut h = Harness::new("# Title\nSee [the docs](https://example.com) and file:///x");
+        // Not on a link: no hint, and Ctrl+O says how.
+        assert!(!h.screen_row(11).contains("open link"));
+        h.ctrl('o');
+        assert!(h.screen_row(10).contains("Put the cursor on a link"));
+        // On a link: the hint shows, and Ctrl+O opens it.
+        h.mouse(MouseEventKind::Down(MouseButton::Left), LEFT + 6, 2);
+        assert!(h.screen_row(11).contains("Ctrl+O open link"));
+        h.ctrl('o');
+        assert!(h.screen_row(10).contains("Opened https://example.com"));
+        // Ctrl+click on the link opens it without moving the cursor.
+        h.key(KeyCode::Home);
+        let mouse = MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: LEFT + 30,
+            row: 2,
+            modifiers: KeyModifiers::CONTROL,
+        };
+        h.editor.handle(Event::Mouse(mouse));
+        h.draw();
+        assert!(h.screen_row(10).contains("Opened https://example.com"));
+        assert_eq!(h.cursor(), (LEFT, 2));
+        // A Ctrl+click elsewhere is an ordinary click.
+        h.editor.handle(Event::Mouse(MouseEvent { column: LEFT + 2, ..mouse }));
+        h.draw();
+        assert_eq!(h.cursor(), (LEFT + 2, 2));
+    }
+
+    #[test]
+    fn list_items_wrap_under_their_text() {
+        let point = "- A point long enough that it wraps onto a second row, which lines up under its text";
+        let mut h = Harness::new(&format!("# Title\n{point}"));
+        assert_eq!(h.screen_row(2), format!("{}- A point long enough that it wraps onto a second row, which lines", " ".repeat(LEFT as usize)));
+        assert_eq!(h.screen_row(3), format!("{}  up under its text", " ".repeat(LEFT as usize)));
+        // The cursor, at the end, is past the indent.
+        assert_eq!(h.cursor(), (LEFT + 19, 3));
+        // Clicking in the indent puts it at the row's start.
+        h.mouse(MouseEventKind::Down(MouseButton::Left), LEFT, 3);
+        assert_eq!(h.cursor(), (LEFT + 2, 3));
+        h.typed("x");
+        assert!(h.editor.text().ends_with("lines xup under its text"));
+    }
+
+    #[test]
+    fn zen_text_takes_the_whole_screen() {
+        let body: String = (1..=30).map(|n| format!("\nline {n}")).collect();
+        let mut h = Harness::new(&format!("# Title{body}"));
+        h.editor.zen = true;
+        h.editor.show_chrome = false;
+        h.with(KeyCode::Home, KeyModifiers::CONTROL);
+        // The text runs to the bottom row.
+        assert_eq!(h.screen_row(11), format!("{}line 10", " ".repeat(6)));
+        // Holding Ctrl draws the saved state and hints over the bottom rows.
+        h.editor.show_chrome = true;
+        h.draw();
+        assert!(h.screen_row(10).ends_with("● Never saved"));
+        assert!(!h.screen_row(10).contains("line"));
+        assert!(h.screen_row(11).contains("Esc back"));
+        // A passing message covers only its own row.
+        h.editor.show_chrome = false;
+        h.ctrl('x');
+        assert!(h.screen_row(10).contains("Select some text to cut."));
+        assert_eq!(h.screen_row(11), format!("{}line 10", " ".repeat(6)));
     }
 }
