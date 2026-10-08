@@ -29,13 +29,27 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   > show the shortcuts and the saved status only when i hold down control.
   > otherwise i want a total zen experience
 
-  In the editor, the hint bar and the saved state ("● Changed since last
-  save" etc.) only show while Ctrl is held. Passing messages ("Saved",
-  errors) and the save-name dialog still show. Terminals that can't report
+  In the editor, the hint bar only shows while Ctrl is held. Passing
+  messages ("Copied.", errors) and dialogs still show. Terminals that can't report
   Ctrl on its own (no kitty keyboard protocol, e.g. Terminal.app, tmux)
   always show them, so the shortcuts are never out of reach. The list and
   other screens keep their hint bar.
-- Shortcuts use Ctrl (not Cmd — the terminal swallows Cmd).
+
+  > let's remove ctrl+q from the article page (i mean, let the shortcut be
+  > there, just don't show it)
+
+  Ctrl+Q quits from the editor too, but its hint bar doesn't list it.
+
+  > can we change the terminal title to the article title? and on the post
+  > list page, can we set the terminal title to writui?
+
+- The terminal window's title is the post's title while editing (updating
+  as it's typed; "Untitled" if empty), and "writui" everywhere else. The
+  terminal's own title comes back on quitting, where the terminal keeps a
+  title stack (xterm's push / pop title; others ignore it).
+- Shortcuts use Ctrl (not Cmd — most terminals swallow Cmd). The one
+  exception: Cmd+Left/Right also go to the start/end of the line on macOS,
+  where the terminal passes Cmd on (Alacritty does).
 
 ## Look and feel
 
@@ -56,7 +70,7 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 **Details**
 
-- Everything lives in the encrypted vault: posts, drafts, saves, chat
+- Everything lives in the encrypted vault: posts, versions, chat
   history, preview presets, settings, API keys.
 - First run creates the vault and asks for the password twice (at least 8
   characters), with a clear warning: there is no recovery. Forgotten
@@ -142,14 +156,15 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
     it apart from Ctrl+Z). Typing undoes a word at a time; a run of
     Backspaces is one step. Undo history lasts while the post is open.
   - Up/Down move by row on screen and keep the cursor's column.
-  - Home/End go to the start/end of the row on screen; Ctrl+Home/Ctrl+End
+  - Home/End go to the start/end of the row on screen, and so do
+    Ctrl+Left/Right (and Cmd+Left/Right on macOS); Ctrl+Home/Ctrl+End
     to the start/end of the post. PageUp/PageDown move a screenful.
   - Tab types two spaces (to be configurable in settings).
 - Opening a post puts the cursor back where it was when the post was last
   closed, as near the middle of the screen as the text allows. A post that
   has never been opened starts with the cursor at the end.
 - The cursor is a blinking bar in the editor.
-- If the draft can't be stored when leaving the editor, the editor stays
+- If the post can't be stored when leaving the editor, the editor stays
   open and says so (a second Ctrl+Q quits anyway).
 - Selection: Shift+movement, drag, double-click a word, triple-click a
   paragraph, Ctrl+A for everything. A selection can include the title's
@@ -159,14 +174,13 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   copied post pastes back as itself. The selection is drawn reversed, and
   typing, Backspace or Delete replaces it (as one undo step). Left/Right
   drop it at its near end; Esc drops it before it leaves the post.
-- Word movement is Alt+Left/Right (also Ctrl, and Alt+B/F, since terminals
-  differ); paragraph movement is Alt/Ctrl+Up/Down, to the start or end of
+- Word movement is Alt+Left/Right (and Alt+B/F, since terminals differ); paragraph movement is Alt/Ctrl+Up/Down, to the start or end of
   the paragraph (a paragraph is a line of the stored text, not a screen row).
 - Copy / cut / paste with the system clipboard: Ctrl+C / Ctrl+X / Ctrl+V.
   If there's no system clipboard (e.g. no display), they still work inside
   writui. Pasting from the terminal (Cmd+V) also works.
 
-## Drafts and saves
+## Autosave and versions
 
 > I think I want conscious versioning i.e. when I hit save, I want a version
 > to be recorded. Also, as I am editing a draft is saved too, so if I quit the
@@ -175,24 +189,37 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 > course we record the time etc. but I should also be able to give it a name,
 > kind of like a git commit message.
 
+> i want to revisit the terminology around draft and save. beacuse wright
+> now, "never saved" seems to indicate that the content is not saved, which
+> is not the same. so, let's first remove the terminology draft. we are
+> auto-saving the file in real time. and then, what we were previously
+> calling "saves", let's call versions. so, by pressing control+s we are
+> saving a version. but even in the ctrl+s dialog, mention that the post is
+> auto-saved continuously, and here you can record a version that you can
+> view later and revert to. you catch my drift? and so we also no longer need
+> the save indicator at the bottom of the page.
+
 **Details**
 
-- The draft saves itself continuously while editing: a second after typing
-  pauses, at least every 5 seconds during long stretches of typing, and on
-  leaving the editor or quitting. Coming back to a post always shows the
-  current draft. If storing fails, the editor says so and keeps trying.
-- **Save** (Ctrl+S) asks for a name and records a full snapshot of the post
-  with the time. The name can be left empty. If nothing changed since the
-  last save, Ctrl+S just says so.
-- The editor shows when the draft has changed since the last save: a line
-  under the text reads "● Changed since last save" (or "● Never saved"), or
-  "Saved · <name>" when it matches (while Ctrl is held; see above).
-- History (Ctrl+R): a list of a post's saves (name + time), newest first.
-  Pick one to view its full text, and restore it into the draft if wanted.
+- There are no "drafts": the post itself is saved automatically and
+  continuously while editing: a second after typing pauses, at least every
+  5 seconds during long stretches of typing, and on leaving the editor or
+  quitting. Coming back to a post always shows it as last typed. If storing
+  fails, the editor says so and keeps trying.
+- **Save version** (Ctrl+S) records a full snapshot of the post with the
+  time, under a name. Its dialog says the post is already saved
+  automatically, and that a version is something to read later and go back
+  to. The name can be left empty. If nothing changed since the last
+  version, Ctrl+S just says so.
+- There's no saved / unsaved indicator under the text: the post is always
+  saved.
+- History (Ctrl+R): a list of a post's versions (name + time), newest
+  first. Pick one to view its full text, and restore it into the post if
+  wanted.
   Restoring asks first, and is an ordinary edit: Ctrl+Z undoes it. The
   history opens over the post, so its undo history survives the visit.
-- Saves are kept as long as the post; deleting a post forever deletes its
-  saves too.
+- Versions are kept as long as the post; deleting a post forever deletes
+  its versions too.
 
   > Full text first, that's what I really need.
 
@@ -257,7 +284,7 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 **Details**
 
 - A key in the editor opens the preview in the browser. It reloads live on
-  every draft autosave.
+  every autosave.
 - The preview server only listens on this machine and needs a secret token
   in the URL, since it serves decrypted writing.
 - Built-in presets: Default (white Inter on dark), Substack, Medium, Gmail.
@@ -302,7 +329,7 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
   > Checkpoints are mine. We might revisit this later.
 
-  The LLM never creates saves. Accepted edits change the draft like any other
+  The LLM never creates versions. Accepted edits change the post like any other
   edit (and can be undone).
 - Chat history is kept per post. A post can have several conversations; pick
   one up again like Claude Code's `/resume` does per folder.

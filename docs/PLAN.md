@@ -12,9 +12,10 @@ file is the source of truth for what's next.
 
 ## Next up
 
-Zen editor (hints and saved state only while Ctrl is held) shipped in
-`0.6.0`. M2 (live markdown formatting, opening links, hanging indents for
-lists) is in the `0.7.0` PR. Next:
+M2 (live markdown formatting, opening links, hanging indents for lists)
+shipped in `0.7.0`. The `0.8.0` PR renames saves to versions (no more
+"draft"), drops the saved-state indicator, hides Ctrl+Q in the editor, adds
+Ctrl/Cmd+Left/Right for line ends, and sets the terminal title. Next:
 
 1. M3 (copy / export as markdown, project site) and on in order.
 
@@ -34,16 +35,17 @@ The smallest thing that can replace another writing app.
 - [x] Editor: mouse click to place cursor, scroll wheel
 - [x] Editor: reopening a post puts the cursor back where it was left
 - [x] Undo / redo
-- [x] Draft autosave (debounced + on quit)
+- [x] Autosave (debounced + on quit)
 - [x] Hint bar with the shortcuts for the current screen
-- [x] Zen editor: hints and saved state only while Ctrl is held
+- [x] Zen editor: hints only while Ctrl is held
 - [x] First ship: GitHub release `v0.1.0`
 
-## M1 — Saves and history
+## M1 — Versions and history
 
-- [x] Ctrl+S: prompt for a name, record a full snapshot
-- [x] "Changed since last save" indicator
-- [x] History view: list of saves, view full text, restore into draft
+- [x] Ctrl+S: prompt for a name, record a full snapshot (a version)
+- [x] ~~"Changed since last save" indicator~~ (dropped in `0.8.0`: the post is always saved)
+- [x] History view: list of versions, view full text, restore into the post
+- [x] Terminology: "versions", no "drafts"; terminal title shows the post
 
 ## M5 — Selection and clipboard
 

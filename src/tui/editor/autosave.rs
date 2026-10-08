@@ -1,4 +1,4 @@
-//! When to store the draft: once typing pauses, and every few seconds
+//! When to store the post: once typing pauses, and every few seconds
 //! during a long stretch of typing, so a crash loses at most that much.
 
 use std::time::{Duration, Instant};
@@ -12,7 +12,7 @@ pub const RETRY: Duration = Duration::from_secs(5);
 
 #[derive(Default)]
 pub struct Autosave {
-    /// The first and last edits since the draft was last stored.
+    /// The first and last edits since the post was last stored.
     first: Option<Instant>,
     last: Option<Instant>,
     /// Don't try again before this, after a failure.
@@ -25,7 +25,7 @@ impl Autosave {
         self.last = Some(now);
     }
 
-    /// When the draft should next be stored, if it has unstored edits.
+    /// When the post should next be stored, if it has unstored edits.
     pub fn due(&self) -> Option<Instant> {
         let due = (self.last? + PAUSE).min(self.first? + MAX_WAIT);
         Some(self.retry.map_or(due, |retry| due.max(retry)))

@@ -1,5 +1,5 @@
 //! The post editing screen: the text in a centred column, soft-wrapped, with
-//! the cursor, scrolling, the mouse, undo, and saves.
+//! the cursor, scrolling, the mouse, undo, and versions.
 
 mod autosave;
 mod browser;
@@ -26,8 +26,9 @@ use ropey::Rope;
 use super::Action;
 use super::dialog::{Button, Dialog};
 use super::hints::{HintBar, hint};
+use super::list::display_title;
 use super::widgets::{COLUMN_WIDTH, truncate};
-use crate::vault::{Post, Save, TITLE_PREFIX, title_from_first_line};
+use crate::vault::{Post, Version, TITLE_PREFIX, title_from_first_line};
 use autosave::Autosave;
 use buffer::Buffer;
 use clipboard::Clipboard;
@@ -43,8 +44,8 @@ const TAB: &str = "  ";
 /// triple click.
 const MULTI_CLICK: Duration = Duration::from_millis(500);
 
-/// The longest name a save can have.
-const MAX_SAVE_NAME: usize = 80;
+/// The longest name a version can have.
+const MAX_VERSION_NAME: usize = 80;
 
 /// Rows kept between the cursor and the top or bottom edge when scrolling to
 /// follow it. The text can also scroll this far past its last row.
@@ -57,8 +58,8 @@ const PAD_TOP: usize = 1;
 #[derive(Clone, Copy)]
 enum Cmd {
     Back,
-    Save,
-    ConfirmSave,
+    SaveVersion,
+    ConfirmSaveVersion,
     CancelDialog,
     History,
     Undo,
@@ -68,7 +69,6 @@ enum Cmd {
     Paste,
     Deselect,
     OpenLink,
-    Quit,
 }
 
 #[derive(Clone, Copy)]
@@ -84,8 +84,8 @@ pub struct Editor {
     post_id: i64,
     /// The text as last stored in the vault.
     stored: String,
-    /// The post's most recent save, with its text.
-    last_save: Option<Save>,
+    /// The post's most recent version, with its text.
+    last_version: Option<Version>,
     buffer: Buffer,
     undo: Undo,
     autosave: Autosave,
@@ -115,26 +115,26 @@ pub struct Editor {
     /// The left button is held down after a single click: moving selects.
     dragging: bool,
     error: Option<String>,
-    /// A passing message (e.g. "Saved"), until the next key or click.
+    /// A passing message (e.g. "Copied."), until the next key or click.
     notice: Option<String>,
-    /// Naming a save.
+    /// Naming a version.
     dialog: Option<Dialog<Cmd>>,
     /// The post's history, shown instead of the post while open.
     history: Option<History>,
     hints: HintBar<Cmd>,
-    /// Show the hint bar and whether the post is saved; otherwise only the
-    /// writing (and passing messages) are on screen.
+    /// Show the hint bar; otherwise only the writing (and passing messages)
+    /// are on screen.
     pub show_chrome: bool,
-    /// The hint bar and saved state show only while Ctrl is held: the text
+    /// The hint bar shows only while Ctrl is held: the text
     /// takes the whole screen, and they're drawn over its bottom rows.
     pub zen: bool,
 }
 
 impl Editor {
     /// Opens with the cursor where it was left (or at the end of the post).
-    pub fn new(post: Post, last_save: Option<Save>) -> Self {
+    pub fn new(post: Post, last_version: Option<Version>) -> Self {
         Editor {
-            last_save,
+            last_version,
             post_id: post.id,
             buffer: Buffer::new(&post.body, post.cursor),
             stored: post.body,
@@ -180,44 +180,51 @@ impl Editor {
         self.buffer.text() != self.stored
     }
 
-    /// The text differs from the most recent save (or there are no saves).
-    fn unsaved(&self) -> bool {
-        self.last_save.as_ref().is_none_or(|save| *self.buffer.rope() != save.body.as_str())
+    /// The text differs from the most recent version (or there are none).
+    fn changed_since_version(&self) -> bool {
+        self.last_version.as_ref().is_none_or(|v| *self.buffer.rope() != v.body.as_str())
     }
 
-    /// A save of the post was just made.
-    pub fn saved(&mut self, save: Save) {
-        self.notice = Some(match save.name.as_str() {
-            "" => "Saved.".to_string(),
-            name => format!("Saved “{name}”."),
+    /// A version of the post was just saved.
+    pub fn version_saved(&mut self, version: Version) {
+        self.notice = Some(match version.name.as_str() {
+            "" => "Saved a version.".to_string(),
+            name => format!("Saved version “{name}”."),
         });
-        self.last_save = Some(save);
+        self.last_version = Some(version);
     }
 
-    /// Something went wrong outside of storing the draft, e.g. saving.
+    /// Something went wrong outside of storing the post, e.g. saving a version.
     pub fn set_error(&mut self, error: String) {
         self.error = Some(error);
     }
 
-    /// Show the post's history (newest save first).
-    pub fn show_history(&mut self, saves: Vec<Save>) {
+    /// The post's title, for the terminal window ("Untitled" if it has none).
+    pub fn title(&self) -> String {
         let title = title_from_first_line(&self.buffer.rope().line(0).to_string());
-        self.history = Some(History::new(title, saves, self.unsaved()));
+        // Control characters could make the terminal do things.
+        display_title(&title).chars().filter(|c| !c.is_control()).collect()
     }
 
-    /// Open a save (with its text) in the history, to read.
-    pub fn show_save(&mut self, save: Save) {
+    /// Show the post's history (newest version first).
+    pub fn show_history(&mut self, versions: Vec<Version>) {
+        let title = title_from_first_line(&self.buffer.rope().line(0).to_string());
+        self.history = Some(History::new(title, versions, self.changed_since_version()));
+    }
+
+    /// Open a version (with its text) in the history, to read.
+    pub fn show_version(&mut self, version: Version) {
         if let Some(history) = &mut self.history {
-            history.read(save);
+            history.read(version);
         }
     }
 
-    /// When the draft should next be stored, if it has unstored edits.
+    /// When the post should next be stored, if it has unstored edits.
     pub fn autosave_due(&self) -> Option<Instant> {
         self.autosave.due()
     }
 
-    /// The draft in the vault is now `text` (or already was, if `None`).
+    /// The post in the vault is now `text` (or already was, if `None`).
     pub fn mark_stored(&mut self, text: Option<String>) {
         if let Some(text) = text {
             self.stored = text;
@@ -226,7 +233,7 @@ impl Editor {
         self.error = None;
     }
 
-    /// Storing the draft failed; say so above the hint bar, and try again
+    /// Storing the post failed; say so above the hint bar, and try again
     /// a little later.
     pub fn store_failed(&mut self, error: String) {
         self.autosave.failed(Instant::now());
@@ -286,7 +293,7 @@ impl Editor {
         // while there's something to show there.
         let chrome = self.show_chrome || self.dialog.is_some();
         let message = self.error.is_some() || self.notice.is_some();
-        let status_covered = self.zen && (chrome || message);
+        let status_covered = self.zen && message;
         let hints_covered = self.zen && chrome;
         for (area, cover) in [(status, status_covered), (hint_area, hints_covered)] {
             if cover {
@@ -301,25 +308,11 @@ impl Editor {
             }
         }
 
-        // The status row: a message on the left, whether the post has
-        // changed since its last save on the right.
-        let state = match &self.last_save {
-            _ if !chrome => Line::default(),
-            _ if self.unsaved() => {
-                let what = if self.last_save.is_some() { "Changed since last save" } else { "Never saved" };
-                Line::from(vec!["● ".yellow(), what.dim()])
-            }
-            Some(save) if save.name.is_empty() => Line::from("Saved".dim()),
-            Some(save) => Line::from(format!("Saved · {}", truncate(&save.name, width / 3)).dim()),
-            None => Line::default(),
-        };
-        let state_width = state.width();
+        // The status row: a passing message or an error.
         let area = Rect { x: left, width: width as u16, ..status };
-        frame.render_widget(Paragraph::new(state).right_aligned(), area);
-        let room = width.saturating_sub(state_width + 2);
         let message = match (&self.error, &self.notice) {
-            (Some(error), _) => Some(truncate(error, room).red()),
-            (None, Some(notice)) => Some(truncate(notice, room).dim()),
+            (Some(error), _) => Some(truncate(error, width).red()),
+            (None, Some(notice)) => Some(truncate(notice, width).dim()),
             (None, None) => None,
         };
         if let Some(message) = message {
@@ -346,7 +339,6 @@ impl Editor {
                     hint("Ctrl+X", "cut", Cmd::Cut),
                     hint("Ctrl+V", "paste", Cmd::Paste),
                     hint("Ctrl+Z", "undo", Cmd::Undo),
-                    hint("Ctrl+Q", "quit", Cmd::Quit),
                 ],
             );
             return;
@@ -355,12 +347,11 @@ impl Editor {
         let hints: Vec<_> = [
             hint("Esc", "back", Cmd::Back),
             hint("Ctrl+O", "open link", Cmd::OpenLink),
-            hint("Ctrl+S", "save", Cmd::Save),
+            hint("Ctrl+S", "save version", Cmd::SaveVersion),
             hint("Ctrl+R", "history", Cmd::History),
             hint("Ctrl+Z", "undo", Cmd::Undo),
             hint("Ctrl+Y", "redo", Cmd::Redo),
             hint("Ctrl+V", "paste", Cmd::Paste),
-            hint("Ctrl+Q", "quit", Cmd::Quit),
         ]
         .into_iter()
         // Opening a link only while the cursor is on one.
@@ -377,10 +368,10 @@ impl Editor {
                     self.history = None;
                     Action::None
                 }
-                Outcome::Load(id) => Action::LoadSave(id),
-                Outcome::Restore(save) => {
+                Outcome::Load(id) => Action::LoadVersion(id),
+                Outcome::Restore(version) => {
                     self.history = None;
-                    self.restore(save);
+                    self.restore(version);
                     Action::None
                 }
                 Outcome::Quit => Action::Quit,
@@ -412,6 +403,8 @@ impl Editor {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+        // Cmd, on macOS (elsewhere the key is the system's).
+        let cmd = cfg!(target_os = "macos") && key.modifiers.contains(KeyModifiers::SUPER);
         let moving = match key.code {
             KeyCode::Left
             | KeyCode::Right
@@ -432,6 +425,7 @@ impl Editor {
             } else if let (Some(range), KeyCode::Left | KeyCode::Right) = (selection, key.code)
                 && !ctrl
                 && !alt
+                && !cmd
             {
                 // Left and Right just drop the selection, at its near end.
                 self.step(|b| b.set_cursor(if key.code == KeyCode::Left { range.start } else { range.end }));
@@ -451,7 +445,7 @@ impl Editor {
             KeyCode::Char('Z') if ctrl => return self.run(Cmd::Redo),
             KeyCode::Char('z') if ctrl => return self.run(Cmd::Undo),
             KeyCode::Char('y') if ctrl => return self.run(Cmd::Redo),
-            KeyCode::Char('s') if ctrl => return self.run(Cmd::Save),
+            KeyCode::Char('s') if ctrl => return self.run(Cmd::SaveVersion),
             KeyCode::Char('r') if ctrl => return self.run(Cmd::History),
             KeyCode::Char('c') if ctrl => return self.run(Cmd::Copy),
             KeyCode::Char('x') if ctrl => return self.run(Cmd::Cut),
@@ -466,8 +460,11 @@ impl Editor {
             KeyCode::Tab => self.edit(Kind::Other, |b| b.insert(TAB)),
             KeyCode::Backspace => self.edit(Kind::Backspace, Buffer::backspace),
             KeyCode::Delete => self.edit(Kind::Delete, Buffer::delete),
-            KeyCode::Left if ctrl || alt => self.step(Buffer::word_left),
-            KeyCode::Right if ctrl || alt => self.step(Buffer::word_right),
+            // Like Home and End.
+            KeyCode::Left if ctrl || cmd => self.row_start(),
+            KeyCode::Right if ctrl || cmd => self.row_end(),
+            KeyCode::Left if alt => self.step(Buffer::word_left),
+            KeyCode::Right if alt => self.step(Buffer::word_right),
             KeyCode::Char('b') => self.step(Buffer::word_left),
             KeyCode::Char('f') => self.step(Buffer::word_right),
             KeyCode::Up if ctrl || alt => self.step(Buffer::paragraph_left),
@@ -534,30 +531,34 @@ impl Editor {
                     self.replace(next);
                 }
             }
-            Cmd::Save if !self.unsaved() => {
-                self.notice = Some("Nothing has changed since the last save.".into());
+            Cmd::SaveVersion if !self.changed_since_version() => {
+                self.notice = Some("Nothing has changed since the last version.".into());
             }
-            Cmd::Save => {
+            Cmd::SaveVersion => {
                 let dialog = Dialog::new(
-                    "Save",
-                    vec![Line::from("Name this save, like a commit message.".dim())],
+                    "Save version",
                     vec![
-                        Button { label: "Save", key: "", cmd: Cmd::ConfirmSave, danger: false },
+                        Line::from("Your post is saved automatically as you type."),
+                        Line::from("A version is a snapshot of it you can read later,".dim()),
+                        Line::from("and go back to. Name it like a commit message.".dim()),
+                    ],
+                    vec![
+                        Button { label: "Save", key: "", cmd: Cmd::ConfirmSaveVersion, danger: false },
                         Button { label: "Cancel", key: "", cmd: Cmd::CancelDialog, danger: false },
                     ],
                     0,
                     1,
                 );
-                self.dialog = Some(dialog.with_input("e.g. First draft", MAX_SAVE_NAME));
+                self.dialog = Some(dialog.with_input("e.g. Ready for feedback", MAX_VERSION_NAME));
             }
-            Cmd::ConfirmSave => {
+            Cmd::ConfirmSaveVersion => {
                 if let Some(dialog) = self.dialog.take() {
-                    return Action::SavePost { name: dialog.input().trim().to_string() };
+                    return Action::SaveVersion { name: dialog.input().trim().to_string() };
                 }
             }
             Cmd::CancelDialog => self.dialog = None,
-            Cmd::History if self.last_save.is_none() => {
-                self.notice = Some("No saves yet. Ctrl+S saves the post.".into());
+            Cmd::History if self.last_version.is_none() => {
+                self.notice = Some("No versions yet. Ctrl+S saves one.".into());
             }
             Cmd::History => return Action::ShowHistory,
             Cmd::Copy => match self.buffer.selected_text() {
@@ -591,7 +592,6 @@ impl Editor {
                 }
                 None => self.notice = Some("Put the cursor on a link to open it.".into()),
             },
-            Cmd::Quit => return Action::Quit,
         }
         Action::None
     }
@@ -606,16 +606,16 @@ impl Editor {
         }
     }
 
-    /// Replace the text with a save's, as one step that can be undone.
-    fn restore(&mut self, save: Save) {
+    /// Replace the text with a version's, as one step that can be undone.
+    fn restore(&mut self, version: Version) {
         let before = self.buffer.clone();
-        self.buffer = Buffer::new(&save.body, Some(before.cursor()));
+        self.buffer = Buffer::new(&version.body, Some(before.cursor()));
         if self.buffer.rope() != before.rope() {
             self.undo.edited(Kind::Other, before, &self.buffer);
             self.changed_text();
         }
-        self.notice = Some(match save.name.as_str() {
-            "" => "Restored the save. Ctrl+Z undoes it.".to_string(),
+        self.notice = Some(match version.name.as_str() {
+            "" => "Restored the version. Ctrl+Z undoes it.".to_string(),
             name => format!("Restored “{name}”. Ctrl+Z undoes it."),
         });
     }
@@ -1099,6 +1099,24 @@ mod tests {
     }
 
     #[test]
+    fn ctrl_or_cmd_left_and_right_go_to_the_line_ends() {
+        let mut h = Harness::new("# Title\nHello world");
+        h.with(KeyCode::Left, KeyModifiers::CONTROL);
+        assert_eq!(h.cursor(), (LEFT, 2));
+        h.with(KeyCode::Right, KeyModifiers::CONTROL);
+        assert_eq!(h.cursor(), (LEFT + 11, 2));
+        h.with(KeyCode::Left, KeyModifiers::CONTROL | KeyModifiers::SHIFT);
+        assert_eq!(selected(&h).as_deref(), Some("Hello world"));
+        // Option still moves by word.
+        h.with(KeyCode::Right, KeyModifiers::ALT);
+        assert_eq!(h.cursor(), (LEFT + 5, 2));
+        // Cmd only on macOS: elsewhere it's the Windows key, left alone.
+        h.with(KeyCode::Right, KeyModifiers::SUPER);
+        let end = if cfg!(target_os = "macos") { LEFT + 11 } else { LEFT + 5 };
+        assert_eq!(h.cursor(), (end, 2));
+    }
+
+    #[test]
     fn select_all_cut_and_paste() {
         let mut h = Harness::new("# Title\nHello world");
         h.ctrl('a');
@@ -1154,69 +1172,66 @@ mod tests {
         assert_eq!(selected(&h).as_deref(), Some("Title\nHello there world\nsecond"));
     }
 
-    fn save(id: i64, name: &str, body: &str) -> Save {
-        Save { id, name: name.into(), created_at: jiff::Timestamp::now(), body: body.into() }
+    fn version(id: i64, name: &str, body: &str) -> Version {
+        Version { id, name: name.into(), created_at: jiff::Timestamp::now(), body: body.into() }
     }
 
     #[test]
-    fn ctrl_s_names_a_save() {
+    fn ctrl_s_saves_a_named_version() {
         let mut h = Harness::new("# Title\nSome text");
-        assert!(h.screen_row(10).ends_with("● Never saved"));
         h.ctrl('s');
-        assert!(h.screen().contains("Name this save"));
-        h.typed("First draft");
+        assert!(h.screen().contains("saved automatically as you type"));
+        h.typed("First pass");
         let action = h.press(KeyCode::Enter);
-        assert!(matches!(action, Action::SavePost { ref name } if name == "First draft"));
+        assert!(matches!(action, Action::SaveVersion { ref name } if name == "First pass"));
         // The app records it and tells the editor.
-        h.editor.saved(save(1, "First draft", "# Title\nSome text"));
+        h.editor.version_saved(version(1, "First pass", "# Title\nSome text"));
         h.draw();
-        assert!(h.screen_row(10).ends_with("Saved · First draft"));
-        assert!(h.screen_row(10).contains("Saved “First draft”."));
+        assert!(h.screen_row(10).contains("Saved version “First pass”."));
         // Nothing new to save.
         h.ctrl('s');
-        assert!(h.screen_row(10).contains("Nothing has changed since the last save."));
+        assert!(h.screen_row(10).contains("Nothing has changed since the last version."));
         h.typed("!");
-        assert!(h.screen_row(10).ends_with("● Changed since last save"));
-        // Esc cancels naming a save.
+        // Esc cancels naming a version.
         h.ctrl('s');
         assert!(matches!(h.press(KeyCode::Esc), Action::None));
-        assert!(!h.screen().contains("Name this save"));
+        assert!(!h.screen().contains("saved automatically"));
     }
 
     #[test]
-    fn history_restores_a_save_and_undo_takes_it_back() {
-        let first = save(1, "First draft", "# Title\nOld text");
+    fn history_restores_a_version_and_undo_takes_it_back() {
+        let first = version(1, "First pass", "# Title\nOld text");
         let editor = Editor::new(Post { id: 1, body: "# Title\nNew text".into(), cursor: None }, Some(first.clone()));
         let mut h = Harness { editor, terminal: Terminal::new(TestBackend::new(80, 12)).unwrap() };
         h.draw();
         assert!(matches!(h.ctrl('r'), Action::ShowHistory));
         h.editor.show_history(vec![first.clone()]);
         h.draw();
-        assert!(h.screen().contains("Saves of “Title”"));
-        assert!(h.screen().contains("First draft"));
-        assert!(matches!(h.press(KeyCode::Enter), Action::LoadSave(1)));
-        h.editor.show_save(first);
+        assert!(h.screen().contains("Versions of “Title”"));
+        assert!(h.screen().contains("First pass"));
+        assert!(matches!(h.press(KeyCode::Enter), Action::LoadVersion(1)));
+        h.editor.show_version(first);
         h.draw();
         assert!(h.screen().contains("Old text"));
         h.press(KeyCode::Enter);
-        assert!(h.screen().contains("Replace the draft with “First draft”?"));
-        assert!(h.screen().contains("The draft has changes since the last save."));
+        assert!(h.screen().contains("Replace the post with “First pass”?"));
+        assert!(h.screen().contains("Its current text isn't saved as a version."));
         h.press(KeyCode::Char('y'));
         assert_eq!(h.editor.text(), "# Title\nOld text");
-        assert!(h.screen_row(10).contains("Restored “First draft”."));
+        assert!(h.screen_row(10).contains("Restored “First pass”."));
         h.ctrl('z');
         assert_eq!(h.editor.text(), "# Title\nNew text");
     }
 
     #[test]
-    fn history_needs_a_save() {
+    fn history_needs_a_version() {
         let mut h = Harness::new("# Title");
         assert!(matches!(h.ctrl('r'), Action::None));
-        assert!(h.screen_row(10).contains("No saves yet."));
+        assert!(h.screen_row(10).contains("No versions yet."));
     }
 
     #[test]
-    fn hints_and_saved_state_hide_until_ctrl_is_held() {
+    fn hints_hide_until_ctrl_is_held() {
         let mut h = Harness::new("# Title\nSome text");
         h.editor.show_chrome = false;
         h.draw();
@@ -1228,15 +1243,15 @@ mod tests {
         // Passing messages still show.
         h.ctrl('x');
         assert!(h.screen_row(10).contains("Select some text to cut."));
-        // So does naming a save, with its own hints.
+        // So does saving a version, with its own hints.
         h.ctrl('s');
-        assert!(h.screen().contains("Name this save"));
+        assert!(h.screen().contains("Save version"));
         assert_ne!(h.screen_row(11), "");
         h.press(KeyCode::Esc);
         h.editor.show_chrome = true;
         h.draw();
-        assert!(h.screen_row(10).ends_with("● Never saved"));
-        assert!(h.screen_row(11).contains("Ctrl+S"));
+        assert!(h.screen_row(11).contains("Ctrl+S save version"));
+        assert!(!h.screen_row(11).contains("Ctrl+Q")); // it still quits, unlisted
     }
 
     #[test]
@@ -1319,11 +1334,10 @@ mod tests {
         h.with(KeyCode::Home, KeyModifiers::CONTROL);
         // The text runs to the bottom row.
         assert_eq!(h.screen_row(11), format!("{}line 10", " ".repeat(6)));
-        // Holding Ctrl draws the saved state and hints over the bottom rows.
+        // Holding Ctrl draws the hints over the bottom row.
         h.editor.show_chrome = true;
         h.draw();
-        assert!(h.screen_row(10).ends_with("● Never saved"));
-        assert!(!h.screen_row(10).contains("line"));
+        assert_eq!(h.screen_row(10), format!("{}line 9", " ".repeat(6)));
         assert!(h.screen_row(11).contains("Esc back"));
         // A passing message covers only its own row.
         h.editor.show_chrome = false;

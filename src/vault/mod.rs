@@ -15,7 +15,7 @@ use std::io::Read;
 use std::path::Path;
 
 use anyhow::{Context, Result, anyhow, bail};
-use argon2::{Algorithm, Argon2, Params, Version};
+use argon2::{Algorithm, Argon2, Params};
 use jiff::Timestamp;
 use rusqlite::{Connection, ErrorCode, OpenFlags, OptionalExtension, params};
 use zeroize::Zeroizing;
@@ -78,13 +78,14 @@ pub struct PostSummary {
     pub deleted_at: Option<Timestamp>,
 }
 
-/// A named snapshot of a post, made with Ctrl+S.
+/// A named version of a post, saved with Ctrl+S. (Stored in the `saves`
+/// table: they were called saves at first.)
 #[derive(Debug, Clone)]
-pub struct Save {
+pub struct Version {
     pub id: i64,
     pub name: String,
     pub created_at: Timestamp,
-    /// The full text; left empty in lists of saves.
+    /// The full text; left empty in lists of versions.
     pub body: String,
 }
 
@@ -235,7 +236,7 @@ impl Vault {
         Ok(())
     }
 
-    /// Permanently delete a post that's in the Trash, with its saves.
+    /// Permanently delete a post that's in the Trash, with its versions.
     pub fn delete_post_forever(&self, id: i64) -> Result<()> {
         self.delete_posts_where("id = ?1 AND deleted_at IS NOT NULL", id)?;
         Ok(())
@@ -248,7 +249,7 @@ impl Vault {
     }
 
     /// Delete the posts matching `filter` (with one parameter) and their
-    /// saves, all or nothing.
+    /// versions, all or nothing.
     fn delete_posts_where(&self, filter: &str, param: i64) -> Result<usize> {
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(&format!("DELETE FROM saves WHERE post_id IN (SELECT id FROM posts WHERE {filter})"), [param])?;
@@ -257,8 +258,8 @@ impl Vault {
         Ok(count)
     }
 
-    /// Record a save of a post: `body` under `name`, now.
-    pub fn create_save(&self, post_id: i64, name: &str, body: &str) -> Result<Save> {
+    /// Record a version of a post: `body` under `name`, now.
+    pub fn create_version(&self, post_id: i64, name: &str, body: &str) -> Result<Version> {
         let body = with_title_prefix(body);
         let now = now_millis();
         self.conn.execute(
@@ -266,11 +267,11 @@ impl Vault {
             params![post_id, name, body, now],
         )?;
         let id = self.conn.last_insert_rowid();
-        Ok(Save { id, name: name.to_string(), created_at: from_millis(now)?, body })
+        Ok(Version { id, name: name.to_string(), created_at: from_millis(now)?, body })
     }
 
-    /// A post's saves, newest first, without their text.
-    pub fn list_saves(&self, post_id: i64) -> Result<Vec<Save>> {
+    /// A post's versions, newest first, without their text.
+    pub fn list_versions(&self, post_id: i64) -> Result<Vec<Version>> {
         let mut stmt = self.conn.prepare(
             "SELECT id, name, created_at FROM saves WHERE post_id = ?1
              ORDER BY created_at DESC, id DESC",
@@ -278,24 +279,24 @@ impl Vault {
         let rows = stmt.query_map([post_id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
         rows.map(|row| {
             let (id, name, created_at) = row?;
-            Ok(Save { id, name, created_at: from_millis(created_at)?, body: String::new() })
+            Ok(Version { id, name, created_at: from_millis(created_at)?, body: String::new() })
         })
         .collect()
     }
 
-    /// One save, with its full text.
-    pub fn save(&self, id: i64) -> Result<Save> {
+    /// One version, with its full text.
+    pub fn version(&self, id: i64) -> Result<Version> {
         let (name, created_at, body): (String, i64, String) = self
             .conn
             .query_row("SELECT name, created_at, body FROM saves WHERE id = ?1", [id], |row| {
                 Ok((row.get(0)?, row.get(1)?, row.get(2)?))
             })
-            .with_context(|| format!("loading save {id}"))?;
-        Ok(Save { id, name, created_at: from_millis(created_at)?, body })
+            .with_context(|| format!("loading version {id}"))?;
+        Ok(Version { id, name, created_at: from_millis(created_at)?, body })
     }
 
-    /// A post's most recent save, with its full text.
-    pub fn latest_save(&self, post_id: i64) -> Result<Option<Save>> {
+    /// A post's most recent version, with its full text.
+    pub fn latest_version(&self, post_id: i64) -> Result<Option<Version>> {
         let id: Option<i64> = self
             .conn
             .query_row(
@@ -304,7 +305,7 @@ impl Vault {
                 |row| row.get(0),
             )
             .optional()?;
-        id.map(|id| self.save(id)).transpose()
+        id.map(|id| self.version(id)).transpose()
     }
 }
 
@@ -327,7 +328,7 @@ fn derive_key(password: &str, salt: &[u8]) -> Result<Zeroizing<[u8; KEY_LEN]>> {
     let params = Params::new(memory, iterations, lanes, Some(KEY_LEN))
         .map_err(|err| anyhow!("invalid key derivation parameters: {err}"))?;
     let mut key = Zeroizing::new([0u8; KEY_LEN]);
-    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+    Argon2::new(Algorithm::Argon2id, argon2::Version::V0x13, params)
         .hash_password_into(password.as_bytes(), salt, key.as_mut())
         .map_err(|err| anyhow!("deriving key: {err}"))?;
     Ok(key)
@@ -527,53 +528,53 @@ mod tests {
         assert_eq!(ids(vault.list_deleted().unwrap()), [recent]);
     }
 
-    fn save_count(vault: &Vault) -> i64 {
+    fn version_count(vault: &Vault) -> i64 {
         vault.conn.query_row("SELECT count(*) FROM saves", [], |r| r.get(0)).unwrap()
     }
 
     #[test]
-    fn saves_are_listed_newest_first() {
+    fn versions_are_listed_newest_first() {
         let (_dir, path) = temp_vault();
         let vault = Vault::create(&path, "pw").unwrap();
         let post = vault.create_post().unwrap();
         let other = vault.create_post().unwrap();
-        assert!(vault.latest_save(post).unwrap().is_none());
+        assert!(vault.latest_version(post).unwrap().is_none());
 
-        let first = vault.create_save(post, "First draft", "# Hi\none").unwrap();
-        let second = vault.create_save(post, "", "# Hi\ntwo").unwrap();
-        vault.create_save(other, "Elsewhere", "# Other").unwrap();
-        let saves = vault.list_saves(post).unwrap();
-        assert_eq!(saves.iter().map(|s| s.id).collect::<Vec<_>>(), [second.id, first.id]);
-        assert_eq!(saves[1].name, "First draft");
-        assert_eq!(saves[1].body, ""); // lists leave the text out
+        let first = vault.create_version(post, "First draft", "# Hi\none").unwrap();
+        let second = vault.create_version(post, "", "# Hi\ntwo").unwrap();
+        vault.create_version(other, "Elsewhere", "# Other").unwrap();
+        let versions = vault.list_versions(post).unwrap();
+        assert_eq!(versions.iter().map(|s| s.id).collect::<Vec<_>>(), [second.id, first.id]);
+        assert_eq!(versions[1].name, "First draft");
+        assert_eq!(versions[1].body, ""); // lists leave the text out
 
-        assert_eq!(vault.save(first.id).unwrap().body, "# Hi\none");
-        let latest = vault.latest_save(post).unwrap().unwrap();
+        assert_eq!(vault.version(first.id).unwrap().body, "# Hi\none");
+        let latest = vault.latest_version(post).unwrap().unwrap();
         assert_eq!((latest.id, latest.body.as_str()), (second.id, "# Hi\ntwo"));
         // Saving doesn't touch the draft.
         assert_eq!(vault.post(post).unwrap().body, "# ");
     }
 
     #[test]
-    fn deleting_a_post_forever_deletes_its_saves() {
+    fn deleting_a_post_forever_deletes_its_versions() {
         let (_dir, path) = temp_vault();
         let vault = Vault::create(&path, "pw").unwrap();
         let gone = vault.create_post().unwrap();
         let kept = vault.create_post().unwrap();
-        vault.create_save(gone, "a", "# a").unwrap();
-        vault.create_save(kept, "b", "# b").unwrap();
+        vault.create_version(gone, "a", "# a").unwrap();
+        vault.create_version(kept, "b", "# b").unwrap();
         vault.delete_post(gone).unwrap();
-        assert_eq!(save_count(&vault), 2); // still restorable, with its saves
+        assert_eq!(version_count(&vault), 2); // still restorable, with its versions
         vault.delete_post_forever(gone).unwrap();
-        assert_eq!(save_count(&vault), 1);
-        assert_eq!(vault.list_saves(kept).unwrap().len(), 1);
+        assert_eq!(version_count(&vault), 1);
+        assert_eq!(vault.list_versions(kept).unwrap().len(), 1);
 
         // Purging after 30 days too.
         vault.delete_post(kept).unwrap();
         vault.conn.execute("UPDATE posts SET deleted_at = 0", []).unwrap();
         drop(vault);
         let vault = Vault::open(&path, "pw").unwrap();
-        assert_eq!(save_count(&vault), 0);
+        assert_eq!(version_count(&vault), 0);
     }
 
     #[test]

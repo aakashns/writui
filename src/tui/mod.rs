@@ -20,7 +20,8 @@ use ratatui::crossterm::event::{
 };
 use ratatui::crossterm::cursor::SetCursorStyle;
 use ratatui::crossterm::execute;
-use ratatui::crossterm::terminal::supports_keyboard_enhancement;
+use ratatui::crossterm::style::Print;
+use ratatui::crossterm::terminal::{SetTitle, supports_keyboard_enhancement};
 use ratatui::{DefaultTerminal, Frame};
 use zeroize::Zeroizing;
 
@@ -41,15 +42,15 @@ pub enum Action {
     DeletePostForever { id: i64, select: Option<i64> },
     /// Go back to the list, highlighting this post.
     BackToList(Option<i64>),
-    /// Record a save of the open post.
-    SavePost { name: String },
+    /// Save a version of the open post.
+    SaveVersion { name: String },
     /// Show the open post's history.
     ShowHistory,
-    /// Open a save in the history, to read.
-    LoadSave(i64),
+    /// Open a version in the history, to read.
+    LoadVersion(i64),
 }
 
-/// Whether the draft is being stored because the editor is being left.
+/// Whether the post is being stored because the editor is being left.
 #[derive(Clone, Copy)]
 enum Leaving {
     Yes,
@@ -66,6 +67,9 @@ enum Screen {
 pub fn run(vault_path: PathBuf) -> Result<()> {
     let mut terminal = ratatui::init();
     execute!(stdout(), EnableMouseCapture, EnableBracketedPaste)?;
+    // Keep the terminal's own title, to put back on the way out (where
+    // the terminal can).
+    execute!(stdout(), Print(PUSH_TITLE))?;
     // Terminals that speak the kitty keyboard protocol can report Ctrl
     // being pressed and let go on its own, so the editor can keep its hints
     // out of sight until Ctrl is held.
@@ -94,6 +98,11 @@ pub fn run(vault_path: PathBuf) -> Result<()> {
     result
 }
 
+/// Save and restore the window title (xterm's title stack; terminals
+/// without one ignore these).
+const PUSH_TITLE: &str = "\x1b[22;0t";
+const POP_TITLE: &str = "\x1b[23;0t";
+
 fn give_back_terminal(ctrl_reported: bool) {
     if ctrl_reported {
         let _ = execute!(stdout(), PopKeyboardEnhancementFlags);
@@ -102,7 +111,8 @@ fn give_back_terminal(ctrl_reported: bool) {
         stdout(),
         DisableMouseCapture,
         DisableBracketedPaste,
-        SetCursorStyle::DefaultUserShape
+        SetCursorStyle::DefaultUserShape,
+        Print(POP_TITLE)
     );
 }
 
@@ -132,7 +142,7 @@ struct App {
     /// Slow work (key derivation) to do right after the next draw, so the
     /// screen can say "Unlocking…" first.
     pending: Option<Action>,
-    /// Storing the draft failed on the last Ctrl+Q; the next one quits anyway.
+    /// Storing the post failed on the last Ctrl+Q; the next one quits anyway.
     quit_unsaved: bool,
     /// The cursor is currently a bar (in the editor) rather than the
     /// terminal's own shape.
@@ -141,6 +151,8 @@ struct App {
     ctrl_reported: bool,
     /// Ctrl is held down right now.
     ctrl_held: bool,
+    /// The terminal window's title, as last set.
+    title: String,
     quit: bool,
 }
 
@@ -160,6 +172,7 @@ impl App {
             bar_cursor: false,
             ctrl_reported,
             ctrl_held: false,
+            title: String::new(),
             quit: false,
         }
     }
@@ -174,14 +187,19 @@ impl App {
                 execute!(stdout(), style)?;
                 self.bar_cursor = bar;
             }
+            let title = self.title();
+            if title != self.title {
+                execute!(stdout(), SetTitle(&title))?;
+                self.title = title;
+            }
             if let Some(action) = self.pending.take() {
                 self.perform(action)?;
                 continue;
             }
-            // Wait for input, but wake up to store the draft when it's due.
+            // Wait for input, but wake up to store the post when it's due.
             let due = self.autosave_due();
             if due.is_some_and(|due| due <= Instant::now()) {
-                self.store_draft(Leaving::No);
+                self.store_post(Leaving::No);
                 continue;
             }
             if let Some(due) = due
@@ -193,6 +211,14 @@ impl App {
             self.apply(action)?;
         }
         Ok(())
+    }
+
+    /// The terminal window's title: the post being written, or "writui".
+    fn title(&self) -> String {
+        match &self.screen {
+            Screen::Editor(editor) => editor.title(),
+            _ => "writui".to_string(),
+        }
     }
 
     fn autosave_due(&self) -> Option<Instant> {
@@ -208,7 +234,7 @@ impl App {
             Screen::Unlock(screen) => screen.render(frame),
             Screen::List(screen) => screen.render(frame),
             Screen::Editor(screen) => {
-                // Hints and the saved state stay hidden unless Ctrl is held,
+                // Hints stay hidden unless Ctrl is held,
                 // where the terminal can tell us.
                 screen.show_chrome = !self.ctrl_reported || self.ctrl_held;
                 screen.zen = self.ctrl_reported;
@@ -257,7 +283,7 @@ impl App {
         match action {
             Action::None => {}
             Action::Quit => {
-                if self.store_draft(Leaving::Yes) || self.quit_unsaved {
+                if self.store_post(Leaving::Yes) || self.quit_unsaved {
                     self.quit = true;
                 } else {
                     self.quit_unsaved = true;
@@ -293,26 +319,26 @@ impl App {
                 self.show_trash(select, Some(format!("Deleted “{title}” forever.")))?;
             }
             Action::BackToList(select) => {
-                if self.store_draft(Leaving::Yes) {
+                if self.store_post(Leaving::Yes) {
                     self.show_list(select, None)?;
                 }
             }
-            Action::SavePost { name } => {
+            Action::SaveVersion { name } => {
                 let Screen::Editor(editor) = &mut self.screen else { return Ok(()) };
                 let vault = self.vault.as_ref().context("the vault is locked");
-                match vault.and_then(|vault| vault.create_save(editor.post_id(), &name, &editor.text())) {
-                    Ok(save) => editor.saved(save),
-                    Err(err) => editor.set_error(format!("Couldn't save: {err:#}")),
+                match vault.and_then(|vault| vault.create_version(editor.post_id(), &name, &editor.text())) {
+                    Ok(version) => editor.version_saved(version),
+                    Err(err) => editor.set_error(format!("Couldn't save the version: {err:#}")),
                 }
-                // The draft matches the save, so store that too.
-                self.store_draft(Leaving::No);
+                // The post matches the version, so store that too.
+                self.store_post(Leaving::No);
             }
-            Action::ShowHistory | Action::LoadSave(_) => {
+            Action::ShowHistory | Action::LoadVersion(_) => {
                 let Screen::Editor(editor) = &mut self.screen else { return Ok(()) };
                 let vault = self.vault.as_ref().context("the vault is locked");
                 let result = match action {
-                    Action::LoadSave(id) => vault.and_then(|v| v.save(id)).map(|s| editor.show_save(s)),
-                    _ => vault.and_then(|v| v.list_saves(editor.post_id())).map(|s| editor.show_history(s)),
+                    Action::LoadVersion(id) => vault.and_then(|v| v.version(id)).map(|v| editor.show_version(v)),
+                    _ => vault.and_then(|v| v.list_versions(editor.post_id())).map(|v| editor.show_history(v)),
                 };
                 if let Err(err) = result {
                     editor.set_error(format!("Couldn't load the history: {err:#}"));
@@ -375,11 +401,11 @@ impl App {
         });
     }
 
-    /// Store the open post's draft in the vault, if it changed, and where
-    /// the cursor is. If storing the draft fails, the editor stays open and
+    /// Store the open post in the vault, if it changed, and where the cursor
+    /// is. If storing it fails, the editor stays open and
     /// says so, so no writing is lost. Returns whether it's safe to leave
     /// the editor.
-    fn store_draft(&mut self, leaving: Leaving) -> bool {
+    fn store_post(&mut self, leaving: Leaving) -> bool {
         let Screen::Editor(editor) = &mut self.screen else {
             return true;
         };
@@ -391,10 +417,10 @@ impl App {
                 Err(err) => {
                     editor.store_failed(match leaving {
                         Leaving::Yes => format!(
-                            "Couldn't save the draft: {err:#}. Ctrl+Q again quits without saving."
+                            "Couldn't save the post: {err:#}. Ctrl+Q again quits without saving."
                         ),
                         Leaving::No => {
-                            format!("Couldn't save the draft: {err:#}. Trying again shortly.")
+                            format!("Couldn't save the post: {err:#}. Trying again shortly.")
                         }
                     });
                     return false;
@@ -416,8 +442,8 @@ impl App {
     fn open_post(&mut self, id: i64) -> Result<()> {
         let vault = self.vault()?;
         let post = vault.post(id)?;
-        let last_save = vault.latest_save(id)?;
-        self.screen = Screen::Editor(Box::new(editor::Editor::new(post, last_save)));
+        let last_version = vault.latest_version(id)?;
+        self.screen = Screen::Editor(Box::new(editor::Editor::new(post, last_version)));
         Ok(())
     }
 }
