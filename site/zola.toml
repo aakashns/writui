@@ -15,4 +15,4 @@ external_links_no_follow = false
 
 [extra]
 repo = "https://github.com/aakashns/writui"
-install = "curl -fsSL https://github.com/aakashns/writui/releases/latest/download/install.sh | bash"
+install = "curl -fsSL https://writui.com/install.sh | bash"

@@ -431,3 +431,12 @@ and Open Graph / Twitter tags; the landing page has `SoftwareApplication`
 JSON-LD. Zola writes `sitemap.xml` and `robots.txt` (which points to the
 sitemap) itself. The 404 page is `noindex`.
 
+## Install from writui.com/install.sh
+
+The install command is `curl -fsSL https://writui.com/install.sh | bash`.
+`site/static/install.sh` is a symlink to the repo's `install.sh`, which
+Zola copies into the built site as a plain file, so the two can't drift;
+the site workflow also runs when `install.sh` changes. The script always
+fetches the latest release, so the copy on `main` and the one attached to
+each release behave the same, and the release URL keeps working.
+

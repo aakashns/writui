@@ -18,7 +18,7 @@ What it does so far:
 It's early, and it's being built in the open, a small piece at a time. The [changelog](https://github.com/aakashns/writui/releases) lists every release. To try it on macOS or Linux:
 
 ```
-curl -fsSL https://github.com/aakashns/writui/releases/latest/download/install.sh | bash
+curl -fsSL https://writui.com/install.sh | bash
 ```
 
 More soon.

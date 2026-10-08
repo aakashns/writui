@@ -25,7 +25,7 @@ A writing app for the terminal. Markdown, encrypted, no nonsense.
 On macOS or Linux, paste this into a terminal:
 
 ```sh
-curl -fsSL https://github.com/aakashns/writui/releases/latest/download/install.sh | bash
+curl -fsSL https://writui.com/install.sh | bash
 ```
 
 It downloads the latest writui for your computer, checks it, and puts it in
@@ -35,6 +35,9 @@ with `writui --version`.
 
 <details>
 <summary>Or download it yourself</summary>
+
+The install script is also attached to every release:
+`curl -fsSL https://github.com/aakashns/writui/releases/latest/download/install.sh | bash`.
 
 Every [release](https://github.com/aakashns/writui/releases/latest) has a
 ready-to-run file for each computer:

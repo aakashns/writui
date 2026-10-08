@@ -1,14 +1,15 @@
 # Builds the project site (site/, Zola) and publishes it to GitHub Pages,
-# at https://writui.com, whenever the site changes on main. Pull requests
+# at https://writui.com, whenever the site (or install.sh, which it serves
+# at writui.com/install.sh) changes on main. Pull requests
 # that touch the site build it without publishing.
 name: Site
 
 on:
   push:
     branches: [main]
-    paths: [site/**, .github/workflows/site.yml]
+    paths: [site/**, install.sh, .github/workflows/site.yml]
   pull_request:
-    paths: [site/**, .github/workflows/site.yml]
+    paths: [site/**, install.sh, .github/workflows/site.yml]
   workflow_dispatch:
 
 permissions:

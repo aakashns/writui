@@ -1,7 +1,10 @@
 #!/bin/sh
 # Install writui (https://github.com/aakashns/writui) on macOS or Linux:
 #
-#   curl -fsSL https://github.com/aakashns/writui/releases/latest/download/install.sh | bash
+#   curl -fsSL https://writui.com/install.sh | bash
+#
+# writui.com serves this file from the repo; every release has it attached
+# too, at https://github.com/aakashns/writui/releases/latest/download/install.sh
 #
 # Downloads the latest release for this computer, checks it against the
 # release's SHA256SUMS and installs it to ~/.local/bin/writui. Running it
