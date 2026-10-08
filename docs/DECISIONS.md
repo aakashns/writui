@@ -359,3 +359,28 @@ popped on the way out (also after a panic); terminals without a title stack
 ignore both, and shells usually set their own title at the next prompt
 anyway. Control characters are dropped from post titles before they're
 sent.
+
+## A command menu instead of a row of hints
+
+The editor's hint bar had grown past one row on a zoomed-in terminal. Now
+it only says "Ctrl+K menu", and Ctrl+K opens a filterable list of every
+editor command with its shortcut. Ctrl+K rather than the Ctrl+Space first
+asked for: on macOS, Ctrl+Space switches keyboard input sources whenever
+there's more than one, and writui would never see it; Cmd/Ctrl+K is also
+the usual "command palette" key (VS Code, Slack, Linear). The menu is its
+own widget (`tui/menu.rs`), generic over the screen's commands like the
+dialogs, so other screens can get one later. The word count skips runs
+without a letter or digit, so markdown's `#`, `-` and `---` don't count;
+it's counted only when the bar needs it after an edit.
+
+## Copy / export as markdown on Ctrl+Shift+C / Ctrl+Shift+S
+
+Copy as markdown is "copy, but everything" (Ctrl+Shift+C); export is "Save
+as" (Ctrl+Shift+S, Ctrl+S being "save version"). Both need a terminal that
+tells Shift apart with Ctrl (the kitty keyboard protocol: Alacritty, Ghostty,
+kitty, WezTerm); elsewhere they're Ctrl+C / Ctrl+S, and the menu always has
+them. Ctrl+E was avoided: Ghostty turns Cmd+Right into Ctrl+E. With the
+kitty protocol, Ctrl+Shift+C arrives as Ctrl+"C"; so that Caps Lock can't
+turn Ctrl+C into it, Caps Lock no longer capitalises letters typed with
+Ctrl (which also stops Caps Lock + Ctrl+Z redoing). Exports are written as
+plain files, outside the vault: that's the point of them.

@@ -64,6 +64,15 @@ impl<C: Copy> Dialog<C> {
         self
     }
 
+    /// Start the text field off with `value`.
+    pub fn with_value(mut self, value: &str) -> Self {
+        if let Some(input) = &mut self.input {
+            input.value.clear();
+            input.push(value);
+        }
+        self
+    }
+
     /// What's been typed into the text field.
     pub fn input(&self) -> &str {
         self.input.as_ref().map_or("", |input| input.value.as_str())

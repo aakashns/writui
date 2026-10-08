@@ -35,6 +35,16 @@ impl<C> Default for HintBar<C> {
 impl<C: Copy> HintBar<C> {
     /// Draw as many hints as fit, centred in `area`.
     pub fn render(&mut self, frame: &mut Frame, area: Rect, hints: &[Hint<C>]) {
+        self.draw(frame, area, hints, true);
+    }
+
+    /// Draw as many hints as fit from the left of `area`. Returns the
+    /// width they took.
+    pub fn render_left(&mut self, frame: &mut Frame, area: Rect, hints: &[Hint<C>]) -> u16 {
+        self.draw(frame, area, hints, false)
+    }
+
+    fn draw(&mut self, frame: &mut Frame, area: Rect, hints: &[Hint<C>], centre: bool) -> u16 {
         self.hits.clear();
         let widths: Vec<u16> = hints
             .iter()
@@ -51,8 +61,9 @@ impl<C: Copy> HintBar<C> {
             count += 1;
         }
 
-        let mut spans = Vec::new();
-        let mut x = area.x + (area.width - total) / 2;
+        let left_pad = if centre { (area.width - total) / 2 } else { 0 };
+        let mut spans = vec![Span::raw(" ".repeat(left_pad as usize))];
+        let mut x = area.x + left_pad;
         for (i, h) in hints.iter().take(count).enumerate() {
             if i > 0 {
                 spans.push(Span::raw(" ".repeat(GAP as usize)));
@@ -64,9 +75,8 @@ impl<C: Copy> HintBar<C> {
             self.hits.push((Rect::new(x, area.y, widths[i], 1), h.cmd));
             x += widths[i];
         }
-        let left_pad = (area.width - total) / 2;
-        spans.insert(0, Span::raw(" ".repeat(left_pad as usize)));
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
+        total
     }
 
     /// Draw nothing: no hint can be clicked.

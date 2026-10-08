@@ -96,6 +96,7 @@ pub struct Post {
     /// Where the cursor was when the post was last closed (a character
     /// index into `body`). `None` means the end.
     pub cursor: Option<usize>,
+    pub created_at: Timestamp,
 }
 
 impl Vault {
@@ -179,14 +180,14 @@ impl Vault {
     }
 
     pub fn post(&self, id: i64) -> Result<Post> {
-        let (body, cursor): (String, Option<i64>) = self
+        let (body, cursor, created_at): (String, Option<i64>, i64) = self
             .conn
-            .query_row("SELECT body, cursor FROM posts WHERE id = ?1", [id], |row| {
-                Ok((row.get(0)?, row.get(1)?))
+            .query_row("SELECT body, cursor, created_at FROM posts WHERE id = ?1", [id], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
             })
             .with_context(|| format!("loading post {id}"))?;
         let cursor = cursor.and_then(|pos| usize::try_from(pos).ok());
-        Ok(Post { id, body, cursor })
+        Ok(Post { id, body, cursor, created_at: from_millis(created_at)? })
     }
 
     /// Create an empty post (just the `# ` title prefix). Returns its id.

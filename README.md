@@ -9,8 +9,9 @@ A writing app for the terminal. Markdown, encrypted, no nonsense.
   bold in bold, italics in italics, code in green, with the markdown
   symbols faded.
 - **Mouse and keyboard.** Click, scroll and press buttons with the mouse, or
-  use shortcuts. The bar at the bottom of the screen always shows the
-  shortcuts for where you are, and you can click those too.
+  use shortcuts. The bar at the bottom of the screen shows the shortcuts
+  for where you are, and you can click those too. While writing, Ctrl+K
+  opens a menu of everything you can do, with each shortcut.
 - **Fits your terminal.** It uses your terminal's own colours and font, and
   works in any modern terminal (Alacritty, Ghostty, iTerm2, and others).
 
@@ -111,9 +112,11 @@ the password each time it starts.
 - **Posts** are listed with the most recently changed first. Open one with
   Enter or a click, start a new one with Ctrl+N.
 - **Zen writing:** the editor shows only your words. Hold Ctrl to see the
-  shortcuts. (This needs a terminal that can
+  post's word count and when you started it. (This needs a terminal that can
   report Ctrl on its own, like Alacritty, Ghostty, kitty, WezTerm or a recent
   iTerm2; in others, and inside tmux, they're always shown.)
+- **The menu** (Ctrl+K) lists everything you can do while writing, with its
+  shortcut. Type to filter it, pick with the arrow keys and Enter, or click.
 - **Writing:** type away. Your post is saved automatically as you go: a
   second after you stop typing, every few seconds while you keep typing,
   and when you go back to the list (Esc) or quit (Ctrl+Q). There's no need
@@ -145,6 +148,10 @@ the password each time it starts.
   start / end of the line, like Home and End. Option+Left/Right (Alt on Linux
   and Windows) jump by word, Option+Up/Down (Ctrl+Up/Down) by paragraph. Add
   Shift to select as you go.
+- **Getting your writing out:** Ctrl+Shift+C copies the whole post as
+  markdown, and Ctrl+Shift+S exports it to a `.md` file wherever you choose
+  (both are in the menu too, for terminals where Ctrl+Shift doesn't come
+  through).
 - **Deleting** (Ctrl+D) moves a post to the Trash, where you can restore it
   for 30 days.
 

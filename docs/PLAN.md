@@ -12,12 +12,15 @@ file is the source of truth for what's next.
 
 ## Next up
 
-M2 (live markdown formatting, opening links, hanging indents for lists)
-shipped in `0.7.0`. The `0.8.0` PR renames saves to versions (no more
-"draft"), drops the saved-state indicator, hides Ctrl+Q in the editor, adds
-Ctrl/Cmd+Left/Right for line ends, and sets the terminal title. Next:
+`0.8.0` (versions instead of drafts, line ends on Ctrl/Cmd+arrows, the
+terminal title) is out. The `0.9.0` PR replaces the editor's hint bar with a
+command menu (Ctrl+K) and a post-wide bar with the word count and creation
+date, and adds copy / export as markdown. Next:
 
-1. M3 (copy / export as markdown, project site) and on in order.
+1. The rest of M3: the project site in `site/` (Zola), deployed with GitHub
+   Pages, and the first blog / changelog post written in writui and
+   exported into `site/content/`.
+2. Then M6 (LLM chat sidebar) and on in order.
 
 ## M0 — Writing core
 
@@ -38,6 +41,8 @@ The smallest thing that can replace another writing app.
 - [x] Autosave (debounced + on quit)
 - [x] Hint bar with the shortcuts for the current screen
 - [x] Zen editor: hints only while Ctrl is held
+- [x] Command menu (Ctrl+K) instead of a row of hints in the editor; the
+      bar shows the word count and when the post was started
 - [x] First ship: GitHub release `v0.1.0`
 
 ## M1 — Versions and history
@@ -70,8 +75,8 @@ selection to copy.)
 
 ## M3 — Getting writing out + project site
 
-- [ ] Copy as markdown (whole post)
-- [ ] Export as markdown file
+- [x] Copy as markdown (whole post)
+- [x] Export as markdown file
 - [ ] `site/` (Zola): landing page, blog, changelog
 - [ ] First changelog / blog post, written in writui and exported into `site/content/`
 
