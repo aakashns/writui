@@ -456,7 +456,7 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 **Details**
 
 - The site lives in `site/` in this repo, and is published at
-  **writui.com** (GitHub Pages).
+  **writui.com** (Cloudflare Workers).
 - It looks like the app: light Inter text on a dark background, one narrow
   column. Pages: a landing page (what writui is, a short recording of it,
   install) and the blog. "Changelog" in the menu links to the GitHub

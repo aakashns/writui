@@ -12,10 +12,16 @@ file is the source of truth for what's next.
 
 ## Next up
 
-The site is live at **writui.com**. The export / import PR adds front
-matter to exports (remembered per post), Tab completion for paths, and
-"Import markdown" on the list, so published posts can be edited in writui
-and exported back. After it merges (`0.11.0`):
+The site (`site/`, Zola) moves from GitHub Pages to Cloudflare Workers
+(merged): `site/build.sh` and `site/wrangler.jsonc`, built and deployed by
+Cloudflare's Git integration. Still to do by hand: connect the repo in
+Cloudflare (root directory `site`), add the www → writui.com Redirect
+Rule, check https://writui.com/install.sh, then turn off GitHub Pages.
+
+The export / import PR adds front matter to exports (remembered per post),
+Tab completion for paths, and "Import markdown" on the list, so published
+posts can be edited in writui and exported back. After it merges
+(`0.11.0`):
 
 1. M6 (LLM chat sidebar) and on in order.
 
@@ -88,7 +94,7 @@ The repo went public early (during M0), so most of this is already done.
 - [x] Release builds (macOS and Linux, each x86_64 and arm64), published
       automatically when a merge bumps the version
 - [x] Windows: build from source (README), with how to run the tests there
-- [x] Site deployed via GitHub Pages
+- [ ] Site deployed (Cloudflare Workers, at writui.com)
 - [x] Make the repo public
 - [x] One-line install script (`curl … | bash`)
 - [x] `writui upgrade` and `writui --version`
