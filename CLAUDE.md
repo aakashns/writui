@@ -118,7 +118,8 @@ So every PR that changes the app bumps the version (and `Cargo.lock`, via
 `0.2.0` / `0.1.1`). Docs-only PRs don't bump and don't release. Release
 builds are macOS and Linux only; Windows is build-from-source. The PR title becomes a line in the release notes, so make it
 read well to users, not just the creator. CI (`.github/workflows/ci.yml`) runs
-clippy and the tests on Linux, macOS and Windows for every PR; keep it green.
+clippy and the tests on Linux and macOS for every PR; keep it green. Windows
+isn't in CI; the README's Windows section says how to run the checks there.
 
 `README.md` is for people using writui, who don't know or care that it's
 Rust: what it does, install, use, where the writing is kept. Keep it current

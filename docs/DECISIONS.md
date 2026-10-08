@@ -324,3 +324,10 @@ Ctrl on its own), the text also runs to the last row; holding Ctrl draws the
 saved state and hints over the bottom two rows instead of resizing the text,
 so nothing jumps. A passing message covers only its own row. Where hints
 always show, their two rows stay reserved, so they never hide the text.
+
+## Windows leaves CI
+
+Windows was the slowest CI job (about twice as long as the others), for a
+platform with no release binaries. CI now runs on Linux
+and macOS only. The README's Windows section says how to run the tests and
+clippy there by hand.

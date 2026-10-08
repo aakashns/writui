@@ -81,7 +81,7 @@ The repo went public early (during M0), so most of this is already done.
 - [x] GitHub Actions: build, test, lint
 - [x] Release builds (macOS and Linux, each x86_64 and arm64), published
       automatically when a merge bumps the version
-- [x] Windows: build from source (README), tested in CI
+- [x] Windows: build from source (README), with how to run the tests there
 - [ ] Site deployed via GitHub Pages
 - [x] Make the repo public
 - [x] One-line install script (`curl … | bash`)

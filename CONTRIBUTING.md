@@ -49,7 +49,9 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 ```
 
-CI runs both on Linux, macOS and Windows for every pull request. Also try
+CI runs both on Linux and macOS for every pull request (not Windows: run
+them there yourself if a change could affect it, e.g. paths or the
+terminal). Also try
 the change in the real app, in a couple of different terminals if it
 touches what's drawn on screen. A few rules the app sticks to:
 

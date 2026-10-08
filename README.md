@@ -80,10 +80,21 @@ There's no ready-made Windows version, but you can build writui yourself:
    cargo install --locked --git https://github.com/aakashns/writui
    ```
 
-The build takes a few minutes. writui's automated tests run on Windows, but
-it isn't regularly tried out by hand there, so please
-[report anything odd](https://github.com/aakashns/writui/issues). To upgrade,
-run the same command again.
+The build takes a few minutes. To upgrade, run the same command again.
+
+writui isn't tested on Windows automatically, or tried out there by hand
+regularly, so please
+[report anything odd](https://github.com/aakashns/writui/issues). To run its
+automated tests and checks yourself, in the same kind of PowerShell window:
+
+```sh
+git clone https://github.com/aakashns/writui
+cd writui
+cargo test
+cargo clippy --all-targets -- -D warnings
+```
+
+If both finish without errors, writui's tests pass on your computer.
 
 ## Use
 
