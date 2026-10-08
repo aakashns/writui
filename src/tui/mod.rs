@@ -3,6 +3,7 @@
 mod dialog;
 mod editor;
 mod hints;
+mod menu;
 mod list;
 mod setup;
 mod unlock;
@@ -117,12 +118,13 @@ fn give_back_terminal(ctrl_reported: bool) {
 }
 
 /// Smooth over the keyboard protocol: with every key reported as a code,
-/// Caps Lock no longer capitalises letters, so do that here.
+/// Caps Lock no longer capitalises letters, so do that here. (Not with
+/// Ctrl: Ctrl+Shift+C means something else than Ctrl+C.)
 fn normalize(event: Event) -> Event {
     match event {
         Event::Key(mut key)
             if key.state.contains(KeyEventState::CAPS_LOCK)
-                && !key.modifiers.contains(KeyModifiers::SHIFT) =>
+                && !key.modifiers.intersects(KeyModifiers::SHIFT | KeyModifiers::CONTROL) =>
         {
             if let KeyCode::Char(ch) = key.code
                 && ch.is_lowercase()

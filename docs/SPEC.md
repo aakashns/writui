@@ -38,7 +38,39 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   > let's remove ctrl+q from the article page (i mean, let the shortcut be
   > there, just don't show it)
 
-  Ctrl+Q quits from the editor too, but its hint bar doesn't list it.
+  > okay, let's think about the hint bar a little bit, it's getting out of
+  > hand. i've zoomed in my terminal and it's occuping the whole bottom row
+  > alraedy. i think i want to go in a different direction with it. so
+  > here's what i'm thinking: let's go with a two step approach here. upon
+  > pressing control, let's show the hint Ctrl+Space to open menu, and upon
+  > clicking control space show the actual menu in a overlay in the center
+  > of the page, similar to what omarchy has. the top of the overlay is
+  > actually an input box using which i can fiter out commands, and below
+  > each command is listed with its shortcut (the direct shortcuts still
+  > work, i can reach them without control space). does that make sense?
+  > also, let's limit the width of the hint bar to match the post width,
+  > and on the right end of the hint bar let's show number of words and
+  > date & time of creation
+
+  > let's keep the shortcuts muted. also, instead of bar, let's go with
+  > highlight, similar to the list screen. by default, nothing is highlited
+
+  > okay, let's do ctrl+k
+
+  > let's not chagne the list page at all for now, keep the hint bar there
+
+  The editor's hint bar is as wide as the post. It shows just "Ctrl+K menu"
+  on the left, and on the right the post's word count and when it was
+  started ("412 words · Oct 8, 2026, 9:14 AM"; the date is dropped first, then the
+  count, when the bar is too narrow). Ctrl+K (or clicking the hint) opens
+  the command menu in the middle of the screen: a filter field on top, then
+  every editor command with its shortcut, faded. Nothing is highlighted at
+  first; ↑/↓ move the highlight, typing filters (matching anywhere in a
+  command's name) and highlights the first match, Enter runs the
+  highlighted command, clicking runs one, Esc / Ctrl+K / a click outside
+  close it. Every command keeps its own shortcut. Quit (Ctrl+Q) is in the
+  menu, not on the bar. Dialogs keep their short Enter / Esc hints. The
+  list and other screens are unchanged.
 
   > can we change the terminal title to the article title? and on the post
   > list page, can we set the terminal title to writui?
@@ -302,8 +334,13 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 **Details**
 
-- **Copy as markdown**: the whole post's markdown source to the clipboard.
-- **Export as markdown**: write the post to a `.md` file of my choosing.
+- **Copy as markdown** (Ctrl+Shift+C, or the menu): the whole post's
+  markdown source to the clipboard.
+- **Export as markdown** (Ctrl+Shift+S, like "Save as", or the menu): write
+  the post to a `.md` file of my choosing. It suggests the post's title as
+  a file name (`morning-pages.md`) in the folder writui was started from;
+  typing a folder puts that file name in it, and `~` is the home folder. It
+  asks before replacing a file. The file ends with a newline.
 - **Copy as formatted text**: the whole post (or the selection) as rich
   text, so pasting into Substack, Gmail, Medium, Google Docs etc. keeps
   headings, bold, links, lists.

@@ -5,6 +5,7 @@ mod autosave;
 mod browser;
 mod buffer;
 mod clipboard;
+mod export;
 mod history;
 mod markdown;
 mod undo;
@@ -14,6 +15,7 @@ use std::ops::Range;
 use std::time::{Duration, Instant};
 
 use ratatui::Frame;
+use jiff::tz::TimeZone;
 use ratatui::crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
@@ -27,6 +29,7 @@ use super::Action;
 use super::dialog::{Button, Dialog};
 use super::hints::{HintBar, hint};
 use super::list::display_title;
+use super::menu::{self, Menu, item};
 use super::widgets::{COLUMN_WIDTH, truncate};
 use crate::vault::{Post, Version, TITLE_PREFIX, title_from_first_line};
 use autosave::Autosave;
@@ -46,6 +49,9 @@ const MULTI_CLICK: Duration = Duration::from_millis(500);
 
 /// The longest name a version can have.
 const MAX_VERSION_NAME: usize = 80;
+
+/// The longest path an export can be typed to.
+const MAX_EXPORT_PATH: usize = 1024;
 
 /// Rows kept between the cursor and the top or bottom edge when scrolling to
 /// follow it. The text can also scroll this far past its last row.
@@ -69,6 +75,15 @@ enum Cmd {
     Paste,
     Deselect,
     OpenLink,
+    SelectAll,
+    Menu,
+    CloseMenu,
+    RunMenu,
+    CopyMarkdown,
+    Export,
+    ConfirmExport,
+    ConfirmReplace,
+    Quit,
 }
 
 #[derive(Clone, Copy)]
@@ -82,6 +97,11 @@ struct Click {
 
 pub struct Editor {
     post_id: i64,
+    /// When the post was created, as shown in the hint bar.
+    created: String,
+    /// Words in the post, counted when the hint bar first needs them after
+    /// an edit.
+    words: Option<usize>,
     /// The text as last stored in the vault.
     stored: String,
     /// The post's most recent version, with its text.
@@ -117,8 +137,12 @@ pub struct Editor {
     error: Option<String>,
     /// A passing message (e.g. "Copied."), until the next key or click.
     notice: Option<String>,
-    /// Naming a version.
+    /// Naming a version, or where to export to.
     dialog: Option<Dialog<Cmd>>,
+    /// Exporting would replace this file: asking first.
+    replacing: Option<std::path::PathBuf>,
+    /// The command menu (Ctrl+K).
+    menu: Option<Menu<Cmd>>,
     /// The post's history, shown instead of the post while open.
     history: Option<History>,
     hints: HintBar<Cmd>,
@@ -133,9 +157,12 @@ pub struct Editor {
 impl Editor {
     /// Opens with the cursor where it was left (or at the end of the post).
     pub fn new(post: Post, last_version: Option<Version>) -> Self {
+        let created = post.created_at.to_zoned(TimeZone::system()).strftime("%b %-d, %Y, %-I:%M %p").to_string();
         Editor {
             last_version,
             post_id: post.id,
+            created,
+            words: None,
             buffer: Buffer::new(&post.body, post.cursor),
             stored: post.body,
             undo: Undo::default(),
@@ -155,6 +182,8 @@ impl Editor {
             error: None,
             notice: None,
             dialog: None,
+            replacing: None,
+            menu: None,
             history: None,
             hints: HintBar::default(),
             show_chrome: true,
@@ -201,15 +230,14 @@ impl Editor {
 
     /// The post's title, for the terminal window ("Untitled" if it has none).
     pub fn title(&self) -> String {
-        let title = title_from_first_line(&self.buffer.rope().line(0).to_string());
+        let title = self.raw_title();
         // Control characters could make the terminal do things.
         display_title(&title).chars().filter(|c| !c.is_control()).collect()
     }
 
     /// Show the post's history (newest version first).
     pub fn show_history(&mut self, versions: Vec<Version>) {
-        let title = title_from_first_line(&self.buffer.rope().line(0).to_string());
-        self.history = Some(History::new(title, versions, self.changed_since_version()));
+        self.history = Some(History::new(self.raw_title(), versions, self.changed_since_version()));
     }
 
     /// Open a version (with its text) in the history, to read.
@@ -291,7 +319,7 @@ impl Editor {
 
         // In zen, the status and hint rows are drawn over the text, only
         // while there's something to show there.
-        let chrome = self.show_chrome || self.dialog.is_some();
+        let chrome = self.show_chrome || self.dialog.is_some() || self.menu.is_some();
         let message = self.error.is_some() || self.notice.is_some();
         let status_covered = self.zen && message;
         let hints_covered = self.zen && chrome;
@@ -319,45 +347,61 @@ impl Editor {
             frame.render_widget(Paragraph::new(message), area);
         }
 
+        // The hint bar, as wide as the text.
+        let bar = Rect { x: left, width: width as u16, ..hint_area };
         if let Some(dialog) = &mut self.dialog {
             dialog.render(frame);
             let hints = dialog.hints();
-            self.hints.render(frame, hint_area, &hints);
+            self.hints.render(frame, bar, &hints);
+            return;
+        }
+        if let Some(menu) = &mut self.menu {
+            menu.render(frame);
+            let mut hints = Vec::new();
+            if menu.selected().is_some() {
+                hints.push(hint("Enter", "run", Cmd::RunMenu));
+            }
+            hints.push(hint("Esc", "close", Cmd::CloseMenu));
+            self.hints.render(frame, bar, &hints);
             return;
         }
         if !chrome {
             self.hints.hide();
             return;
         }
-        if self.buffer.selection().is_some() {
-            self.hints.render(
-                frame,
-                hint_area,
-                &[
-                    hint("Esc", "deselect", Cmd::Deselect),
-                    hint("Ctrl+C", "copy", Cmd::Copy),
-                    hint("Ctrl+X", "cut", Cmd::Cut),
-                    hint("Ctrl+V", "paste", Cmd::Paste),
-                    hint("Ctrl+Z", "undo", Cmd::Undo),
-                ],
-            );
-            return;
+        // The menu on the left; on the right, how long the post is and when
+        // it was started, as much of that as fits.
+        let used = self.hints.render_left(frame, bar, &[hint("Ctrl+K", "menu", Cmd::Menu)]);
+        let words = *self.words.get_or_insert_with(|| count_words(self.buffer.rope()));
+        let words = match words {
+            1 => "1 word".to_string(),
+            n => format!("{} words", thousands(n)),
+        };
+        let room = (width as u16).saturating_sub(used + 3) as usize;
+        let full = format!("{words} · {}", self.created);
+        let stats = [full, words].into_iter().find(|text| text.chars().count() <= room);
+        if let Some(stats) = stats {
+            frame.render_widget(Paragraph::new(stats.dim()).right_aligned(), bar);
         }
-        let link = self.markup.link_at(self.buffer.cursor()).is_some();
-        let hints: Vec<_> = [
-            hint("Esc", "back", Cmd::Back),
-            hint("Ctrl+O", "open link", Cmd::OpenLink),
-            hint("Ctrl+S", "save version", Cmd::SaveVersion),
-            hint("Ctrl+R", "history", Cmd::History),
-            hint("Ctrl+Z", "undo", Cmd::Undo),
-            hint("Ctrl+Y", "redo", Cmd::Redo),
-            hint("Ctrl+V", "paste", Cmd::Paste),
+    }
+
+    /// The commands in the menu, in order.
+    fn menu_items() -> Vec<menu::Item<Cmd>> {
+        vec![
+            item("Save version", "Ctrl+S", Cmd::SaveVersion),
+            item("History", "Ctrl+R", Cmd::History),
+            item("Copy as markdown", "Ctrl+Shift+C", Cmd::CopyMarkdown),
+            item("Export as markdown", "Ctrl+Shift+S", Cmd::Export),
+            item("Open link", "Ctrl+O", Cmd::OpenLink),
+            item("Undo", "Ctrl+Z", Cmd::Undo),
+            item("Redo", "Ctrl+Y", Cmd::Redo),
+            item("Copy", "Ctrl+C", Cmd::Copy),
+            item("Cut", "Ctrl+X", Cmd::Cut),
+            item("Paste", "Ctrl+V", Cmd::Paste),
+            item("Select all", "Ctrl+A", Cmd::SelectAll),
+            item("Back to posts", "Esc", Cmd::Back),
+            item("Quit", "Ctrl+Q", Cmd::Quit),
         ]
-        .into_iter()
-        // Opening a link only while the cursor is on one.
-        .filter(|h| link || !matches!(h.cmd, Cmd::OpenLink))
-        .collect();
-        self.hints.render(frame, hint_area, &hints);
     }
 
     pub fn handle(&mut self, event: Event) -> Action {
@@ -375,6 +419,22 @@ impl Editor {
                     Action::None
                 }
                 Outcome::Quit => Action::Quit,
+            };
+        }
+        if let Some(menu) = &mut self.menu {
+            if let Event::Mouse(mouse) = event
+                && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                && let Some(cmd) = self.hints.hit(mouse.column, mouse.row)
+            {
+                return self.run(cmd);
+            }
+            return match menu.handle(event) {
+                menu::Outcome::None => Action::None,
+                menu::Outcome::Close => self.run(Cmd::CloseMenu),
+                menu::Outcome::Run(cmd) => {
+                    self.menu = None;
+                    self.run(cmd)
+                }
             };
         }
         if let Some(dialog) = &mut self.dialog {
@@ -405,6 +465,11 @@ impl Editor {
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         // Cmd, on macOS (elsewhere the key is the system's).
         let cmd = cfg!(target_os = "macos") && key.modifiers.contains(KeyModifiers::SUPER);
+        // Elsewhere the Super (Windows) key is the system's: keys with it do
+        // nothing here.
+        if key.modifiers.contains(KeyModifiers::SUPER) && !cmd {
+            return Action::None;
+        }
         let moving = match key.code {
             KeyCode::Left
             | KeyCode::Right
@@ -445,13 +510,21 @@ impl Editor {
             KeyCode::Char('Z') if ctrl => return self.run(Cmd::Redo),
             KeyCode::Char('z') if ctrl => return self.run(Cmd::Undo),
             KeyCode::Char('y') if ctrl => return self.run(Cmd::Redo),
+            // Ctrl+Shift+C and Ctrl+Shift+S, in terminals that tell them
+            // apart (the kitty keyboard protocol reports them as Ctrl+"C"
+            // and Ctrl+"S").
+            KeyCode::Char('C') if ctrl => return self.run(Cmd::CopyMarkdown),
+            KeyCode::Char('c') if ctrl && shift => return self.run(Cmd::CopyMarkdown),
+            KeyCode::Char('S') if ctrl => return self.run(Cmd::Export),
+            KeyCode::Char('s') if ctrl && shift => return self.run(Cmd::Export),
             KeyCode::Char('s') if ctrl => return self.run(Cmd::SaveVersion),
             KeyCode::Char('r') if ctrl => return self.run(Cmd::History),
             KeyCode::Char('c') if ctrl => return self.run(Cmd::Copy),
             KeyCode::Char('x') if ctrl => return self.run(Cmd::Cut),
             KeyCode::Char('v') if ctrl => return self.run(Cmd::Paste),
             KeyCode::Char('o') if ctrl => return self.run(Cmd::OpenLink),
-            KeyCode::Char('a') if ctrl => self.step(Buffer::select_all),
+            KeyCode::Char('k') if ctrl => return self.run(Cmd::Menu),
+            KeyCode::Char('a') if ctrl => return self.run(Cmd::SelectAll),
             KeyCode::Char(ch) if !ctrl && !alt => {
                 let kind = Kind::Type { space: ch.is_whitespace() };
                 self.edit(kind, |b| b.insert(ch.encode_utf8(&mut [0; 4])))
@@ -556,7 +629,10 @@ impl Editor {
                     return Action::SaveVersion { name: dialog.input().trim().to_string() };
                 }
             }
-            Cmd::CancelDialog => self.dialog = None,
+            Cmd::CancelDialog => {
+                self.dialog = None;
+                self.replacing = None;
+            }
             Cmd::History if self.last_version.is_none() => {
                 self.notice = Some("No versions yet. Ctrl+S saves one.".into());
             }
@@ -592,8 +668,83 @@ impl Editor {
                 }
                 None => self.notice = Some("Put the cursor on a link to open it.".into()),
             },
+            Cmd::SelectAll => self.step(Buffer::select_all),
+            Cmd::Menu => self.menu = Some(Menu::new(Editor::menu_items())),
+            Cmd::CloseMenu => self.menu = None,
+            Cmd::RunMenu => {
+                if let Some(cmd) = self.menu.take().and_then(|menu| menu.selected()) {
+                    return self.run(cmd);
+                }
+            }
+            Cmd::CopyMarkdown => {
+                self.clipboard.copy(&self.buffer.text());
+                self.notice = Some("Copied the whole post as markdown.".into());
+            }
+            Cmd::Export => {
+                let dialog = Dialog::new(
+                    "Export as markdown",
+                    vec![
+                        Line::from("Writes the post to a markdown file."),
+                        Line::from("Type a file name, or a folder to put it in.".dim()),
+                    ],
+                    vec![
+                        Button { label: "Export", key: "", cmd: Cmd::ConfirmExport, danger: false },
+                        Button { label: "Cancel", key: "", cmd: Cmd::CancelDialog, danger: false },
+                    ],
+                    0,
+                    1,
+                );
+                let path = export::default_path(&self.raw_title());
+                self.dialog = Some(dialog.with_input("e.g. ~/Documents/post.md", MAX_EXPORT_PATH).with_value(&path));
+            }
+            Cmd::ConfirmExport => {
+                let input = self.dialog.as_ref().map(|d| d.input().to_string()).unwrap_or_default();
+                match export::resolve(&input, &self.raw_title()) {
+                    Err(message) => self.notice = Some(message),
+                    Ok(path) if path.exists() => {
+                        let dialog = Dialog::new(
+                            "Replace file?",
+                            vec![
+                                Line::from(truncate(&format!("{} already exists.", export::display(&path)), 50)),
+                                Line::from("Exporting replaces it with this post.".dim()),
+                            ],
+                            vec![
+                                Button { label: "Replace", key: "y", cmd: Cmd::ConfirmReplace, danger: true },
+                                Button { label: "Cancel", key: "n", cmd: Cmd::CancelDialog, danger: false },
+                            ],
+                            1,
+                            1,
+                        );
+                        self.dialog = Some(dialog);
+                        self.replacing = Some(path);
+                    }
+                    Ok(path) => {
+                        self.dialog = None;
+                        self.export(&path);
+                    }
+                }
+            }
+            Cmd::ConfirmReplace => {
+                self.dialog = None;
+                if let Some(path) = self.replacing.take() {
+                    self.export(&path);
+                }
+            }
+            Cmd::Quit => return Action::Quit,
         }
         Action::None
+    }
+
+    /// The post's title as typed (empty if it has none).
+    fn raw_title(&self) -> String {
+        title_from_first_line(&self.buffer.rope().line(0).to_string())
+    }
+
+    fn export(&mut self, path: &std::path::Path) {
+        match export::write(path, &self.buffer.text()) {
+            Ok(()) => self.notice = Some(format!("Exported to {}", export::display(path))),
+            Err(error) => self.error = Some(error),
+        }
     }
 
     /// Open a link in the browser. Only web and email links: anything else
@@ -644,6 +795,7 @@ impl Editor {
 
     fn changed_text(&mut self) {
         self.autosave.edited(Instant::now());
+        self.words = None;
         self.stale = true;
         self.follow = true;
         self.goal = None;
@@ -793,6 +945,35 @@ impl Editor {
     }
 }
 
+/// Words in the text: runs of non-space with a letter or digit in them (so
+/// markdown's `#`, `-` and `---` don't count).
+fn count_words(rope: &Rope) -> usize {
+    let mut count = 0;
+    let mut counted = false;
+    for ch in rope.chars() {
+        if ch.is_whitespace() {
+            counted = false;
+        } else if !counted && ch.is_alphanumeric() {
+            counted = true;
+            count += 1;
+        }
+    }
+    count
+}
+
+/// A number with commas between the thousands: 12,345.
+fn thousands(n: usize) -> String {
+    let digits = n.to_string();
+    let mut out = String::new();
+    for (i, digit) in digits.chars().enumerate() {
+        if i > 0 && (digits.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(digit);
+    }
+    out
+}
+
 fn margin(height: usize) -> usize {
     SCROLL_MARGIN.min(height.saturating_sub(1) / 2)
 }
@@ -849,7 +1030,7 @@ mod tests {
         }
 
         fn at(body: &str, cursor: Option<usize>) -> Self {
-            let editor = Editor::new(Post { id: 1, body: body.into(), cursor }, None);
+            let editor = Editor::new(Post { id: 1, body: body.into(), cursor, created_at: jiff::Timestamp::UNIX_EPOCH }, None);
             let mut h = Harness { editor, terminal: Terminal::new(TestBackend::new(80, 12)).unwrap() };
             h.draw();
             h
@@ -902,7 +1083,7 @@ mod tests {
 
         fn screen_row(&self, y: u16) -> String {
             let buffer = self.terminal.backend().buffer();
-            (0..80).map(|x| buffer[(x, y)].symbol()).collect::<String>().trim_end().to_string()
+            (0..buffer.area.width).map(|x| buffer[(x, y)].symbol()).collect::<String>().trim_end().to_string()
         }
     }
 
@@ -1027,14 +1208,10 @@ mod tests {
         assert_eq!(h.editor.text(), "# Title\n");
         h.ctrl('y');
         assert_eq!(h.editor.text(), "# Title\nHello ");
-        // The hint bar is on the last row; its hints can be clicked.
-        let hints = h.screen_row(11);
-        let redo = hints.find("Ctrl+Y").unwrap() as u16;
-        h.mouse(MouseEventKind::Down(MouseButton::Left), redo, 11);
+        // Also from the menu.
+        h.ctrl('k');
+        h.typed("redo\n");
         assert_eq!(h.editor.text(), "# Title\nHello world");
-        let undo = hints.find("Ctrl+Z").unwrap() as u16;
-        h.mouse(MouseEventKind::Down(MouseButton::Left), undo + 2, 11);
-        assert_eq!(h.editor.text(), "# Title\nHello ");
     }
 
     #[test]
@@ -1120,7 +1297,6 @@ mod tests {
     fn select_all_cut_and_paste() {
         let mut h = Harness::new("# Title\nHello world");
         h.ctrl('a');
-        assert!(h.screen_row(11).contains("Ctrl+C"));
         h.ctrl('c');
         assert!(h.screen_row(10).contains("Copied."));
         h.key(KeyCode::Backspace);
@@ -1201,7 +1377,7 @@ mod tests {
     #[test]
     fn history_restores_a_version_and_undo_takes_it_back() {
         let first = version(1, "First pass", "# Title\nOld text");
-        let editor = Editor::new(Post { id: 1, body: "# Title\nNew text".into(), cursor: None }, Some(first.clone()));
+        let editor = Editor::new(Post { id: 1, body: "# Title\nNew text".into(), cursor: None, created_at: jiff::Timestamp::UNIX_EPOCH }, Some(first.clone()));
         let mut h = Harness { editor, terminal: Terminal::new(TestBackend::new(80, 12)).unwrap() };
         h.draw();
         assert!(matches!(h.ctrl('r'), Action::ShowHistory));
@@ -1250,8 +1426,7 @@ mod tests {
         h.press(KeyCode::Esc);
         h.editor.show_chrome = true;
         h.draw();
-        assert!(h.screen_row(11).contains("Ctrl+S save version"));
-        assert!(!h.screen_row(11).contains("Ctrl+Q")); // it still quits, unlisted
+        assert!(h.screen_row(11).contains("Ctrl+K menu"));
     }
 
     #[test]
@@ -1283,13 +1458,11 @@ mod tests {
     #[test]
     fn links_open_with_ctrl_o_or_ctrl_click() {
         let mut h = Harness::new("# Title\nSee [the docs](https://example.com) and file:///x");
-        // Not on a link: no hint, and Ctrl+O says how.
-        assert!(!h.screen_row(11).contains("open link"));
+        // Not on a link: Ctrl+O says how.
         h.ctrl('o');
         assert!(h.screen_row(10).contains("Put the cursor on a link"));
-        // On a link: the hint shows, and Ctrl+O opens it.
+        // On a link, Ctrl+O opens it.
         h.mouse(MouseEventKind::Down(MouseButton::Left), LEFT + 6, 2);
-        assert!(h.screen_row(11).contains("Ctrl+O open link"));
         h.ctrl('o');
         assert!(h.screen_row(10).contains("Opened https://example.com"));
         // Ctrl+click on the link opens it without moving the cursor.
@@ -1338,11 +1511,137 @@ mod tests {
         h.editor.show_chrome = true;
         h.draw();
         assert_eq!(h.screen_row(10), format!("{}line 9", " ".repeat(6)));
-        assert!(h.screen_row(11).contains("Esc back"));
+        assert!(h.screen_row(11).contains("Ctrl+K menu"));
         // A passing message covers only its own row.
         h.editor.show_chrome = false;
         h.ctrl('x');
         assert!(h.screen_row(10).contains("Select some text to cut."));
         assert_eq!(h.screen_row(11), format!("{}line 10", " ".repeat(6)));
+    }
+
+    #[test]
+    fn the_bar_shows_the_menu_words_and_when_the_post_was_started() {
+        let mut h = Harness::new("# Title\n\n- Some *text*\n\n---\n");
+        let bar = h.screen_row(11);
+        // As wide as the text, which starts at LEFT.
+        assert!(bar.starts_with(&format!("{}Ctrl+K menu", " ".repeat(LEFT as usize))), "{bar}");
+        assert!(bar.contains("3 words · "), "{bar}");
+        assert_eq!(bar.chars().count(), (LEFT + COLUMN_WIDTH) as usize);
+        // Clicking the hint opens the menu.
+        h.mouse(MouseEventKind::Down(MouseButton::Left), LEFT + 1, 11);
+        assert!(h.screen().contains("type to filter"));
+        // Narrower: just the words, then nothing.
+        let mut h = Harness::new("# Title\nOne");
+        h.terminal = Terminal::new(TestBackend::new(30, 12)).unwrap();
+        h.draw();
+        assert!(h.screen_row(11).ends_with("2 words"));
+        h.terminal = Terminal::new(TestBackend::new(16, 12)).unwrap();
+        h.draw();
+        assert!(!h.screen_row(11).contains("word"));
+    }
+
+    #[test]
+    fn words_are_counted_without_markdown() {
+        let count = |text: &str| count_words(&Rope::from_str(text));
+        assert_eq!(count("# Title\n\n- one *two*\n\n---\n> three, four"), 5);
+        assert_eq!(count(""), 0);
+        assert_eq!(thousands(7), "7");
+        assert_eq!(thousands(1248), "1,248");
+        assert_eq!(thousands(1234567), "1,234,567");
+    }
+
+    #[test]
+    fn the_menu_filters_and_runs_commands() {
+        let mut h = Harness::new("# Title\nHello world");
+        h.ctrl('k');
+        let screen = h.screen();
+        assert!(screen.contains("type to filter"));
+        assert!(screen.contains("Save version") && screen.contains("Ctrl+S"));
+        assert!(h.screen_row(11).contains("Esc close"));
+        // Nothing is highlighted, so Enter does nothing.
+        h.key(KeyCode::Enter);
+        assert!(h.editor.menu.is_some());
+        // Typing narrows the list and highlights the first match.
+        h.typed("select");
+        assert!(!h.screen().contains("Save version"));
+        assert!(h.screen_row(11).contains("Enter run"));
+        h.key(KeyCode::Enter);
+        assert!(h.editor.menu.is_none());
+        assert_eq!(h.editor.buffer.selected_text().as_deref(), Some("# Title\nHello world"));
+        // Esc and Ctrl+K close it, without running anything.
+        h.ctrl('k');
+        h.key(KeyCode::Esc);
+        assert!(h.editor.menu.is_none());
+        assert!(h.editor.buffer.selection().is_some());
+        h.ctrl('k');
+        h.ctrl('k');
+        assert!(h.editor.menu.is_none());
+        // Commands can be clicked; a click outside closes the menu.
+        h.ctrl('k');
+        let (y, row) = (0..12).map(|y| (y, h.screen_row(y))).find(|(_, row)| row.contains("History")).unwrap();
+        let x = row.find("History").unwrap() as u16;
+        h.mouse(MouseEventKind::Down(MouseButton::Left), x, y);
+        assert!(h.editor.menu.is_none());
+        assert!(h.screen_row(10).contains("No versions yet."));
+        h.ctrl('k');
+        h.mouse(MouseEventKind::Down(MouseButton::Left), 0, 0);
+        assert!(h.editor.menu.is_none());
+        // Ones that don't fit scroll into view.
+        h.ctrl('k');
+        h.key(KeyCode::Up);
+        assert!(h.screen().contains("Quit"));
+        assert!(matches!(h.editor.handle(Event::Key(KeyEvent::from(KeyCode::Enter))), Action::Quit));
+    }
+
+    #[test]
+    fn copy_as_markdown_copies_the_whole_post() {
+        let mut h = Harness::new("# Title\nSome **bold**");
+        // The kitty keyboard protocol reports Ctrl+Shift+C as Ctrl+"C".
+        h.ctrl('C');
+        assert!(h.screen_row(10).contains("Copied the whole post as markdown."));
+        assert_eq!(h.editor.clipboard.paste(), "# Title\nSome **bold**");
+        // Other terminals, as Ctrl+Shift+"c".
+        h.with(KeyCode::Char('c'), KeyModifiers::CONTROL | KeyModifiers::SHIFT);
+        assert!(h.screen_row(10).contains("Copied the whole post"));
+    }
+
+    #[test]
+    fn export_writes_a_markdown_file_and_asks_before_replacing() {
+        let dir = std::env::temp_dir().join(format!("writui-export-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut h = Harness::new("# My Post\nHello");
+        h.ctrl('S');
+        assert!(h.screen().contains("Export as markdown"));
+        // Suggests the post's file name, in the current folder.
+        assert!(h.editor.dialog.as_ref().unwrap().input().ends_with("my-post.md"));
+        h.ctrl('u');
+        h.typed(dir.to_str().unwrap());
+        h.key(KeyCode::Enter);
+        let file = dir.join("my-post.md");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "# My Post\nHello\n");
+        assert!(h.screen_row(10).contains("Exported to"));
+        // Again: the file is there, so it asks first.
+        h.typed(" again");
+        h.with(KeyCode::Char('s'), KeyModifiers::CONTROL | KeyModifiers::SHIFT);
+        h.ctrl('u');
+        h.typed(file.to_str().unwrap());
+        h.key(KeyCode::Enter);
+        assert!(h.screen().contains("Replace file?"));
+        h.key(KeyCode::Enter); // Cancel is the default
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "# My Post\nHello\n");
+        h.ctrl('S');
+        h.ctrl('u');
+        h.typed(file.to_str().unwrap());
+        h.key(KeyCode::Enter);
+        h.key(KeyCode::Char('y'));
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "# My Post\nHello again\n");
+        // A folder that isn't there is refused, and the dialog stays open.
+        h.ctrl('S');
+        h.ctrl('u');
+        h.typed("/no/such/folder/x.md");
+        h.key(KeyCode::Enter);
+        assert!(h.screen_row(10).contains("There's no folder"));
+        assert!(h.editor.dialog.is_some());
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
