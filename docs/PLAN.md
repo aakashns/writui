@@ -12,12 +12,12 @@ file is the source of truth for what's next.
 
 ## Next up
 
-`0.10.0` (`writui upgrade` no longer asks for the password) is out. The
-site PR adds `site/` (Zola), published to GitHub Pages at **writui.com**:
-landing page with a demo recording, the blog with a hello world post,
-"Changelog" linking to the GitHub releases, and the SEO basics (sitemap,
-manifest, icons, social card). After it merges: writui.com's DNS, then the
-custom domain in the Pages settings.
+The site (`site/`, Zola) is merged. It moves from GitHub Pages to
+Cloudflare Workers: `site/build.sh` and `site/wrangler.jsonc`, built and
+deployed by Cloudflare's Git integration; the Pages workflow is gone. After
+it merges: connect the repo in Cloudflare (root directory `site`), add the
+www → writui.com Redirect Rule, check https://writui.com/install.sh, then
+turn off GitHub Pages.
 Then:
 
 1. M6 (LLM chat sidebar) and on in order.
@@ -77,7 +77,7 @@ selection to copy.)
 
 - [x] Copy as markdown (whole post)
 - [x] Export as markdown file
-- [ ] `site/` (Zola): landing page, blog, changelog
+- [x] `site/` (Zola): landing page, blog, changelog
 - [ ] First changelog / blog post, written in writui and exported into `site/content/`
 
 ## M4 — Open source release
@@ -89,7 +89,7 @@ The repo went public early (during M0), so most of this is already done.
 - [x] Release builds (macOS and Linux, each x86_64 and arm64), published
       automatically when a merge bumps the version
 - [x] Windows: build from source (README), with how to run the tests there
-- [ ] Site deployed via GitHub Pages
+- [ ] Site deployed (Cloudflare Workers, at writui.com)
 - [x] Make the repo public
 - [x] One-line install script (`curl … | bash`)
 - [x] `writui upgrade` and `writui --version`
