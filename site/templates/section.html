@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ section.title }}</h1>
+{% for page in section.pages %}
+{% include "post-item.html" %}
+{% else %}
+<p class="muted">Nothing here yet.</p>
+{% endfor %}
+{% endblock %}

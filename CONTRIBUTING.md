@@ -12,8 +12,9 @@ agree on the approach first.
 src/          the app (a single Rust crate)
 docs/         SPEC.md (what we're building), PLAN.md (milestones, what's
               next), DECISIONS.md (technical choices and why)
+site/         the project site, writui.com (Zola)
 install.sh    the one-line installer for macOS and Linux
-.github/      CI and release workflows
+.github/      CI, release and site workflows
 ```
 
 `CLAUDE.md` describes the day-to-day workflow in detail: how PRs are put
@@ -72,6 +73,31 @@ behaviour, patch for fixes only. Merging a PR with a new version releases it
 automatically: GitHub Actions builds the macOS and Linux binaries and
 publishes them, with `install.sh` and notes listing the merged PRs, as a
 GitHub release. PRs that keep the version (docs only) release nothing.
+
+## The site
+
+[writui.com](https://writui.com) is built from `site/` with
+[Zola](https://www.getzola.org) (`brew install zola`) and published to
+GitHub Pages by `.github/workflows/site.yml` whenever `site/` changes on
+`main`. To preview it:
+
+```sh
+zola --root site serve      # then open http://127.0.0.1:1111
+```
+
+- **Blog posts** are written in writui and exported as markdown
+  (Ctrl+Shift+S). `site/post.sh <exported file>` puts one in
+  `site/content/blog/`, adding the header Zola needs (title from the
+  `# Title` line, today's date). Running it again after re-exporting
+  updates the post and keeps its date.
+- **Changelog** in the site's menu links to the
+  [GitHub releases](https://github.com/aakashns/writui/releases).
+- **The logo** is `site/static/logo.svg` (and `favicon.svg`, the same on a
+  dark rounded square). The PNG icons, `favicon.ico` and the social card
+  `og.png` were rendered from them; re-render them if the logo changes.
+- **The demo video** on the landing page is recorded with
+  [VHS](https://github.com/charmbracelet/vhs) from `site/demo.tape`; the
+  tape's first lines say how to re-record it.
 
 ## License
 

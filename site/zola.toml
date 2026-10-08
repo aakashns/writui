@@ -1,0 +1,18 @@
+# The writui project site: https://writui.com
+# Build it with `zola --root site build`, or preview it with
+# `zola --root site serve`. See CONTRIBUTING.md.
+base_url = "https://writui.com"
+title = "writui"
+description = "A writing app for the terminal. Markdown, encrypted, no nonsense."
+compile_sass = false
+build_search_index = false
+# Only the blog has a feed (blog/atom.xml), set in content/blog/_index.md.
+generate_feeds = false
+
+[markdown]
+smart_punctuation = true
+external_links_no_follow = false
+
+[extra]
+repo = "https://github.com/aakashns/writui"
+install = "curl -fsSL https://writui.com/install.sh | bash"

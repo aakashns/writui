@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Not found · {{ config.title }}{% endblock %}
+{% block head %}<meta name="robots" content="noindex">{% endblock %}
+{% block content %}
+<h1>Not found</h1>
+<p>There's nothing here. <a href="{{ get_url(path='/') }}">Back to the start</a>.</p>
+{% endblock %}

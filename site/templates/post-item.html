@@ -1,0 +1,4 @@
+<a class="post-item" href="{{ page.permalink | safe }}">
+  <span class="title">{{ page.title }}</span>
+  <time datetime="{{ page.date }}">{{ page.date | date(format="%b %-d, %Y") }}</time>
+</a>

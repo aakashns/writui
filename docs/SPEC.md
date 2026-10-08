@@ -388,11 +388,22 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 > keep it in the same repo. As you can imagine, I will write the changelog /
 > blog posts for writui using writui itself.
 
+> writui.com
+
+> remove the automatic changelog, rather let "Changelog" point to the
+> Github releasees page.
+
 **Details**
 
-- The site lives in `site/` in this repo.
+- The site lives in `site/` in this repo, and is published at
+  **writui.com** (GitHub Pages).
+- It looks like the app: light Inter text on a dark background, one narrow
+  column. Pages: a landing page (what writui is, a short recording of it,
+  install) and the blog. "Changelog" in the menu links to the GitHub
+  releases page.
 - Posts live in the encrypted vault, but the blog lives in the public repo —
-  so blog posts get into `site/content/` via "export as markdown".
+  so blog posts get into `site/content/` via "export as markdown", then
+  `site/post.sh`, which adds the title and date Zola needs.
 - A "writui site" preview preset matching the site's CSS, so blog posts can be
   previewed exactly as they'll look.
 
@@ -418,6 +429,8 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 > set up the automatic release from main when version is bumped. and for
 > macos and linux, i want a single command to install, like bun.com has
 
+> lets do the shorter install command too
+
 **Details**
 
 - License: MIT, in `LICENSE.txt`.
@@ -427,7 +440,9 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   arm64), with notes listing the merged PRs. The creator upgrades the same
   way every user does.
 - Install on macOS / Linux with one command:
-  `curl -fsSL https://github.com/aakashns/writui/releases/latest/download/install.sh | bash`.
+  `curl -fsSL https://writui.com/install.sh | bash`
+  (writui.com serves the repo's `install.sh`; every release has it
+  attached too, and the README gives that longer URL as well).
   Installs to `~/.local/bin`, never edits shell startup files (it prints the
   line to add instead).
 - Windows: no prebuilt binaries; the README explains building from source.

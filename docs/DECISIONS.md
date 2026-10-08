@@ -400,3 +400,43 @@ an error.
 The editor bar shows when a post was started as `Oct 8, 2026, 10:46 AM`,
 like History, rather than the mockup's `8 Oct 2026, 9:14` (creator's call,
 after 0.9.0).
+
+## The project site: Zola, GitHub Pages from Actions
+
+`site/` builds with Zola 0.23 (Tera 2 templates), no theme, one stylesheet
+and no JavaScript. Inter is served from the site itself (variable woff2,
+OFL licence alongside), not from Google Fonts. The site is published with
+GitHub's Pages actions (not a `gh-pages` branch). The workflow builds with
+the address Pages reports, so the site works at `aakashns.github.io/writui`
+until writui.com's DNS is set, and at writui.com after. There's no
+changelog page: "Changelog" links to the GitHub releases, whose notes list
+the merged PRs (creator's call; an automatic page built from them was
+tried first). Zola refuses markdown files
+without a front matter header, and writui exports plain markdown, so
+`site/post.sh` adds the header (title from the `# Title` line, today's
+date, kept on later updates, even from git if the export replaced the
+file). The landing page's demo is an MP4 recorded with VHS (about 200 KB,
+sharper and smaller than a GIF), with its last frame as the poster.
+
+## Site logo, icons and SEO
+
+The logo is `❯|`, a prompt and a typing cursor, drawn as two strokes in a
+64×64 square: the same stroke width (6), the same height (y 18 to 46), and
+round caps and joins. The pair is centred both ways. The prompt is the
+text colour, the cursor the green used for code. SVG favicon with an ICO
+and an apple-touch-icon as fallbacks, a web manifest with 192 / 512 /
+maskable icons, and a 1200×630 social card. Every page has a canonical
+URL, a description (a post's first 160 characters unless it sets its own)
+and Open Graph / Twitter tags; the landing page has `SoftwareApplication`
+JSON-LD. Zola writes `sitemap.xml` and `robots.txt` (which points to the
+sitemap) itself. The 404 page is `noindex`.
+
+## Install from writui.com/install.sh
+
+The install command is `curl -fsSL https://writui.com/install.sh | bash`.
+`site/static/install.sh` is a symlink to the repo's `install.sh`, which
+Zola copies into the built site as a plain file, so the two can't drift;
+the site workflow also runs when `install.sh` changes. The script always
+fetches the latest release, so the copy on `main` and the one attached to
+each release behave the same, and the release URL keeps working.
+

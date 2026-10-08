@@ -12,15 +12,15 @@ file is the source of truth for what's next.
 
 ## Next up
 
-`0.9.0` (the command menu, word count and start date in the bar, copy /
-export as markdown) is out. The `0.10.0` PR stops `writui upgrade` asking
-for the password; the vault is migrated on the next unlock instead. Next:
+`0.10.0` (`writui upgrade` no longer asks for the password) is out. The
+site PR adds `site/` (Zola), published to GitHub Pages at **writui.com**:
+landing page with a demo recording, the blog with a hello world post,
+"Changelog" linking to the GitHub releases, and the SEO basics (sitemap,
+manifest, icons, social card). After it merges: writui.com's DNS, then the
+custom domain in the Pages settings.
+Then:
 
-1. The rest of M3 and M4: the project site in `site/` (Zola), deployed with
-   GitHub Pages to **writui.com**, looking like the app (dark, Inter, one
-   narrow column), with the creator's first blog post, written in writui and
-   exported into `site/content/`, in the same PR.
-2. Then M6 (LLM chat sidebar) and on in order.
+1. M6 (LLM chat sidebar) and on in order.
 
 ## M0 — Writing core
 
