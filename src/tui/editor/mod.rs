@@ -5,7 +5,6 @@ mod autosave;
 mod browser;
 mod buffer;
 mod clipboard;
-mod export;
 mod history;
 mod markdown;
 mod undo;
@@ -27,11 +26,13 @@ use ropey::Rope;
 
 use super::Action;
 use super::dialog::{Button, Dialog};
+use super::file_dialog::{FileDialog, FormCmd, Outcome as FormOutcome};
 use super::hints::{HintBar, hint};
 use super::list::display_title;
 use super::menu::{self, Menu, item};
 use super::widgets::{COLUMN_WIDTH, truncate};
-use crate::vault::{Post, Version, TITLE_PREFIX, title_from_first_line};
+use crate::files::{self, front_matter};
+use crate::vault::{ExportSettings, Post, Version, TITLE_PREFIX, title_from_first_line};
 use autosave::Autosave;
 use buffer::Buffer;
 use clipboard::Clipboard;
@@ -49,9 +50,6 @@ const MULTI_CLICK: Duration = Duration::from_millis(500);
 
 /// The longest name a version can have.
 const MAX_VERSION_NAME: usize = 80;
-
-/// The longest path an export can be typed to.
-const MAX_EXPORT_PATH: usize = 1024;
 
 /// Rows kept between the cursor and the top or bottom edge when scrolling to
 /// follow it. The text can also scroll this far past its last row.
@@ -81,9 +79,24 @@ enum Cmd {
     RunMenu,
     CopyMarkdown,
     Export,
-    ConfirmExport,
+    /// A hint of the export dialog.
+    Form(FormCmd),
     ConfirmReplace,
     Quit,
+}
+
+/// How posts were last exported (or imported), to start the next export
+/// from.
+#[derive(Default)]
+pub struct Exports {
+    pub this_post: Option<ExportSettings>,
+    pub latest: Option<ExportSettings>,
+}
+
+struct Exporting {
+    form: FileDialog,
+    /// The front matter writui suggested, remembered with the export.
+    suggested: String,
 }
 
 #[derive(Clone, Copy)]
@@ -137,10 +150,14 @@ pub struct Editor {
     error: Option<String>,
     /// A passing message (e.g. "Copied."), until the next key or click.
     notice: Option<String>,
-    /// Naming a version, or where to export to.
+    /// Naming a version, or asking before an export replaces a file.
     dialog: Option<Dialog<Cmd>>,
+    /// The export dialog, open.
+    exporting: Option<Exporting>,
     /// Exporting would replace this file: asking first.
     replacing: Option<std::path::PathBuf>,
+    /// How this post, and the latest of any, were last exported.
+    exports: Exports,
     /// The command menu (Ctrl+K).
     menu: Option<Menu<Cmd>>,
     /// The post's history, shown instead of the post while open.
@@ -156,7 +173,7 @@ pub struct Editor {
 
 impl Editor {
     /// Opens with the cursor where it was left (or at the end of the post).
-    pub fn new(post: Post, last_version: Option<Version>) -> Self {
+    pub fn new(post: Post, last_version: Option<Version>, exports: Exports) -> Self {
         let created = post.created_at.to_zoned(TimeZone::system()).strftime("%b %-d, %Y, %-I:%M %p").to_string();
         Editor {
             last_version,
@@ -182,7 +199,9 @@ impl Editor {
             error: None,
             notice: None,
             dialog: None,
+            exporting: None,
             replacing: None,
+            exports,
             menu: None,
             history: None,
             hints: HintBar::default(),
@@ -221,6 +240,11 @@ impl Editor {
             name => format!("Saved version “{name}”."),
         });
         self.last_version = Some(version);
+    }
+
+    /// A passing message, e.g. where the post was imported from.
+    pub fn set_notice(&mut self, notice: String) {
+        self.notice = Some(notice);
     }
 
     /// Something went wrong outside of storing the post, e.g. saving a version.
@@ -319,7 +343,7 @@ impl Editor {
 
         // In zen, the status and hint rows are drawn over the text, only
         // while there's something to show there.
-        let chrome = self.show_chrome || self.dialog.is_some() || self.menu.is_some();
+        let chrome = self.show_chrome || self.dialog.is_some() || self.exporting.is_some() || self.menu.is_some();
         let message = self.error.is_some() || self.notice.is_some();
         let status_covered = self.zen && message;
         let hints_covered = self.zen && chrome;
@@ -349,6 +373,15 @@ impl Editor {
 
         // The hint bar, as wide as the text.
         let bar = Rect { x: left, width: width as u16, ..hint_area };
+        if let Some(exporting) = &mut self.exporting {
+            exporting.form.render(frame);
+            if self.dialog.is_none() {
+                let hints: Vec<_> =
+                    exporting.form.hints().into_iter().map(|h| hint(h.key, h.label, Cmd::Form(h.cmd))).collect();
+                self.hints.render(frame, bar, &hints);
+                return;
+            }
+        }
         if let Some(dialog) = &mut self.dialog {
             dialog.render(frame);
             let hints = dialog.hints();
@@ -446,6 +479,16 @@ impl Editor {
                 cmd = self.hints.hit(mouse.column, mouse.row);
             }
             return cmd.map_or(Action::None, |cmd| self.run(cmd));
+        }
+        if let Some(exporting) = &mut self.exporting {
+            if let Event::Mouse(mouse) = event
+                && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                && let Some(cmd) = self.hints.hit(mouse.column, mouse.row)
+            {
+                return self.run(cmd);
+            }
+            let outcome = exporting.form.handle(event);
+            return self.form_outcome(outcome);
         }
         if let Event::Key(_) | Event::Mouse(MouseEvent { kind: MouseEventKind::Down(_), .. }) = event {
             self.notice = None;
@@ -680,54 +723,17 @@ impl Editor {
                 self.clipboard.copy(&self.buffer.text());
                 self.notice = Some("Copied the whole post as markdown.".into());
             }
-            Cmd::Export => {
-                let dialog = Dialog::new(
-                    "Export as markdown",
-                    vec![
-                        Line::from("Writes the post to a markdown file."),
-                        Line::from("Type a file name, or a folder to put it in.".dim()),
-                    ],
-                    vec![
-                        Button { label: "Export", key: "", cmd: Cmd::ConfirmExport, danger: false },
-                        Button { label: "Cancel", key: "", cmd: Cmd::CancelDialog, danger: false },
-                    ],
-                    0,
-                    1,
-                );
-                let path = export::default_path(&self.raw_title());
-                self.dialog = Some(dialog.with_input("e.g. ~/Documents/post.md", MAX_EXPORT_PATH).with_value(&path));
-            }
-            Cmd::ConfirmExport => {
-                let input = self.dialog.as_ref().map(|d| d.input().to_string()).unwrap_or_default();
-                match export::resolve(&input, &self.raw_title()) {
-                    Err(message) => self.notice = Some(message),
-                    Ok(path) if path.exists() => {
-                        let dialog = Dialog::new(
-                            "Replace file?",
-                            vec![
-                                Line::from(truncate(&format!("{} already exists.", export::display(&path)), 50)),
-                                Line::from("Exporting replaces it with this post.".dim()),
-                            ],
-                            vec![
-                                Button { label: "Replace", key: "y", cmd: Cmd::ConfirmReplace, danger: true },
-                                Button { label: "Cancel", key: "n", cmd: Cmd::CancelDialog, danger: false },
-                            ],
-                            1,
-                            1,
-                        );
-                        self.dialog = Some(dialog);
-                        self.replacing = Some(path);
-                    }
-                    Ok(path) => {
-                        self.dialog = None;
-                        self.export(&path);
-                    }
+            Cmd::Export => self.open_export(),
+            Cmd::Form(cmd) => {
+                if let Some(exporting) = &mut self.exporting {
+                    let outcome = exporting.form.run(cmd);
+                    return self.form_outcome(outcome);
                 }
             }
             Cmd::ConfirmReplace => {
                 self.dialog = None;
                 if let Some(path) = self.replacing.take() {
-                    self.export(&path);
+                    return self.export(&path);
                 }
             }
             Cmd::Quit => return Action::Quit,
@@ -740,11 +746,84 @@ impl Editor {
         title_from_first_line(&self.buffer.rope().line(0).to_string())
     }
 
-    fn export(&mut self, path: &std::path::Path) {
-        match export::write(path, &self.buffer.text()) {
-            Ok(()) => self.notice = Some(format!("Exported to {}", export::display(path))),
-            Err(error) => self.error = Some(error),
+    /// Open the export dialog, starting from how the post was last
+    /// exported (or another post was, if it hasn't been).
+    fn open_export(&mut self) {
+        let title = self.raw_title();
+        let today = jiff::Zoned::now().date();
+        let suggested = front_matter::suggest(&title, &self.buffer.text(), today);
+        let (last, same_post) = match &self.exports.this_post {
+            Some(this_post) => (Some(this_post), true),
+            None => (self.exports.latest.as_ref(), false),
+        };
+        let text = front_matter::front_matter(&suggested, last, same_post);
+        let on = last.is_none_or(|last| last.with_front_matter);
+        let path = files::default_path(&title, self.exports.this_post.as_ref(), self.exports.latest.as_ref());
+        let form = FileDialog::new(
+            "Export as markdown",
+            "Writes the post to a markdown file.",
+            "A file, or a folder to put it in. Tab completes.",
+            "Export",
+            &path,
+        )
+        .with_front_matter(&text, on);
+        self.exporting = Some(Exporting { form, suggested });
+    }
+
+    fn form_outcome(&mut self, outcome: FormOutcome) -> Action {
+        match outcome {
+            FormOutcome::None => {}
+            FormOutcome::Cancel => self.exporting = None,
+            FormOutcome::Submit => {
+                let title = self.raw_title();
+                let Some(exporting) = &mut self.exporting else { return Action::None };
+                match files::resolve(exporting.form.path(), &title) {
+                    Err(error) => exporting.form.set_error(error),
+                    Ok(path) if path.exists() => {
+                        let dialog = Dialog::new(
+                            "Replace file?",
+                            vec![
+                                Line::from(truncate(&format!("{} already exists.", files::display(&path)), 50)),
+                                Line::from("Exporting replaces it with this post.".dim()),
+                            ],
+                            vec![
+                                Button { label: "Replace", key: "y", cmd: Cmd::ConfirmReplace, danger: true },
+                                Button { label: "Cancel", key: "n", cmd: Cmd::CancelDialog, danger: false },
+                            ],
+                            1,
+                            1,
+                        );
+                        self.dialog = Some(dialog);
+                        self.replacing = Some(path);
+                    }
+                    Ok(path) => return self.export(&path),
+                }
+            }
         }
+        Action::None
+    }
+
+    /// Write the post to `path`, as the export dialog says.
+    fn export(&mut self, path: &std::path::Path) -> Action {
+        let body = self.buffer.text();
+        let Some(exporting) = &mut self.exporting else { return Action::None };
+        let (on, front_matter) = exporting.form.front_matter().unwrap_or_default();
+        let contents = files::contents(&body, on.then_some(front_matter.as_str()));
+        if let Err(error) = files::write(path, &contents) {
+            exporting.form.set_error(error);
+            return Action::None;
+        }
+        let settings = ExportSettings {
+            path: path.to_path_buf(),
+            front_matter,
+            suggested: std::mem::take(&mut exporting.suggested),
+            with_front_matter: on,
+        };
+        self.exporting = None;
+        self.notice = Some(format!("Exported to {}", files::display(path)));
+        self.exports.this_post = Some(settings.clone());
+        self.exports.latest = Some(settings.clone());
+        Action::RecordExport(settings)
     }
 
     /// Open a link in the browser. Only web and email links: anything else
@@ -1030,7 +1109,8 @@ mod tests {
         }
 
         fn at(body: &str, cursor: Option<usize>) -> Self {
-            let editor = Editor::new(Post { id: 1, body: body.into(), cursor, created_at: jiff::Timestamp::UNIX_EPOCH }, None);
+            let post = Post { id: 1, body: body.into(), cursor, created_at: jiff::Timestamp::UNIX_EPOCH };
+            let editor = Editor::new(post, None, Exports::default());
             let mut h = Harness { editor, terminal: Terminal::new(TestBackend::new(80, 12)).unwrap() };
             h.draw();
             h
@@ -1079,6 +1159,16 @@ mod tests {
         fn cursor(&mut self) -> (u16, u16) {
             let pos = self.terminal.get_cursor_position().unwrap();
             (pos.x, pos.y)
+        }
+
+        /// Everything on screen, however tall it is.
+        fn all(&self) -> String {
+            let height = self.terminal.backend().buffer().area.height;
+            (0..height).map(|y| self.screen_row(y)).collect::<Vec<_>>().join("\n")
+        }
+
+        fn form(&self) -> &FileDialog {
+            &self.editor.exporting.as_ref().expect("the export dialog is open").form
         }
 
         fn screen_row(&self, y: u16) -> String {
@@ -1377,7 +1467,7 @@ mod tests {
     #[test]
     fn history_restores_a_version_and_undo_takes_it_back() {
         let first = version(1, "First pass", "# Title\nOld text");
-        let editor = Editor::new(Post { id: 1, body: "# Title\nNew text".into(), cursor: None, created_at: jiff::Timestamp::UNIX_EPOCH }, Some(first.clone()));
+        let editor = Editor::new(Post { id: 1, body: "# Title\nNew text".into(), cursor: None, created_at: jiff::Timestamp::UNIX_EPOCH }, Some(first.clone()), Exports::default());
         let mut h = Harness { editor, terminal: Terminal::new(TestBackend::new(80, 12)).unwrap() };
         h.draw();
         assert!(matches!(h.ctrl('r'), Action::ShowHistory));
@@ -1606,42 +1696,79 @@ mod tests {
     }
 
     #[test]
-    fn export_writes_a_markdown_file_and_asks_before_replacing() {
-        let dir = std::env::temp_dir().join(format!("writui-export-test-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let mut h = Harness::new("# My Post\nHello");
+    fn export_writes_front_matter_and_asks_before_replacing() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = dir.path().to_str().unwrap();
+        let file = dir.path().join("my-post.md");
+        let today = jiff::Zoned::now().date();
+        let mut h = Harness::new("# My Post\n\nHello **there**");
+        h.terminal = Terminal::new(TestBackend::new(80, 30)).unwrap();
         h.ctrl('S');
-        assert!(h.screen().contains("Export as markdown"));
-        // Suggests the post's file name, in the current folder.
-        assert!(h.editor.dialog.as_ref().unwrap().input().ends_with("my-post.md"));
+        // The post's file name in the current folder, and front matter
+        // from the post.
+        let screen = h.all();
+        assert!(screen.contains("Export as markdown"), "{screen}");
+        assert!(screen.contains("[x] Front matter"));
+        assert!(screen.contains("title: \"My Post\"") && screen.contains("slug: my-post"));
+        assert!(screen.contains("description: \"Hello there\""));
+        assert!(screen.contains("Tab complete"));
+        assert!(h.form().path().ends_with("/my-post.md"));
+
+        // Tab completes the folder.
         h.ctrl('u');
-        h.typed(dir.to_str().unwrap());
-        h.key(KeyCode::Enter);
-        let file = dir.join("my-post.md");
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), "# My Post\nHello\n");
-        assert!(h.screen_row(10).contains("Exported to"));
-        // Again: the file is there, so it asks first.
+        h.typed(&folder[..folder.len() - 1]);
+        h.key(KeyCode::Tab);
+        assert_eq!(h.form().path(), format!("{folder}/"));
+        // Add a field at the end of the front matter, and export.
+        h.key(KeyCode::Down);
+        h.key(KeyCode::Down);
+        for _ in 0..4 {
+            h.key(KeyCode::Down);
+        }
+        h.key(KeyCode::End);
+        h.typed("\ntags: [a]");
+        let Action::RecordExport(settings) = h.ctrl('s') else { panic!("not exported") };
+        let expected = format!(
+            "---\ntitle: \"My Post\"\ndate: {today}\nupdated: {today}\ndescription: \"Hello there\"\n\
+             slug: my-post\ntags: [a]\n---\n\nHello **there**\n"
+        );
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), expected);
+        assert_eq!(settings.path, file);
+        assert!(settings.with_front_matter && settings.front_matter.ends_with("tags: [a]"));
+        assert!(h.all().contains("Exported to"));
+
+        // Again: the same file and front matter. The file is there, so it
+        // asks first; cancelling goes back to the dialog.
         h.typed(" again");
-        h.with(KeyCode::Char('s'), KeyModifiers::CONTROL | KeyModifiers::SHIFT);
-        h.ctrl('u');
-        h.typed(file.to_str().unwrap());
-        h.key(KeyCode::Enter);
-        assert!(h.screen().contains("Replace file?"));
-        h.key(KeyCode::Enter); // Cancel is the default
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), "# My Post\nHello\n");
         h.ctrl('S');
-        h.ctrl('u');
-        h.typed(file.to_str().unwrap());
+        assert_eq!(h.form().path(), file.to_str().unwrap());
+        assert!(h.all().contains("tags: [a]"));
         h.key(KeyCode::Enter);
+        assert!(h.all().contains("Replace file?"));
+        h.key(KeyCode::Char('n'));
+        assert!(!h.all().contains("Replace file?"));
+        assert!(h.editor.exporting.is_some());
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), expected);
+        // Without front matter, it's the post as it is.
+        h.key(KeyCode::Down);
+        h.key(KeyCode::Char(' '));
+        assert!(h.all().contains("[ ] Front matter"));
+        assert!(!h.all().contains("tags: [a]"));
+        h.ctrl('s');
         h.key(KeyCode::Char('y'));
-        assert_eq!(std::fs::read_to_string(&file).unwrap(), "# My Post\nHello again\n");
-        // A folder that isn't there is refused, and the dialog stays open.
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "# My Post\n\nHello **there** again\n");
+        assert!(h.editor.exporting.is_none());
+        // It's remembered as off.
         h.ctrl('S');
+        assert!(h.all().contains("[ ] Front matter"));
+
+        // A folder that isn't there is refused, and the dialog stays open.
         h.ctrl('u');
         h.typed("/no/such/folder/x.md");
         h.key(KeyCode::Enter);
-        assert!(h.screen_row(10).contains("There's no folder"));
-        assert!(h.editor.dialog.is_some());
-        std::fs::remove_dir_all(dir).unwrap();
+        assert!(h.all().contains("There's no folder"));
+        assert!(h.editor.exporting.is_some());
+        h.key(KeyCode::Esc);
+        assert!(h.editor.exporting.is_none());
     }
 }

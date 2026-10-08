@@ -12,13 +12,10 @@ file is the source of truth for what's next.
 
 ## Next up
 
-`0.10.0` (`writui upgrade` no longer asks for the password) is out. The
-site PR adds `site/` (Zola), published to GitHub Pages at **writui.com**:
-landing page with a demo recording, the blog with a hello world post,
-"Changelog" linking to the GitHub releases, and the SEO basics (sitemap,
-manifest, icons, social card). After it merges: writui.com's DNS, then the
-custom domain in the Pages settings.
-Then:
+The site is live at **writui.com**. The export / import PR adds front
+matter to exports (remembered per post), Tab completion for paths, and
+"Import markdown" on the list, so published posts can be edited in writui
+and exported back. After it merges (`0.11.0`):
 
 1. M6 (LLM chat sidebar) and on in order.
 
@@ -77,8 +74,10 @@ selection to copy.)
 
 - [x] Copy as markdown (whole post)
 - [x] Export as markdown file
-- [ ] `site/` (Zola): landing page, blog, changelog
-- [ ] First changelog / blog post, written in writui and exported into `site/content/`
+- [x] `site/` (Zola): landing page, blog, changelog
+- [x] First changelog / blog post, written in writui and exported into `site/content/`
+- [ ] Front matter on export, remembered per post; Tab completes paths
+- [ ] Import a markdown file as a post (front matter kept; exports go back to it)
 
 ## M4 — Open source release
 
@@ -89,7 +88,7 @@ The repo went public early (during M0), so most of this is already done.
 - [x] Release builds (macOS and Linux, each x86_64 and arm64), published
       automatically when a merge bumps the version
 - [x] Windows: build from source (README), with how to run the tests there
-- [ ] Site deployed via GitHub Pages
+- [x] Site deployed via GitHub Pages
 - [x] Make the repo public
 - [x] One-line install script (`curl … | bash`)
 - [x] `writui upgrade` and `writui --version`

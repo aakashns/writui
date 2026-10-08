@@ -86,10 +86,12 @@ zola --root site serve      # then open http://127.0.0.1:1111
 ```
 
 - **Blog posts** are written in writui and exported as markdown
-  (Ctrl+Shift+S). `site/post.sh <exported file>` puts one in
-  `site/content/blog/`, adding the header Zola needs (title from the
-  `# Title` line, today's date). Running it again after re-exporting
-  updates the post and keeps its date.
+  (Ctrl+Shift+S) straight into `site/content/blog/`, with front matter on
+  (Zola reads YAML front matter). To edit a published post, import it
+  (Ctrl+O on the list), and export it back. A plain export (front matter
+  off) can go through `site/post.sh <exported file>`, which adds the header
+  Zola needs (title from the `# Title` line, today's date). Running it again
+  after re-exporting updates the post and keeps its date.
 - **Changelog** in the site's menu links to the
   [GitHub releases](https://github.com/aakashns/writui/releases).
 - **The logo** is `site/static/logo.svg` (and `favicon.svg`, the same on a

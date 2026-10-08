@@ -19,7 +19,7 @@ src=$1
 dest="$(cd "$(dirname "$0")" && pwd)/content/blog/$(basename "$src")"
 
 first=$(head -n 1 "$src")
-if [[ $first == "+++" ]]; then
+if [[ $first == "+++" || $first == "---" ]]; then
   echo "$src already has a header; nothing to do." >&2
   exit 0
 fi

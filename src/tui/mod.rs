@@ -2,15 +2,18 @@
 
 mod dialog;
 mod editor;
+mod file_dialog;
 mod hints;
 mod menu;
 mod list;
+mod path_field;
 mod setup;
+mod textarea;
 mod unlock;
 mod widgets;
 
 use std::io::stdout;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{Context, Result};
@@ -26,7 +29,8 @@ use ratatui::crossterm::terminal::{SetTitle, supports_keyboard_enhancement};
 use ratatui::{DefaultTerminal, Frame};
 use zeroize::Zeroizing;
 
-use crate::vault::{OpenError, Vault, title_from_first_line};
+use crate::files;
+use crate::vault::{ExportSettings, OpenError, Vault, title_from_first_line};
 
 /// What a screen asks the app to do in response to an event.
 pub enum Action {
@@ -49,6 +53,19 @@ pub enum Action {
     ShowHistory,
     /// Open a version in the history, to read.
     LoadVersion(i64),
+    /// Remember how the open post was just exported.
+    RecordExport(ExportSettings),
+    /// Import a markdown file as a post.
+    Import { path: PathBuf, into: ImportInto },
+}
+
+/// Which post an imported file goes into.
+pub enum ImportInto {
+    /// A new one, unless the file was imported before: then ask.
+    Check,
+    New,
+    /// This post, which the file was imported into before.
+    Post(i64),
 }
 
 /// Whether the post is being stored because the editor is being left.
@@ -61,7 +78,7 @@ enum Leaving {
 enum Screen {
     Setup(setup::Setup),
     Unlock(unlock::Unlock),
-    List(list::List),
+    List(Box<list::List>),
     Editor(Box<editor::Editor>),
 }
 
@@ -346,6 +363,20 @@ impl App {
                     editor.set_error(format!("Couldn't load the history: {err:#}"));
                 }
             }
+            Action::Import { path, into } => {
+                if let Err(err) = self.import(&path, into)
+                    && let Screen::List(list) = &mut self.screen
+                {
+                    list.import_failed(err);
+                }
+            }
+            Action::RecordExport(settings) => {
+                let Screen::Editor(editor) = &mut self.screen else { return Ok(()) };
+                let vault = self.vault.as_ref().context("the vault is locked");
+                if let Err(err) = vault.and_then(|vault| vault.record_export(editor.post_id(), &settings)) {
+                    editor.set_error(format!("Exported, but couldn't remember the export: {err:#}"));
+                }
+            }
         }
         Ok(())
     }
@@ -373,6 +404,51 @@ impl App {
         }
     }
 
+    /// Import the file at `path` (see `Action::Import`), then open the
+    /// post. If that doesn't work, says why.
+    fn import(&mut self, path: &Path, into: ImportInto) -> Result<(), String> {
+        let file = files::read(path)?;
+        let vault = self.vault.as_ref().ok_or("The vault is locked.")?;
+        let failed = |err: anyhow::Error| format!("Couldn't import {}: {err:#}", files::display(path));
+        let into = match into {
+            ImportInto::Check => {
+                let paths = vault.export_paths().map_err(failed)?;
+                if let Some(&(id, _)) = paths.iter().find(|(_, p)| files::same_file(p, path)) {
+                    let title = self.title_of(id).map_err(failed)?;
+                    if let Screen::List(list) = &mut self.screen {
+                        list.ask_reimport(path.to_path_buf(), id, &title);
+                    }
+                    return Ok(());
+                }
+                None
+            }
+            ImportInto::New => None,
+            ImportInto::Post(id) => Some(id),
+        };
+        let today = jiff::Zoned::now().date();
+        let settings = ExportSettings {
+            path: path.to_path_buf(),
+            front_matter: file.front_matter.clone(),
+            suggested: files::front_matter::suggested_of(
+                &files::front_matter::suggest(&file.title, &file.body, today),
+                &file.front_matter,
+            ),
+            with_front_matter: file.had_front_matter,
+        };
+        let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        let version_name: String = format!("Before importing {name}").chars().take(80).collect();
+        let id = vault.import_post(&file.body, &settings, into, &version_name).map_err(failed)?;
+        self.open_post(id).map_err(failed)?;
+        if let Screen::Editor(editor) = &mut self.screen {
+            let notice = match file.converted {
+                true => format!("Imported {name}. Its TOML front matter is YAML now."),
+                false => format!("Imported {name}."),
+            };
+            editor.set_notice(notice);
+        }
+        Ok(())
+    }
+
     fn vault(&self) -> Result<&Vault> {
         self.vault.as_ref().context("the vault is locked")
     }
@@ -386,7 +462,9 @@ impl App {
     fn show_list(&mut self, select: Option<i64>, notice: Option<String>) -> Result<()> {
         let vault = self.vault()?;
         let mode = list::Mode::Posts { deleted_count: vault.count_deleted()? };
-        self.show(list::List::new(mode, vault.list_posts()?, select), notice);
+        let folder = files::display_folder(&files::last_folder(vault.latest_export_settings()?.as_ref()));
+        let list = list::List::new(mode, vault.list_posts()?, select).with_import_folder(folder);
+        self.show(list, notice);
         Ok(())
     }
 
@@ -397,10 +475,10 @@ impl App {
     }
 
     fn show(&mut self, list: list::List, notice: Option<String>) {
-        self.screen = Screen::List(match notice {
+        self.screen = Screen::List(Box::new(match notice {
             Some(notice) => list.with_notice(notice),
             None => list,
-        });
+        }));
     }
 
     /// Store the open post in the vault, if it changed, and where the cursor
@@ -445,7 +523,9 @@ impl App {
         let vault = self.vault()?;
         let post = vault.post(id)?;
         let last_version = vault.latest_version(id)?;
-        self.screen = Screen::Editor(Box::new(editor::Editor::new(post, last_version)));
+        let exports =
+            editor::Exports { this_post: vault.export_settings(id)?, latest: vault.latest_export_settings()? };
+        self.screen = Screen::Editor(Box::new(editor::Editor::new(post, last_version, exports)));
         Ok(())
     }
 }
@@ -472,6 +552,48 @@ mod tests {
         app.handle(key(ctrl, KeyModifiers::CONTROL, KeyEventKind::Press));
         app.handle(key(KeyCode::Char('a'), KeyModifiers::NONE, KeyEventKind::Press));
         assert!(!app.ctrl_held);
+    }
+
+    #[test]
+    fn imports_make_a_post_and_ask_before_updating_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = App::new(dir.path().join("writui.db"), false);
+        app.perform(Action::CreateVault(Zeroizing::new("pw".into()))).unwrap();
+        let file = dir.path().join("hello.md");
+        std::fs::write(&file, "+++\ntitle = \"Hello\"\ndate = 2026-01-01\n+++\n\nFirst text.\n").unwrap();
+
+        app.apply(Action::Import { path: file.clone(), into: ImportInto::Check }).unwrap();
+        let Screen::Editor(editor) = &app.screen else { panic!("not opened") };
+        let id = editor.post_id();
+        assert_eq!(editor.text(), "# Hello\n\nFirst text.");
+        let vault = app.vault.as_ref().unwrap();
+        let settings = vault.export_settings(id).unwrap().unwrap();
+        assert_eq!(settings.path, file);
+        assert_eq!(settings.front_matter, "title: \"Hello\"\ndate: 2026-01-01");
+        assert!(settings.with_front_matter);
+
+        // Importing it again asks first.
+        std::fs::write(&file, "---\ntitle: Hello\n---\nSecond text.\n").unwrap();
+        app.apply(Action::BackToList(None)).unwrap();
+        app.apply(Action::Import { path: file.clone(), into: ImportInto::Check }).unwrap();
+        assert!(matches!(&app.screen, Screen::List(_)));
+        assert_eq!(app.vault.as_ref().unwrap().list_posts().unwrap().len(), 1);
+        // Updating keeps the old text as a version.
+        app.apply(Action::Import { path: file.clone(), into: ImportInto::Post(id) }).unwrap();
+        let Screen::Editor(editor) = &app.screen else { panic!("not opened") };
+        assert_eq!((editor.post_id(), editor.text().as_str()), (id, "# Hello\n\nSecond text."));
+        let vault = app.vault.as_ref().unwrap();
+        let versions = vault.list_versions(id).unwrap();
+        assert_eq!(versions[0].name, "Before importing hello.md");
+        assert_eq!(vault.version(versions[0].id).unwrap().body, "# Hello\n\nFirst text.");
+        // Or it can be a new post.
+        app.apply(Action::BackToList(None)).unwrap();
+        app.apply(Action::Import { path: file.clone(), into: ImportInto::New }).unwrap();
+        assert_eq!(app.vault.as_ref().unwrap().list_posts().unwrap().len(), 2);
+        // A file that can't be read leaves the list showing why.
+        app.apply(Action::BackToList(None)).unwrap();
+        app.apply(Action::Import { path: dir.path().join("gone.md"), into: ImportInto::Check }).unwrap();
+        assert!(matches!(&app.screen, Screen::List(_)));
     }
 
     #[test]

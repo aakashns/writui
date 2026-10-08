@@ -1,4 +1,5 @@
 mod config;
+mod files;
 mod tui;
 mod upgrade;
 mod vault;

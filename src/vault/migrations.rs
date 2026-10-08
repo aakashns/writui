@@ -30,6 +30,18 @@ const MIGRATIONS: &[&str] = &[
         created_at INTEGER NOT NULL
     );
     CREATE INDEX saves_post_id ON saves (post_id, created_at);",
+    // 5: how each post was last exported, so the next export starts from
+    // there: the file, and the front matter as typed and as writui
+    // suggested it (to tell which fields were changed by hand).
+    "CREATE TABLE exports (
+        post_id           INTEGER PRIMARY KEY REFERENCES posts (id),
+        path              TEXT    NOT NULL,
+        front_matter      TEXT    NOT NULL,
+        suggested         TEXT    NOT NULL,
+        with_front_matter INTEGER NOT NULL,
+        exported_at       INTEGER NOT NULL
+    );
+    CREATE INDEX exports_exported_at ON exports (exported_at);",
 ];
 
 /// Bring the vault's schema up to date. If the vault already holds data, it's
