@@ -1,0 +1,172 @@
+/* writui.com: light Inter on dark, one narrow column, like the app. */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("fonts/InterVariable.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter";
+  font-style: italic;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url("fonts/InterVariable-Italic.woff2") format("woff2");
+}
+
+:root {
+  --bg: #111113;
+  --text: #e4e4e7;
+  --muted: #8b8b93;
+  --faint: #2a2a2f;
+  --code: #86d39b;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: 18px;
+  line-height: 1.65;
+  -webkit-text-size-adjust: 100%;
+  font-feature-settings: "cv11";
+}
+
+body {
+  margin: 0 auto;
+  max-width: 40rem;
+  padding: 2rem 1.25rem 3rem;
+}
+
+a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: var(--muted);
+  text-underline-offset: 0.2em;
+}
+a:hover { text-decoration-color: var(--text); }
+
+h1, h2, h3, h4 {
+  line-height: 1.25;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  margin: 2.2em 0 0.6em;
+}
+h1 { font-size: 1.9rem; margin-top: 0; }
+h2 { font-size: 1.3rem; }
+h3 { font-size: 1.1rem; }
+
+p, ul, ol, pre, blockquote, table, figure { margin: 0 0 1.1em; }
+ul, ol { padding-left: 1.3em; }
+li { margin: 0.3em 0; }
+li::marker { color: var(--muted); }
+strong { font-weight: 650; }
+hr { border: 0; border-top: 1px solid var(--faint); margin: 2.5em 0; }
+
+blockquote {
+  margin-left: 0;
+  padding-left: 1em;
+  border-left: 2px solid var(--faint);
+  color: var(--muted);
+}
+
+code, pre { font-family: var(--mono); font-size: 0.85em; }
+code { color: var(--code); }
+pre {
+  background: #18181b;
+  border: 1px solid var(--faint);
+  border-radius: 6px;
+  padding: 0.9em 1em;
+  overflow-x: auto;
+  line-height: 1.5;
+}
+pre code { font-size: inherit; }
+
+table { border-collapse: collapse; width: 100%; font-size: 0.9em; }
+th, td { text-align: left; padding: 0.4em 0.6em; border-bottom: 1px solid var(--faint); }
+
+img, video { max-width: 100%; height: auto; }
+
+.muted, time { color: var(--muted); }
+time { font-size: 0.85em; }
+
+/* Header and footer */
+
+header.site {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5em 1.5em;
+  margin-bottom: 3.5rem;
+}
+header.site .name {
+  font-family: var(--mono);
+  font-weight: 700;
+  text-decoration: none;
+}
+header.site nav { display: flex; gap: 1.25em; }
+header.site nav a { color: var(--muted); text-decoration: none; }
+header.site nav a:hover { color: var(--text); }
+
+footer.site {
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--faint);
+  color: var(--muted);
+  font-size: 0.85em;
+}
+footer.site a { color: inherit; }
+
+/* Landing page */
+
+.hero h1 { font-size: 2.3rem; margin-bottom: 0.2em; }
+.lede { color: var(--muted); font-size: 1.25rem; }
+
+/* The demo is a screen recording, wider than the text where there's room. */
+.demo {
+  margin: 2.5rem -3rem;
+}
+.demo video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1200 / 680;
+  border-radius: 8px;
+  border: 1px solid var(--faint);
+  background: #000;
+}
+@media (max-width: 48rem) {
+  .demo { margin: 2rem 0; }
+}
+
+.install pre { white-space: pre; }
+.install .note { color: var(--muted); font-size: 0.9em; }
+
+/* Blog lists */
+
+.post-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1em;
+  padding: 0.55em 0;
+  border-bottom: 1px solid var(--faint);
+  text-decoration: none;
+}
+.post-item:hover .title { text-decoration: underline; text-underline-offset: 0.2em; }
+.post-item time { white-space: nowrap; }
+
+header.post { margin-bottom: 2rem; }
+header.post h1 { margin-bottom: 0.3em; }
+
+/* Changelog */
+
+.release h2 { margin-bottom: 0.1em; font-family: var(--mono); font-size: 1.1rem; }
+.release h2 a { text-decoration: none; }
+.release ul { margin-top: 0.6em; }
+.release li a.muted { color: var(--muted); font-size: 0.85em; }

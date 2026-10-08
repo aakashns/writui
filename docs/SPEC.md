@@ -388,11 +388,21 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 > keep it in the same repo. As you can imagine, I will write the changelog /
 > blog posts for writui using writui itself.
 
+> writui.com
+
 **Details**
 
-- The site lives in `site/` in this repo.
+- The site lives in `site/` in this repo, and is published at
+  **writui.com** (GitHub Pages).
+- It looks like the app: light Inter text on a dark background, one narrow
+  column. Pages: a landing page (what writui is, a short recording of it,
+  install), the blog, and a changelog.
 - Posts live in the encrypted vault, but the blog lives in the public repo —
-  so blog posts get into `site/content/` via "export as markdown".
+  so blog posts get into `site/content/` via "export as markdown", then
+  `site/post.sh`, which adds the title and date Zola needs.
+- The changelog is built from the GitHub releases (one line per merged PR),
+  and refreshed after every release, so it's never edited by hand. Blog
+  posts are for saying more about a release.
 - A "writui site" preview preset matching the site's CSS, so blog posts can be
   previewed exactly as they'll look.
 

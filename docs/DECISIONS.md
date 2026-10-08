@@ -400,3 +400,21 @@ an error.
 The editor bar shows when a post was started as `Oct 8, 2026, 10:46 AM`,
 like History, rather than the mockup's `8 Oct 2026, 9:14` (creator's call,
 after 0.9.0).
+
+## The project site: Zola, GitHub Pages from Actions
+
+`site/` builds with Zola 0.23 (Tera 2 templates), no theme, one stylesheet
+and no JavaScript. Inter is served from the site itself (variable woff2,
+OFL licence alongside), not from Google Fonts. The site is published with
+GitHub's Pages actions (not a `gh-pages` branch). The workflow builds with
+the address Pages reports, so the site works at `aakashns.github.io/writui`
+until writui.com's DNS is set, and at writui.com after. The changelog comes
+from the GitHub API at build time (`site/fetch-releases.sh`, a `gh api` +
+jq one-liner), turned into data for the template, rather than kept by hand.
+The workflow also runs after each Release run. Zola refuses markdown files
+without a front matter header, and writui exports plain markdown, so
+`site/post.sh` adds the header (title from the `# Title` line, today's
+date, kept on later updates, even from git if the export replaced the
+file). The landing page's demo is an MP4 recorded with VHS (about 200 KB,
+sharper and smaller than a GIF), with its last frame as the poster.
+

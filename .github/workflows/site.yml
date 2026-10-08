@@ -1,0 +1,70 @@
+# Builds the project site (site/, Zola) and publishes it to GitHub Pages,
+# at https://writui.com. It runs when the site changes on main, and after
+# every release, since the changelog page is built from the releases. Pull
+# requests that touch the site build it without publishing.
+name: Site
+
+on:
+  push:
+    branches: [main]
+    paths: [site/**, .github/workflows/site.yml]
+  pull_request:
+    paths: [site/**, .github/workflows/site.yml]
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One publish at a time; never cancel one halfway.
+concurrency:
+  group: site-${{ github.event_name == 'pull_request' && github.ref || 'pages' }}
+  cancel-in-progress: false
+
+env:
+  ZOLA_VERSION: 0.23.6
+
+jobs:
+  build:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Zola
+        run: |
+          curl -fsSL "https://github.com/getzola/zola/releases/download/v$ZOLA_VERSION/zola-v$ZOLA_VERSION-x86_64-unknown-linux-gnu.tar.gz" \
+            | tar xz -C /usr/local/bin zola
+      - name: Fetch the releases for the changelog
+        run: site/fetch-releases.sh
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - id: pages
+        if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v6
+      # Pages knows the site's address (writui.com once the domain is set
+      # up, aakashns.github.io/writui before that); pull requests use the
+      # one in zola.toml.
+      - name: Build
+        run: zola --root site build ${BASE_URL:+--base-url "$BASE_URL"}
+        env:
+          BASE_URL: ${{ steps.pages.outputs.base_url }}
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site/public
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5
