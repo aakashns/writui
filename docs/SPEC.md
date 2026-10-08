@@ -446,6 +446,9 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 > the migrations (backup before, delte backup after success), and also add a
 > --version cli command
 
+> also, i want you to remove the migrate step within upgrade, since migration
+> is auto applied on next open, so no point asking for the password twice
+
 **Details**
 
 - Plain `writui` opens the app; subcommands (e.g. `writui list`,
@@ -455,11 +458,11 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - `writui --version` prints the version.
 - `writui upgrade` checks GitHub for a newer release, shows "0.1.0 → 0.2.0"
   and a link to what's new, asks before upgrading (`--yes` skips that), then
-  downloads it, checks its checksum and replaces itself. Then it asks for
-  the vault password and has the new version migrate the vault right away,
-  if the new version needs to (done in 0.5.0; before that, the vault was
-  migrated the next time it was unlocked). An empty password skips it, and
-  so does running without a terminal; the next unlock migrates as before. Migrations back the vault up
+  downloads it, checks its checksum and replaces itself. It doesn't touch
+  the vault or ask for the password: the new version migrates the vault the
+  next time it's unlocked, if it needs to. (From 0.5.0 to 0.9.0, upgrade
+  asked for the password and migrated right away; dropped in 0.10.0, since
+  it meant typing the password twice.) Migrations back the vault up
   first, check the migrated vault's integrity, and only then delete the
   backup; if anything fails, the backup stays and the error says where it
   is.

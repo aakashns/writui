@@ -384,3 +384,19 @@ kitty protocol, Ctrl+Shift+C arrives as Ctrl+"C"; so that Caps Lock can't
 turn Ctrl+C into it, Caps Lock no longer capitalises letters typed with
 Ctrl (which also stops Caps Lock + Ctrl+Z redoing). Exports are written as
 plain files, outside the vault: that's the point of them.
+
+## `writui upgrade` leaves the vault to the next unlock
+
+From 0.5.0, upgrade ran the new binary as `writui migrate`, which asked for
+the password and migrated right away. Dropped in 0.10.0: the next unlock
+migrates anyway (with the same backup and checks), so it only meant typing
+the password twice. `rpassword` went with it. `migrate` stays as a hidden
+command that does nothing, because 0.5.0 to 0.9.0 still run it on the new
+binary after upgrading, and an unknown command would end their upgrade with
+an error.
+
+## The bar's date stays in the app's style
+
+The editor bar shows when a post was started as `Oct 8, 2026, 10:46 AM`,
+like History, rather than the mockup's `8 Oct 2026, 9:14` (creator's call,
+after 0.9.0).

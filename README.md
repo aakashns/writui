@@ -60,11 +60,10 @@ writui upgrade
 ```
 
 This checks for a newer version, shows what's new, and asks before replacing
-writui with it (`writui upgrade --yes` skips the question). Then it asks for
-your vault password (leave it empty to skip) and the new version updates your
-vault right away, if it needs to. It backs the vault up first, checks the
-result, and only then removes the backup. If you skip it, the update happens
-the next time you unlock. Running the install script again also upgrades.
+writui with it (`writui upgrade --yes` skips the question). If the new
+version stores your writing differently, it updates your vault the next time
+you unlock it: it backs the vault up first, checks the result, and only then
+removes the backup. Running the install script again also upgrades.
 
 ### Windows
 
