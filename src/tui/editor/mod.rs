@@ -20,7 +20,7 @@ use ratatui::crossterm::event::{
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Clear, Paragraph};
 use ropey::Rope;
 
 use super::Action;
@@ -49,6 +49,10 @@ const MAX_SAVE_NAME: usize = 80;
 /// Rows kept between the cursor and the top or bottom edge when scrolling to
 /// follow it. The text can also scroll this far past its last row.
 const SCROLL_MARGIN: usize = 3;
+
+/// Blank rows above the title, at the top of the post. They scroll away
+/// with the text, so further down the text uses the whole screen.
+const PAD_TOP: usize = 1;
 
 #[derive(Clone, Copy)]
 enum Cmd {
@@ -121,6 +125,9 @@ pub struct Editor {
     /// Show the hint bar and whether the post is saved; otherwise only the
     /// writing (and passing messages) are on screen.
     pub show_chrome: bool,
+    /// The hint bar and saved state show only while Ctrl is held: the text
+    /// takes the whole screen, and they're drawn over its bottom rows.
+    pub zen: bool,
 }
 
 impl Editor {
@@ -151,6 +158,7 @@ impl Editor {
             history: None,
             hints: HintBar::default(),
             show_chrome: true,
+            zen: false,
         }
     }
 
@@ -230,13 +238,10 @@ impl Editor {
             history.render(frame);
             return;
         }
-        let [_, body, status, hint_area] = Layout::vertical([
-            Constraint::Length(1),
-            Constraint::Fill(1),
-            Constraint::Length(1),
-            Constraint::Length(1),
-        ])
-        .areas(frame.area());
+        let [above, status, hint_area] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(1), Constraint::Length(1)])
+                .areas(frame.area());
+        let body = if self.zen { frame.area() } else { above };
 
         let width = (COLUMN_WIDTH as usize).min(body.width.saturating_sub(1) as usize).max(1);
         if width != self.width {
@@ -269,22 +274,35 @@ impl Editor {
 
         let rope = self.buffer.rope();
         let selection = self.buffer.selection();
-        let lines: Vec<Line> = self
-            .rows
-            .iter()
-            .skip(self.top)
-            .take(height)
-            .map(|row| row_line(rope, &self.markup, row, selection.as_ref()))
+        let lines: Vec<Line> = (self.top..self.top + height)
+            .map(|i| match i.checked_sub(PAD_TOP).and_then(|i| self.rows.get(i)) {
+                Some(row) => row_line(rope, &self.markup, row, selection.as_ref()),
+                None => Line::default(),
+            })
             .collect();
         frame.render_widget(Paragraph::new(lines), self.text_area);
+
+        // In zen, the status and hint rows are drawn over the text, only
+        // while there's something to show there.
+        let chrome = self.show_chrome || self.dialog.is_some();
+        let message = self.error.is_some() || self.notice.is_some();
+        let status_covered = self.zen && (chrome || message);
+        let hints_covered = self.zen && chrome;
+        for (area, cover) in [(status, status_covered), (hint_area, hints_covered)] {
+            if cover {
+                frame.render_widget(Clear, area);
+            }
+        }
         if (self.top..self.top + height).contains(&cursor_row) {
             let y = body.y + (cursor_row - self.top) as u16;
-            frame.set_cursor_position(Position::new(left + cursor_x as u16, y));
+            let hidden = (status_covered && y == status.y) || (hints_covered && y == hint_area.y);
+            if !hidden {
+                frame.set_cursor_position(Position::new(left + cursor_x as u16, y));
+            }
         }
 
         // The status row: a message on the left, whether the post has
         // changed since its last save on the right.
-        let chrome = self.show_chrome || self.dialog.is_some();
         let state = match &self.last_save {
             _ if !chrome => Line::default(),
             _ if self.unsaved() => {
@@ -335,7 +353,7 @@ impl Editor {
         }
         let link = self.markup.link_at(self.buffer.cursor()).is_some();
         let hints: Vec<_> = [
-            hint("Esc", "back to posts", Cmd::Back),
+            hint("Esc", "back", Cmd::Back),
             hint("Ctrl+O", "open link", Cmd::OpenLink),
             hint("Ctrl+S", "save", Cmd::Save),
             hint("Ctrl+R", "history", Cmd::History),
@@ -735,7 +753,8 @@ impl Editor {
     /// The text position at a cell of the text area (below the text: its end).
     fn pos_at(&mut self, column: u16, row: u16) -> usize {
         self.refresh();
-        let index = self.top + row.saturating_sub(self.text_area.y) as usize;
+        // The blank rows above the title count as its first row.
+        let index = (self.top + row.saturating_sub(self.text_area.y) as usize).saturating_sub(PAD_TOP);
         match self.rows.get(index) {
             Some(&r) => pos_at_x(self.buffer.rope(), r, column.saturating_sub(self.text_area.x) as usize),
             None => self.buffer.len(),
@@ -754,21 +773,23 @@ impl Editor {
         }
     }
 
-    /// The cursor's row and column on screen. Just after a space hanging off
-    /// the end of a full row, it shows at the start of the next row, where
-    /// the next word will go.
+    /// The cursor's row (counting the blank rows above the title) and
+    /// column on screen. Just after a space hanging off the end of a full
+    /// row, it shows at the start of the next row, where the next word will
+    /// go.
     fn cursor_cell(&self) -> (usize, usize) {
         let pos = self.buffer.cursor();
         let row = row_of(&self.rows, pos);
         let x = x_of(self.buffer.rope(), self.rows[row], pos);
-        if x > self.width { (row + 1, self.rows.get(row + 1).map_or(0, |r| r.indent)) } else { (row, x) }
+        let (row, x) = if x > self.width { (row + 1, self.rows.get(row + 1).map_or(0, |r| r.indent)) } else { (row, x) };
+        (PAD_TOP + row, x)
     }
 
     /// The furthest the text can scroll: its last row a margin above the
     /// bottom edge.
     fn max_top(&self) -> usize {
         let height = self.text_area.height as usize;
-        self.rows.len().saturating_sub(height.saturating_sub(margin(height)))
+        (PAD_TOP + self.rows.len()).saturating_sub(height.saturating_sub(margin(height)))
     }
 }
 
@@ -946,12 +967,14 @@ mod tests {
         for _ in 0..10 {
             h.key(KeyCode::Up);
         }
-        // Scrolled up, keeping a margin above the cursor.
-        assert_eq!(h.screen_row(4), format!("{}line 20", " ".repeat(6)));
-        assert_eq!(h.cursor(), (LEFT, 4));
+        // Scrolled up, keeping a margin above the cursor. The blank row
+        // above the title has scrolled away: the text starts on the first.
+        assert_eq!(h.screen_row(3), format!("{}line 20", " ".repeat(6)));
+        assert_eq!(h.screen_row(0), format!("{}line 17", " ".repeat(6)));
+        assert_eq!(h.cursor(), (LEFT, 3));
         // The wheel scrolls without moving the cursor.
         h.mouse(MouseEventKind::ScrollUp, 40, 5);
-        assert_eq!(h.cursor(), (LEFT, 5));
+        assert_eq!(h.cursor(), (LEFT, 4));
         h.key(KeyCode::Char('!'));
         assert_eq!(h.editor.text().lines().nth(20), Some("!line 20"));
     }
@@ -1285,5 +1308,27 @@ mod tests {
         assert_eq!(h.cursor(), (LEFT + 2, 3));
         h.typed("x");
         assert!(h.editor.text().ends_with("lines xup under its text"));
+    }
+
+    #[test]
+    fn zen_text_takes_the_whole_screen() {
+        let body: String = (1..=30).map(|n| format!("\nline {n}")).collect();
+        let mut h = Harness::new(&format!("# Title{body}"));
+        h.editor.zen = true;
+        h.editor.show_chrome = false;
+        h.with(KeyCode::Home, KeyModifiers::CONTROL);
+        // The text runs to the bottom row.
+        assert_eq!(h.screen_row(11), format!("{}line 10", " ".repeat(6)));
+        // Holding Ctrl draws the saved state and hints over the bottom rows.
+        h.editor.show_chrome = true;
+        h.draw();
+        assert!(h.screen_row(10).ends_with("● Never saved"));
+        assert!(!h.screen_row(10).contains("line"));
+        assert!(h.screen_row(11).contains("Esc back"));
+        // A passing message covers only its own row.
+        h.editor.show_chrome = false;
+        h.ctrl('x');
+        assert!(h.screen_row(10).contains("Select some text to cut."));
+        assert_eq!(h.screen_row(11), format!("{}line 10", " ".repeat(6)));
     }
 }

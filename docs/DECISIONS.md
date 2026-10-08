@@ -314,3 +314,13 @@ The indent is part of the soft-wrap layout (each row knows its indent), not
 spaces in the text, so the markdown saved is exactly what was typed. It's
 found from the line's own prefix (`- `, `1. `, `> `, `- [ ] `, after any
 indentation), not the parser, and never takes more than half the width.
+
+## The editor uses the whole screen
+
+The blank row above the title is part of the scrolling text, not a fixed
+margin: at the top of a post it pads the title, further down it scrolls away
+and the text starts on the first row. In zen (where the terminal reports
+Ctrl on its own), the text also runs to the last row; holding Ctrl draws the
+saved state and hints over the bottom two rows instead of resizing the text,
+so nothing jumps. A passing message covers only its own row. Where hints
+always show, their two rows stay reserved, so they never hide the text.
