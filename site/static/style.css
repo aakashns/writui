@@ -100,16 +100,20 @@ time { font-size: 0.85em; }
 header.site {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 0.5em 1.5em;
   margin-bottom: 3.5rem;
 }
 header.site .name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45em;
   font-family: var(--mono);
   font-weight: 700;
   text-decoration: none;
 }
+header.site .name img { display: block; }
 header.site nav { display: flex; gap: 1.25em; }
 header.site nav a { color: var(--muted); text-decoration: none; }
 header.site nav a:hover { color: var(--text); }
@@ -163,10 +167,3 @@ footer.site a { color: inherit; }
 
 header.post { margin-bottom: 2rem; }
 header.post h1 { margin-bottom: 0.3em; }
-
-/* Changelog */
-
-.release h2 { margin-bottom: 0.1em; font-family: var(--mono); font-size: 1.1rem; }
-.release h2 a { text-decoration: none; }
-.release ul { margin-top: 0.6em; }
-.release li a.muted { color: var(--muted); font-size: 0.85em; }

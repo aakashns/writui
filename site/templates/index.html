@@ -1,4 +1,13 @@
 {% extends "base.html" %}
+{% block head %}
+  <script type="application/ld+json">
+  {"@context": "https://schema.org", "@type": "SoftwareApplication", "name": "writui",
+   "description": "{{ config.description }}", "url": "{{ config.base_url }}",
+   "applicationCategory": "Writing", "operatingSystem": "macOS, Linux",
+   "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+   "license": "https://opensource.org/licenses/MIT", "codeRepository": "{{ config.extra.repo }}"}
+  </script>
+{% endblock %}
 {% block content %}
 <section class="hero">
   <h1>A writing app for the terminal.</h1>

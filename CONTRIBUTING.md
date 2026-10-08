@@ -79,10 +79,9 @@ GitHub release. PRs that keep the version (docs only) release nothing.
 [writui.com](https://writui.com) is built from `site/` with
 [Zola](https://www.getzola.org) (`brew install zola`) and published to
 GitHub Pages by `.github/workflows/site.yml` whenever `site/` changes on
-`main`, and after every release. To preview it:
+`main`. To preview it:
 
 ```sh
-site/fetch-releases.sh      # for the changelog page; needs the GitHub CLI
 zola --root site serve      # then open http://127.0.0.1:1111
 ```
 
@@ -91,8 +90,11 @@ zola --root site serve      # then open http://127.0.0.1:1111
   `site/content/blog/`, adding the header Zola needs (title from the
   `# Title` line, today's date). Running it again after re-exporting
   updates the post and keeps its date.
-- **The changelog** is built from the GitHub releases, so it needs no
-  editing.
+- **Changelog** in the site's menu links to the
+  [GitHub releases](https://github.com/aakashns/writui/releases).
+- **The logo** is `site/static/logo.svg` (and `favicon.svg`, the same on a
+  dark rounded square). The PNG icons, `favicon.ico` and the social card
+  `og.png` were rendered from them; re-render them if the logo changes.
 - **The demo video** on the landing page is recorded with
   [VHS](https://github.com/charmbracelet/vhs) from `site/demo.tape`; the
   tape's first lines say how to re-record it.

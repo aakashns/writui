@@ -14,10 +14,10 @@ file is the source of truth for what's next.
 
 `0.10.0` (`writui upgrade` no longer asks for the password) is out. The
 site PR adds `site/` (Zola), published to GitHub Pages at **writui.com**:
-landing page with a demo recording, blog, and a changelog built from the
-releases. Before it merges: the creator writes the first blog post in
-writui and it's added with `site/post.sh`, and Pages is switched on. After
-it merges: writui.com's DNS, then the custom domain in the Pages settings.
+landing page with a demo recording, the blog with a hello world post,
+"Changelog" linking to the GitHub releases, and the SEO basics (sitemap,
+manifest, icons, social card). After it merges: writui.com's DNS, then the
+custom domain in the Pages settings.
 Then:
 
 1. M6 (LLM chat sidebar) and on in order.
