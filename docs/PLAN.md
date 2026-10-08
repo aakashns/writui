@@ -15,8 +15,9 @@ file is the source of truth for what's next.
 The site (`site/`, Zola) is merged. It moves from GitHub Pages to
 Cloudflare Workers: `site/build.sh` and `site/wrangler.jsonc`, built and
 deployed by Cloudflare's Git integration; the Pages workflow is gone. After
-it merges: connect the repo in Cloudflare (root directory `site`), check
-https://writui.com/install.sh, then turn off GitHub Pages.
+it merges: connect the repo in Cloudflare (root directory `site`), add the
+www → writui.com Redirect Rule, check https://writui.com/install.sh, then
+turn off GitHub Pages.
 Then:
 
 1. M6 (LLM chat sidebar) and on in order.

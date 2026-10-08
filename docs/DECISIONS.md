@@ -454,4 +454,8 @@ in GitHub Actions any more. Cloudflare's Workers build image has no Zola,
 so `build.sh` downloads the latest release (creator's call: latest, not
 pinned); a Zola release with breaking changes fails the build and leaves
 the last deploy live. `install.sh` at the repo root is still served from
-the symlink in `site/static/`.
+the symlink in `site/static/`. `www.writui.com` redirects to writui.com
+(creator's call): it's a second custom domain in `wrangler.jsonc`, so
+Cloudflare makes its DNS record and certificate, and a Redirect Rule in the
+dashboard ("Redirect from WWW to root") sends it on, keeping the path. A
+static-assets Worker can't redirect by hostname without adding code.
