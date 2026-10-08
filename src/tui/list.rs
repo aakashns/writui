@@ -390,9 +390,9 @@ fn when(ts: Timestamp, now: Timestamp, tz: &TimeZone) -> String {
     }
 }
 
-/// When a save was made, to the minute: "just now", "5 min ago", "2:05 PM",
+/// When a version was saved, to the minute: "just now", "5 min ago", "2:05 PM",
 /// "Oct 2, 2:05 PM", "Oct 2, 2025, 2:05 PM".
-pub fn save_time(ts: Timestamp, now: Timestamp, tz: &TimeZone) -> String {
+pub fn version_time(ts: Timestamp, now: Timestamp, tz: &TimeZone) -> String {
     let secs = now.duration_since(ts).as_secs();
     if secs < 60 * 60 {
         return when(ts, now, tz);
@@ -438,13 +438,13 @@ mod tests {
     }
 
     #[test]
-    fn save_times_are_exact() {
+    fn version_times_are_exact() {
         let tz = TimeZone::UTC;
         let now = at("2026-10-03T14:30:00Z");
-        assert_eq!(save_time(at("2026-10-03T14:05:00Z"), now, &tz), "25 min ago");
-        assert_eq!(save_time(at("2026-10-03T09:05:00Z"), now, &tz), "9:05 AM");
-        assert_eq!(save_time(at("2026-10-02T23:00:00Z"), now, &tz), "Oct 2, 11:00 PM");
-        assert_eq!(save_time(at("2025-03-14T10:00:00Z"), now, &tz), "Mar 14, 2025, 10:00 AM");
+        assert_eq!(version_time(at("2026-10-03T14:05:00Z"), now, &tz), "25 min ago");
+        assert_eq!(version_time(at("2026-10-03T09:05:00Z"), now, &tz), "9:05 AM");
+        assert_eq!(version_time(at("2026-10-02T23:00:00Z"), now, &tz), "Oct 2, 11:00 PM");
+        assert_eq!(version_time(at("2025-03-14T10:00:00Z"), now, &tz), "Mar 14, 2025, 10:00 AM");
     }
 
     #[test]

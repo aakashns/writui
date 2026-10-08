@@ -1,5 +1,5 @@
-//! A post's history: its saves, newest first. Open one to read its full
-//! text, and restore it into the draft from there.
+//! A post's history: its versions, newest first. Open one to read its full
+//! text, and restore it from there.
 //!
 //! It's shown by the editor, on top of the post, so the post (and its undo
 //! history) is still there when you come back.
@@ -16,22 +16,22 @@ use ropey::Rope;
 
 use super::super::dialog::{Button, Dialog};
 use super::super::hints::{HintBar, hint};
-use super::super::list::{display_title, save_time};
+use super::super::list::{display_title, version_time};
 use super::super::widgets::{COLUMN_WIDTH, column, truncate};
 use super::markdown::Markup;
 use super::row_line;
 use super::wrap::{Row, layout};
-use crate::vault::Save;
+use crate::vault::Version;
 
 /// What the editor should do after an event.
 pub enum Outcome {
     None,
     /// Back to the post.
     Close,
-    /// Load this save's full text, to read it.
+    /// Load this version's full text, to read it.
     Load(i64),
-    /// Replace the draft with this save.
-    Restore(Save),
+    /// Replace the post with this version.
+    Restore(Version),
     Quit,
 }
 
@@ -47,20 +47,20 @@ enum Cmd {
 
 pub struct History {
     title: String,
-    saves: Vec<Save>,
+    versions: Vec<Version>,
     state: ListState,
     rows_area: Rect,
-    /// The save being read, if one is open.
+    /// The version being read, if one is open.
     reading: Option<Reading>,
-    /// The draft has changes since the last save.
-    draft_unsaved: bool,
+    /// The post has changed since its latest version.
+    changed: bool,
     dialog: Option<Dialog<Cmd>>,
     hints: HintBar<Cmd>,
 }
 
-/// A save's full text, laid out like the editor does.
+/// A version's full text, laid out like the editor does.
 struct Reading {
-    save: Save,
+    version: Version,
     rope: Rope,
     markup: Markup,
     rows: Vec<Row>,
@@ -70,25 +70,25 @@ struct Reading {
 }
 
 impl History {
-    pub fn new(title: String, saves: Vec<Save>, draft_unsaved: bool) -> Self {
-        let state = ListState::default().with_selected((!saves.is_empty()).then_some(0));
+    pub fn new(title: String, versions: Vec<Version>, changed: bool) -> Self {
+        let state = ListState::default().with_selected((!versions.is_empty()).then_some(0));
         History {
             title,
-            saves,
+            versions,
             state,
             rows_area: Rect::default(),
             reading: None,
-            draft_unsaved,
+            changed,
             dialog: None,
             hints: HintBar::default(),
         }
     }
 
-    /// Open a save (with its text) to read.
-    pub fn read(&mut self, save: Save) {
-        let rope = Rope::from_str(&save.body);
+    /// Open a version (with its text) to read.
+    pub fn read(&mut self, version: Version) {
+        let rope = Rope::from_str(&version.body);
         let markup = Markup::new(&rope);
-        self.reading = Some(Reading { save, rope, markup, rows: Vec::new(), width: 0, top: 0, height: 0 });
+        self.reading = Some(Reading { version, rope, markup, rows: Vec::new(), width: 0, top: 0, height: 0 });
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
@@ -106,29 +106,29 @@ impl History {
         let tz = TimeZone::system();
 
         let hints = if let Some(reading) = &mut self.reading {
-            let name = save_name(&reading.save.name);
+            let name = version_name(&reading.version.name);
             let width = (COLUMN_WIDTH as usize).min(body.width.saturating_sub(1) as usize).max(1);
             let col = column(header, width as u16);
             frame.render_widget(Paragraph::new(Line::from(name.bold())), col);
-            let when = format!("Saved {}", save_time(reading.save.created_at, now, &tz));
+            let when = format!("Saved {}", version_time(reading.version.created_at, now, &tz));
             frame.render_widget(Paragraph::new(when.dim()), column(subheader, width as u16));
             reading.render(frame, body, width);
             vec![
                 hint("Enter", "restore", Cmd::Restore),
-                hint("Esc", "back to saves", Cmd::Back),
+                hint("Esc", "back to versions", Cmd::Back),
                 hint("Ctrl+Q", "quit", Cmd::Quit),
             ]
         } else {
             let col = column(body, COLUMN_WIDTH);
             frame.render_widget(Paragraph::new("History".bold()), column(header, COLUMN_WIDTH));
-            let of = format!("Saves of “{}”", display_title(&self.title));
+            let of = format!("Versions of “{}”", display_title(&self.title));
             let of = truncate(&of, COLUMN_WIDTH as usize);
             frame.render_widget(Paragraph::new(of.dim()), column(subheader, COLUMN_WIDTH));
             let width = col.width as usize;
             let items: Vec<ListItem> = self
-                .saves
+                .versions
                 .iter()
-                .map(|save| ListItem::new(save_line(save, &save_time(save.created_at, now, &tz), width)))
+                .map(|version| ListItem::new(version_line(version, &version_time(version.created_at, now, &tz), width)))
                 .collect();
             self.rows_area = Rect { height: (items.len() as u16).min(col.height), ..col };
             frame.render_stateful_widget(
@@ -205,8 +205,8 @@ impl History {
 
     fn run(&mut self, cmd: Cmd) -> Outcome {
         match cmd {
-            Cmd::Open => match self.state.selected().and_then(|i| self.saves.get(i)) {
-                Some(save) => Outcome::Load(save.id),
+            Cmd::Open => match self.state.selected().and_then(|i| self.versions.get(i)) {
+                Some(version) => Outcome::Load(version.id),
                 None => Outcome::None,
             },
             Cmd::Back if self.reading.is_some() => {
@@ -216,14 +216,14 @@ impl History {
             Cmd::Back => Outcome::Close,
             Cmd::Restore => {
                 if let Some(reading) = &self.reading {
-                    self.dialog = Some(restore_dialog(&reading.save, self.draft_unsaved));
+                    self.dialog = Some(restore_dialog(&reading.version, self.changed));
                 }
                 Outcome::None
             }
             Cmd::ConfirmRestore => {
                 self.dialog = None;
                 match self.reading.take() {
-                    Some(reading) => Outcome::Restore(reading.save),
+                    Some(reading) => Outcome::Restore(reading.version),
                     None => Outcome::None,
                 }
             }
@@ -235,12 +235,12 @@ impl History {
         }
     }
 
-    /// Scroll the text being read, or move through the list of saves.
+    /// Scroll the text being read, or move through the list of versions.
     fn scroll(&mut self, by: isize) -> Outcome {
         match &mut self.reading {
             Some(reading) => reading.top = reading.top.saturating_add_signed(by).min(reading.max_top()),
             None => {
-                let last = self.saves.len().saturating_sub(1);
+                let last = self.versions.len().saturating_sub(1);
                 let current = self.state.selected().unwrap_or(0);
                 self.state.select(Some(current.saturating_add_signed(by).min(last)));
             }
@@ -278,30 +278,30 @@ impl Reading {
     }
 }
 
-/// A save's name, or a placeholder if it was saved without one.
-fn save_name(name: &str) -> Span<'static> {
+/// A version's name, or a placeholder if it was saved without one.
+fn version_name(name: &str) -> Span<'static> {
     if name.is_empty() { Span::raw("No name").italic() } else { Span::raw(name.to_string()) }
 }
 
 /// A row in the list: the name on the left, `right` (a time) right-aligned
 /// and dim.
-fn save_line(save: &Save, right: &str, width: usize) -> Line<'static> {
+fn version_line(version: &Version, right: &str, width: usize) -> Line<'static> {
     let right_width = right.chars().count();
     let room = width.saturating_sub(right_width + 2);
-    let name = if save.name.is_empty() {
-        save_name("").dim()
+    let name = if version.name.is_empty() {
+        version_name("").dim()
     } else {
-        Span::raw(truncate(&save.name, room))
+        Span::raw(truncate(&version.name, room))
     };
     let pad = width.saturating_sub(name.width() + right_width);
     Line::from(vec![name, Span::raw(" ".repeat(pad)), Span::raw(right.to_string()).dim()])
 }
 
-fn restore_dialog(save: &Save, draft_unsaved: bool) -> Dialog<Cmd> {
-    let name = if save.name.is_empty() { "this save".to_string() } else { format!("“{}”", truncate(&save.name, 30)) };
-    let mut lines = vec![Line::from(format!("Replace the draft with {name}?"))];
-    if draft_unsaved {
-        lines.push(Line::from("The draft has changes since the last save.".dim()));
+fn restore_dialog(version: &Version, changed: bool) -> Dialog<Cmd> {
+    let name = if version.name.is_empty() { "this version".to_string() } else { format!("“{}”", truncate(&version.name, 30)) };
+    let mut lines = vec![Line::from(format!("Replace the post with {name}?"))];
+    if changed {
+        lines.push(Line::from("Its current text isn't saved as a version.".dim()));
     }
     lines.push(Line::from("Ctrl+Z in the editor undoes this.".dim()));
     Dialog::new(

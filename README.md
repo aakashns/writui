@@ -111,18 +111,19 @@ the password each time it starts.
 - **Posts** are listed with the most recently changed first. Open one with
   Enter or a click, start a new one with Ctrl+N.
 - **Zen writing:** the editor shows only your words. Hold Ctrl to see the
-  shortcuts and whether the post is saved. (This needs a terminal that can
+  shortcuts. (This needs a terminal that can
   report Ctrl on its own, like Alacritty, Ghostty, kitty, WezTerm or a recent
   iTerm2; in others, and inside tmux, they're always shown.)
-- **Writing:** type away. Your post saves itself as you go: a second after
-  you stop typing, every few seconds while you keep typing, and when you go
-  back to the list (Esc) or quit (Ctrl+Q). When you reopen a post, the
-  cursor is where you left it.
-- **Saves** are versions you make on purpose. Ctrl+S asks for a name (like
-  a commit message) and keeps a copy of the whole post. Below the text,
-  writui shows whether the post has changed since its last save.
-- **History** (Ctrl+R) lists a post's saves. Open one to read it, and press
-  Enter to restore it into your post (Ctrl+Z undoes that).
+- **Writing:** type away. Your post is saved automatically as you go: a
+  second after you stop typing, every few seconds while you keep typing,
+  and when you go back to the list (Esc) or quit (Ctrl+Q). There's no need
+  to save. When you reopen a post, the cursor is where you left it. The
+  terminal window's title shows the post's title.
+- **Versions** are snapshots you make on purpose, to read later or go back
+  to. Ctrl+S asks for a name (like a commit message) and keeps a copy of the
+  whole post as it is now.
+- **History** (Ctrl+R) lists a post's versions. Open one to read it, and
+  press Enter to restore it into your post (Ctrl+Z undoes that).
 - **Undo** with Ctrl+Z and **redo** with Ctrl+Y (or Ctrl+Shift+Z, in
   terminals that tell it apart from Ctrl+Z). Undo goes back a word at a
   time while typing.
@@ -139,9 +140,11 @@ the password each time it starts.
 - **Links:** with the cursor on a link, Ctrl+O opens it in your browser, or
   Ctrl+click it. That works for `[text](https://…)` links and for web
   addresses written out in the text. Only web and email links open.
-- **Moving by word and paragraph:** Option+Left/Right (Ctrl+Left/Right on
-  Linux and Windows) jump by word, Option+Up/Down (Ctrl+Up/Down) by
-  paragraph. Add Shift to select as you go.
+- **Moving by line, word and paragraph:** Ctrl+Left/Right (or Cmd+Left/Right
+  on a Mac, where the terminal passes Cmd on, as Alacritty does) go to the
+  start / end of the line, like Home and End. Option+Left/Right (Alt on Linux
+  and Windows) jump by word, Option+Up/Down (Ctrl+Up/Down) by paragraph. Add
+  Shift to select as you go.
 - **Deleting** (Ctrl+D) moves a post to the Trash, where you can restore it
   for 30 days.
 

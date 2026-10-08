@@ -331,3 +331,31 @@ Windows was the slowest CI job (about twice as long as the others), for a
 platform with no release binaries. CI now runs on Linux
 and macOS only. The README's Windows section says how to run the tests and
 clippy there by hand.
+
+## Saves become versions; the table keeps its name
+
+What Ctrl+S makes is now called a version, and the continuously saved post
+is just "the post" (no more "draft"). The code says `Version` throughout,
+but the database table is still `saves`: renaming it would be a migration
+(with a backup) for no change in behaviour. Without the saved-state
+indicator, the zen editor's status row is drawn over the text only while a
+message is showing; holding Ctrl covers just the bottom row, with the hints.
+
+## Line ends on Ctrl+Left/Right, and Cmd on macOS
+
+Ctrl+Left/Right go to the start / end of the row (like Home / End), which
+moves word jumps to Alt/Option+Left/Right only. Cmd+Left/Right do the same,
+but only in macOS builds: elsewhere the Super key is the Windows key, which
+the system usually keeps for itself. Cmd arrives only where the terminal
+passes it on (Alacritty with the kitty keyboard protocol does; iTerm2 and
+Ghostty by default turn it into something else or keep it).
+
+## The terminal title
+
+The window title is set with the standard OSC title sequence: the post's
+title in the editor, "writui" elsewhere. It's only sent when it changes.
+The terminal's own title is pushed onto xterm's title stack at start and
+popped on the way out (also after a panic); terminals without a title stack
+ignore both, and shells usually set their own title at the next prompt
+anyway. Control characters are dropped from post titles before they're
+sent.
