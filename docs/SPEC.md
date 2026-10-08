@@ -125,7 +125,8 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 - Flat list of posts, most recently updated first. Each row shows the title
   and when it was last updated.
-- A "New post" action, always visible.
+- A "New post" action, always visible, and "Import markdown" right below
+  it (Ctrl+O).
 - Search on the main screen, matching against the full post body (not just
   titles).
 - Delete a post (with confirmation). Deleted posts go to the Trash.
@@ -332,15 +333,74 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 > Yes, we do also want export as markdown and copy as markdown.
 
+> since frontmatter is such a common thing, i think it might be worth adding
+> into the export flow, yeah? like when i export, i want to be able to edit
+> the front matter (we can pre-populate it with title, date, description,
+> (say first N characters after title), and slug (same logic as filename),
+> updated (current date), and the user can add more tags. let it be
+> remembered between exports. and let us also remember the export path
+> between exports. and i want path completion with tab in the export dialog
+> where i enter the export path, yeah? and let's also ask for confirmation
+> when overwriting an existing file during export, i expect that to be a
+> common thing if i want to go back and edit a post.
+
+> along with this, let's also add an Import option on the main page, right
+> below New Post. and when i import i also want path completion there. and
+> if the imported post has frontmatter, parse it and save it, and also save
+> the export path for the file as the place it was imported from. so the
+> idea is that i can import a post, edit it here and and then export it
+> back.
+
 **Details**
 
 - **Copy as markdown** (Ctrl+Shift+C, or the menu): the whole post's
   markdown source to the clipboard.
 - **Export as markdown** (Ctrl+Shift+S, like "Save as", or the menu): write
-  the post to a `.md` file of my choosing. It suggests the post's title as
-  a file name (`morning-pages.md`) in the folder writui was started from;
-  typing a folder puts that file name in it, and `~` is the home folder. It
-  asks before replacing a file. The file ends with a newline.
+  the post to a `.md` file of my choosing, with front matter on top. One
+  dialog has both:
+  - **The file.** The first time, it suggests the post's title as a file
+    name (`morning-pages.md`) in the folder of the last export (or import),
+    or else the folder writui was started from. After that, it's where the
+    post was last exported to (or imported from). Typing a folder puts that
+    file name in it, and `~` is the home folder. Tab completes paths as in a
+    shell: as far as the matches agree, listing them under the field; Tab
+    again goes through them (Shift+Tab back), Enter keeps one, and they can
+    be clicked. Ctrl+W deletes back a folder.
+  - **The front matter**, YAML between `---` lines, which takes the place of
+    the `# Title` line (site generators show the title themselves), unless
+    "Keep the # title line" is checked (it isn't at first): then the line
+    comes after the front matter. It can
+    be edited freely (add `tags`, `author`, anything) and turned off. writui
+    suggests `title`, `date` and `updated` (today), `description` (the
+    first 160 characters of the text, without markdown, cut at a word) and
+    `slug` (the file name's logic).
+  - **Remembered per post**, in the vault: the file, the front matter, and
+    both checkboxes. Exporting again keeps the front matter as it was left,
+    except that `title` is always the post's title, `updated` is today, and
+    `description` and `slug` follow the post unless they were changed by
+    hand. `date` stays. Fields taken out stay out. A post exported for the
+    first time gets the extra fields (e.g. `author`, `tags`) and the
+    checkboxes of the latest export (creator's call).
+  - It asks before replacing a file (Cancel is the default, and goes back
+    to the dialog). The file ends with a newline.
+- **Import markdown** (on the list, below "New post", or Ctrl+O): makes a
+  post of a `.md` file. The path has the same Tab completion, starting in
+  the folder of the last export or import.
+  - The title is the front matter's `title`, or else the file's first line
+    if it's `# Title`, or else the file name ("morning-pages.md" → "Morning
+    pages"). A `# Title` line that repeats the front matter's title isn't
+    kept twice.
+  - The front matter is kept, and the file is remembered as the post's own,
+    so the next export goes back to it with that front matter (adding the
+    suggested fields the file didn't have). If the file had front matter
+    and a `# Title` line too, "Keep the # title line" starts checked. TOML front matter (`+++`, as
+    Zola also takes) is turned into YAML (creator's call); what can't be
+    turned into YAML is kept as comments.
+  - Importing a file that's already a post's (imported from or exported to
+    that file, and not in the Trash) asks: update that post (its text
+    before is saved as a version, "Before importing <file>") or make a new
+    post (creator's call).
+  - Files that aren't text, or bigger than 10 MB, are refused.
 - **Copy as formatted text**: the whole post (or the selection) as rich
   text, so pasting into Substack, Gmail, Medium, Google Docs etc. keeps
   headings, bold, links, lists.
@@ -402,8 +462,9 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   install) and the blog. "Changelog" in the menu links to the GitHub
   releases page.
 - Posts live in the encrypted vault, but the blog lives in the public repo —
-  so blog posts get into `site/content/` via "export as markdown", then
-  `site/post.sh`, which adds the title and date Zola needs.
+  so blog posts get into `site/content/blog/` via "export as markdown",
+  with front matter (Zola reads YAML front matter), and are edited by
+  importing them and exporting them back.
 - A "writui site" preview preset matching the site's CSS, so blog posts can be
   previewed exactly as they'll look.
 

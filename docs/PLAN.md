@@ -12,13 +12,16 @@ file is the source of truth for what's next.
 
 ## Next up
 
-The site (`site/`, Zola) is merged. It moves from GitHub Pages to
-Cloudflare Workers: `site/build.sh` and `site/wrangler.jsonc`, built and
-deployed by Cloudflare's Git integration; the Pages workflow is gone. After
-it merges: connect the repo in Cloudflare (root directory `site`), add the
-www → writui.com Redirect Rule, check https://writui.com/install.sh, then
-turn off GitHub Pages.
-Then:
+The site (`site/`, Zola) moves from GitHub Pages to Cloudflare Workers
+(merged): `site/build.sh` and `site/wrangler.jsonc`, built and deployed by
+Cloudflare's Git integration. Still to do by hand: connect the repo in
+Cloudflare (root directory `site`), add the www → writui.com Redirect
+Rule, check https://writui.com/install.sh, then turn off GitHub Pages.
+
+The export / import PR adds front matter to exports (remembered per post),
+Tab completion for paths, and "Import markdown" on the list, so published
+posts can be edited in writui and exported back. After it merges
+(`0.11.0`):
 
 1. M6 (LLM chat sidebar) and on in order.
 
@@ -78,7 +81,9 @@ selection to copy.)
 - [x] Copy as markdown (whole post)
 - [x] Export as markdown file
 - [x] `site/` (Zola): landing page, blog, changelog
-- [ ] First changelog / blog post, written in writui and exported into `site/content/`
+- [x] First changelog / blog post, written in writui and exported into `site/content/`
+- [ ] Front matter on export, remembered per post; Tab completes paths
+- [ ] Import a markdown file as a post (front matter kept; exports go back to it)
 
 ## M4 — Open source release
 

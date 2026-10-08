@@ -10,8 +10,11 @@ use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{List as ListWidget, ListItem, ListState, Paragraph};
 
-use super::Action;
+use std::path::PathBuf;
+
 use super::dialog::{Button, Dialog};
+use super::file_dialog::{FileDialog, FormCmd, Outcome as FormOutcome};
+use super::{Action, ImportInto};
 use super::hints::{HintBar, hint};
 use super::widgets::{COLUMN_WIDTH, column, truncate};
 use crate::vault::{DELETED_RETENTION_DAYS, PostSummary};
@@ -26,6 +29,12 @@ pub enum Mode {
 enum Cmd {
     Open,
     New,
+    Import,
+    /// A hint of the import dialog.
+    Form(FormCmd),
+    /// The file was imported before: update that post, or make a new one.
+    UpdateImported,
+    ImportAsNew,
     Delete,
     Quit,
     Back,
@@ -36,6 +45,7 @@ enum Cmd {
 #[derive(Clone, Copy, PartialEq)]
 enum Row {
     New,
+    Import,
     Post(usize),
     Trash,
 }
@@ -46,6 +56,13 @@ pub struct List {
     rows: Vec<Row>,
     state: ListState,
     dialog: Option<(usize, Dialog<Cmd>)>,
+    /// The import dialog, open.
+    importing: Option<Box<FileDialog>>,
+    /// Where the import dialog starts.
+    import_folder: String,
+    /// The file being imported was imported before, into this post: asking
+    /// what to do.
+    reimport: Option<(PathBuf, i64)>,
     notice: Option<String>,
     rows_area: Rect,
     hints: HintBar<Cmd>,
@@ -58,6 +75,7 @@ impl List {
         let mut rows = Vec::new();
         if matches!(mode, Mode::Posts { .. }) {
             rows.push(Row::New);
+            rows.push(Row::Import);
         }
         rows.extend((0..posts.len()).map(Row::Post));
         if let Mode::Posts { deleted_count } = mode
@@ -76,6 +94,9 @@ impl List {
             rows,
             state: ListState::default().with_selected(Some(selected)),
             dialog: None,
+            importing: None,
+            import_folder: String::new(),
+            reimport: None,
             notice: None,
             rows_area: Rect::default(),
             hints: HintBar::default(),
@@ -86,6 +107,45 @@ impl List {
     pub fn with_notice(mut self, notice: String) -> Self {
         self.notice = Some(notice);
         self
+    }
+
+    /// The folder the import dialog starts in, e.g. `~/blog/`.
+    pub fn with_import_folder(mut self, folder: String) -> Self {
+        self.import_folder = folder;
+        self
+    }
+
+    /// Importing didn't work: say why in the import dialog.
+    pub fn import_failed(&mut self, error: String) {
+        self.dialog = None;
+        self.reimport = None;
+        match &mut self.importing {
+            Some(form) => form.set_error(error),
+            None => self.notice = Some(error),
+        }
+    }
+
+    /// The file was imported before, into post `id`: ask whether to update
+    /// that post or make a new one.
+    pub fn ask_reimport(&mut self, path: PathBuf, id: i64, title: &str) {
+        let title = truncate(display_title(title), 30);
+        let dialog = Dialog::new(
+            "Imported before",
+            vec![
+                Line::from(format!("“{title}” came from this file, or went to it.")),
+                Line::from("Update it with the file's text? Its current text".dim()),
+                Line::from("is saved as a version first, so you can go back.".dim()),
+            ],
+            vec![
+                Button { label: "Update it", key: "u", cmd: Cmd::UpdateImported, danger: false },
+                Button { label: "New post", key: "n", cmd: Cmd::ImportAsNew, danger: false },
+                Button { label: "Cancel", key: "c", cmd: Cmd::CancelDialog, danger: false },
+            ],
+            0,
+            2,
+        );
+        self.dialog = Some((0, dialog));
+        self.reimport = Some((path, id));
     }
 
     fn trash_view(&self) -> bool {
@@ -133,6 +193,7 @@ impl List {
             .iter()
             .map(|row| match *row {
                 Row::New => ListItem::new(Line::from("+ New post".bold())),
+                Row::Import => ListItem::new(Line::from("+ Import markdown".bold())),
                 Row::Trash => {
                     let Mode::Posts { deleted_count } = self.mode else { unreachable!() };
                     ListItem::new(Line::from(format!("Trash ({deleted_count})").dim()))
@@ -171,6 +232,14 @@ impl List {
             frame.render_widget(Paragraph::new(text.dim()), column(notice, COLUMN_WIDTH));
         }
 
+        if let Some(form) = &mut self.importing {
+            form.render(frame);
+            if self.dialog.is_none() {
+                let hints: Vec<_> = form.hints().into_iter().map(|h| hint(h.key, h.label, Cmd::Form(h.cmd))).collect();
+                self.hints.render(frame, hint_area, &hints);
+                return;
+            }
+        }
         if let Some((_, dialog)) = &mut self.dialog {
             dialog.render(frame);
             let hints = dialog.hints();
@@ -188,7 +257,11 @@ impl List {
             hints.push(hint("Ctrl+Q", "quit", Cmd::Quit));
             hints
         } else {
-            let mut hints = vec![hint("Enter", "open", Cmd::Open), hint("Ctrl+N", "new post", Cmd::New)];
+            let mut hints = vec![
+                hint("Enter", "open", Cmd::Open),
+                hint("Ctrl+N", "new post", Cmd::New),
+                hint("Ctrl+O", "import", Cmd::Import),
+            ];
             if has_post {
                 hints.push(hint("Ctrl+D", "delete", Cmd::Delete));
             }
@@ -209,6 +282,16 @@ impl List {
             }
             return cmd.map_or(Action::None, |cmd| self.run(cmd));
         }
+        if let Some(form) = &mut self.importing {
+            if let Event::Mouse(mouse) = event
+                && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                && let Some(cmd) = self.hints.hit(mouse.column, mouse.row)
+            {
+                return self.run(cmd);
+            }
+            let outcome = form.handle(event);
+            return self.form_outcome(outcome);
+        }
         if let Event::Key(_) | Event::Mouse(_) = event {
             self.notice = None;
         }
@@ -219,6 +302,7 @@ impl List {
                     KeyCode::Enter => self.run(Cmd::Open),
                     KeyCode::Esc => self.run(Cmd::Back),
                     KeyCode::Char('n') if ctrl => self.run(Cmd::New),
+                    KeyCode::Char('o') if ctrl => self.run(Cmd::Import),
                     KeyCode::Char('d') if ctrl => self.run(Cmd::Delete),
                     KeyCode::Delete => self.run(Cmd::Delete),
                     KeyCode::Up => self.move_by(-1),
@@ -279,10 +363,39 @@ impl List {
             Cmd::Quit => Action::Quit,
             Cmd::New if !self.trash_view() => Action::NewPost,
             Cmd::New => Action::None,
+            Cmd::Import if !self.trash_view() => {
+                self.importing = Some(Box::new(FileDialog::new(
+                    "Import markdown",
+                    "Makes a post of a markdown file, front matter and all.",
+                    "Tab completes folder and file names.",
+                    "Import",
+                    &self.import_folder,
+                )));
+                Action::None
+            }
+            Cmd::Import => Action::None,
+            Cmd::Form(cmd) => match &mut self.importing {
+                Some(form) => {
+                    let outcome = form.run(cmd);
+                    self.form_outcome(outcome)
+                }
+                None => Action::None,
+            },
+            Cmd::UpdateImported | Cmd::ImportAsNew => {
+                self.dialog = None;
+                match self.reimport.take() {
+                    Some((path, id)) => {
+                        let into = if matches!(cmd, Cmd::UpdateImported) { ImportInto::Post(id) } else { ImportInto::New };
+                        Action::Import { path, into }
+                    }
+                    None => Action::None,
+                }
+            }
             Cmd::Back if self.trash_view() => Action::BackToList(None),
             Cmd::Back => Action::None,
             Cmd::Open => match (self.selected_row(), self.trash_view()) {
                 (Some(Row::New), _) => Action::NewPost,
+                (Some(Row::Import), _) => self.run(Cmd::Import),
                 (Some(Row::Trash), _) => Action::ShowTrash,
                 (Some(Row::Post(i)), false) => Action::OpenPost(self.posts[i].id),
                 (Some(Row::Post(i)), true) => {
@@ -310,8 +423,27 @@ impl List {
             },
             Cmd::CancelDialog => {
                 self.dialog = None;
+                self.reimport = None;
                 Action::None
             }
+        }
+    }
+
+    fn form_outcome(&mut self, outcome: FormOutcome) -> Action {
+        let Some(form) = &mut self.importing else { return Action::None };
+        match outcome {
+            FormOutcome::None => Action::None,
+            FormOutcome::Cancel => {
+                self.importing = None;
+                Action::None
+            }
+            FormOutcome::Submit => match crate::files::resolve_import(form.path()) {
+                Ok(path) => Action::Import { path, into: ImportInto::Check },
+                Err(error) => {
+                    form.set_error(error);
+                    Action::None
+                }
+            },
         }
     }
 
@@ -423,6 +555,57 @@ mod tests {
 
     fn at(s: &str) -> Timestamp {
         s.parse().unwrap()
+    }
+
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::crossterm::event::KeyEvent;
+
+    fn screen(list: &mut List) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|frame| list.render(frame)).unwrap();
+        let buffer = terminal.backend().buffer();
+        (0..24).map(|y| (0..80).map(|x| buffer[(x, y)].symbol()).collect::<String>()).collect::<Vec<_>>().join("\n")
+    }
+
+    fn press(list: &mut List, code: KeyCode, modifiers: KeyModifiers) -> Action {
+        list.handle(Event::Key(KeyEvent::new(code, modifiers)))
+    }
+
+    #[test]
+    fn import_is_under_new_post() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("post.md");
+        std::fs::write(&file, "# Post").unwrap();
+        let folder = format!("{}/", dir.path().display());
+        let mut list = List::new(Mode::Posts { deleted_count: 0 }, Vec::new(), None).with_import_folder(folder.clone());
+        let text = screen(&mut list);
+        assert!(text.contains("+ New post") && text.contains("+ Import markdown"));
+        assert!(text.contains("Ctrl+O import"));
+        // Down to it, Enter: the dialog, starting in the folder.
+        press(&mut list, KeyCode::Down, KeyModifiers::NONE);
+        press(&mut list, KeyCode::Enter, KeyModifiers::NONE);
+        let text = screen(&mut list);
+        assert!(text.contains("Import markdown") && text.contains(&folder), "{text}");
+        assert!(text.contains("Tab complete"));
+        // A folder isn't a file; Tab completes the one file in it.
+        assert!(matches!(press(&mut list, KeyCode::Enter, KeyModifiers::NONE), Action::None));
+        assert!(screen(&mut list).contains("That's a folder"));
+        press(&mut list, KeyCode::Tab, KeyModifiers::NONE);
+        let Action::Import { path, into: ImportInto::Check } = press(&mut list, KeyCode::Enter, KeyModifiers::NONE) else {
+            panic!("not imported")
+        };
+        assert_eq!(path, file);
+        // Imported before: asks.
+        list.ask_reimport(file, 7, "Post");
+        let text = screen(&mut list);
+        assert!(text.contains("Imported before") && text.contains("Update it"));
+        assert!(matches!(press(&mut list, KeyCode::Char('u'), KeyModifiers::NONE), Action::Import { into: ImportInto::Post(7), .. }));
+        // Esc closes the dialog; Ctrl+O opens it again.
+        press(&mut list, KeyCode::Esc, KeyModifiers::NONE);
+        assert!(list.importing.is_none());
+        press(&mut list, KeyCode::Char('o'), KeyModifiers::CONTROL);
+        assert!(list.importing.is_some());
     }
 
     #[test]

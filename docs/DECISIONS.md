@@ -459,3 +459,40 @@ the symlink in `site/static/`. `www.writui.com` redirects to writui.com
 Cloudflare makes its DNS record and certificate, and a Redirect Rule in the
 dashboard ("Redirect from WWW to root") sends it on, keeping the path. A
 static-assets Worker can't redirect by hostname without adding code.
+
+## Front matter on export, and import
+
+Exports start with YAML front matter (`---`), the format Zola, Hugo,
+Jekyll and others all read; Zola 0.23 was checked to build such files, and
+to ignore keys it doesn't know (e.g. a top-level `tags`) rather than fail.
+The front matter replaces the `# Title` line, since site generators show
+the title from it. writui has no YAML parser: the front matter is kept as
+the text typed, and split into top-level fields (a `key:` line plus the
+indented or `- ` lines after it) only to bring writui's own fields up to
+date. To tell which of those were changed by hand, each export remembers
+what writui suggested that time next to what was written.
+
+Imports turn TOML front matter into YAML (creator's call, over keeping each
+file's format), line by line: `key = value` and `[tables]` convert; what
+doesn't (multi-line strings, arrays of tables) is kept as comments. For an
+imported file, "what writui suggested" is taken to be only the fields the
+file has, so the ones it lacks are suggested on its first export.
+
+What's remembered lives in the vault, in an `exports` table (migration 5):
+one row per post, the file it was last exported to or imported from, the
+front matter, the suggestion, and whether front matter was on. A post's
+file is matched on import by comparing paths after following links.
+
+Tab completion in path fields works like a shell's: complete as far as the
+matches agree and list them, then go through them. Matching ignores case
+only when nothing matches exactly. Enter keeps the picked match (instead
+of exporting), so a folder can be completed into with another Tab.
+
+## The title line, the title field, and `site/post.sh`
+
+Exports with front matter can keep the `# Title` line too (a second
+checkbox, off at first, remembered with the front matter one; migration 6
+adds it, rather than changing migration 5, which dev vaults may have run).
+The front matter's `title` is always the post's title, even if edited by
+hand in the dialog (creator's call), so the two can't drift apart.
+`site/post.sh` is gone: exports now carry the front matter Zola needs.

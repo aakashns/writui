@@ -153,7 +153,13 @@ the password each time it starts.
 - **Getting your writing out:** Ctrl+Shift+C copies the whole post as
   markdown, and Ctrl+Shift+S exports it to a `.md` file wherever you choose
   (both are in the menu too, for terminals where Ctrl+Shift doesn't come
-  through).
+  through). Exports start with front matter (title, date, description, …)
+  for site generators like Zola, Hugo and Jekyll, which you can edit or turn
+  off. Tab completes the path, and the next export of the post goes to the
+  same file, asking before it replaces it.
+- **Bringing writing in:** "Import markdown" on the list (Ctrl+O) makes a
+  post of a `.md` file, keeping its front matter. Export it again and it
+  goes back to that file, so you can edit a published post here.
 - **Deleting** (Ctrl+D) moves a post to the Trash, where you can restore it
   for 30 days.
 

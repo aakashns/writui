@@ -12,7 +12,7 @@ mod migrations;
 use std::fmt;
 use std::fs::{self, File};
 use std::io::Read;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, anyhow, bail};
 use argon2::{Algorithm, Argon2, Params};
@@ -87,6 +87,20 @@ pub struct Version {
     pub created_at: Timestamp,
     /// The full text; left empty in lists of versions.
     pub body: String,
+}
+
+/// How a post was last exported as markdown.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExportSettings {
+    pub path: PathBuf,
+    /// The front matter as it was written (without the `---` lines).
+    pub front_matter: String,
+    /// The front matter writui suggested that time, to tell which fields
+    /// were changed by hand.
+    pub suggested: String,
+    pub with_front_matter: bool,
+    /// With front matter, the `# Title` line was kept too.
+    pub keep_title: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -254,6 +268,7 @@ impl Vault {
     fn delete_posts_where(&self, filter: &str, param: i64) -> Result<usize> {
         let tx = self.conn.unchecked_transaction()?;
         tx.execute(&format!("DELETE FROM saves WHERE post_id IN (SELECT id FROM posts WHERE {filter})"), [param])?;
+        tx.execute(&format!("DELETE FROM exports WHERE post_id IN (SELECT id FROM posts WHERE {filter})"), [param])?;
         let count = tx.execute(&format!("DELETE FROM posts WHERE {filter}"), [param])?;
         tx.commit()?;
         Ok(count)
@@ -307,6 +322,99 @@ impl Vault {
             )
             .optional()?;
         id.map(|id| self.version(id)).transpose()
+    }
+
+    /// How a post was last exported, if it has been.
+    pub fn export_settings(&self, post_id: i64) -> Result<Option<ExportSettings>> {
+        self.exports_where("post_id = ?1", post_id)
+    }
+
+    /// How the most recent export of any post went (the Trash included).
+    pub fn latest_export_settings(&self) -> Result<Option<ExportSettings>> {
+        self.exports_where("?1 ORDER BY exported_at DESC LIMIT 1", 1)
+    }
+
+    fn exports_where(&self, filter: &str, param: i64) -> Result<Option<ExportSettings>> {
+        let row: Option<(String, String, String, bool, bool)> = self
+            .conn
+            .query_row(
+                &format!(
+                    "SELECT path, front_matter, suggested, with_front_matter, keep_title FROM exports WHERE {filter}"
+                ),
+                [param],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .optional()?;
+        Ok(row.map(|(path, front_matter, suggested, with_front_matter, keep_title)| ExportSettings {
+            path: PathBuf::from(path),
+            front_matter,
+            suggested,
+            with_front_matter,
+            keep_title,
+        }))
+    }
+
+    /// The file each post (not counting the Trash) was last exported to or
+    /// imported from.
+    pub fn export_paths(&self) -> Result<Vec<(i64, PathBuf)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT post_id, path FROM exports JOIN posts ON posts.id = post_id
+             WHERE deleted_at IS NULL ORDER BY exported_at DESC",
+        )?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, PathBuf::from(row.get::<_, String>(1)?))))?;
+        Ok(rows.collect::<rusqlite::Result<_>>()?)
+    }
+
+    /// Make a post of an imported file's text, or update post `into` with
+    /// it (keeping its current text as a version named `version_name`,
+    /// unless that's the same), and remember the file as the post's own.
+    /// All or nothing. Returns the post's id.
+    pub fn import_post(
+        &self,
+        body: &str,
+        settings: &ExportSettings,
+        into: Option<i64>,
+        version_name: &str,
+    ) -> Result<i64> {
+        let tx = self.conn.unchecked_transaction()?;
+        let id = match into {
+            Some(id) => {
+                let old = self.post(id)?.body;
+                if old != with_title_prefix(body) {
+                    self.create_version(id, version_name, &old)?;
+                    self.update_post_body(id, body)?;
+                }
+                id
+            }
+            None => {
+                let id = self.create_post()?;
+                self.update_post_body(id, body)?;
+                id
+            }
+        };
+        self.record_export(id, settings)?;
+        tx.commit()?;
+        Ok(id)
+    }
+
+    /// Remember how a post was just exported.
+    pub fn record_export(&self, post_id: i64, settings: &ExportSettings) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO exports (post_id, path, front_matter, suggested, with_front_matter, keep_title, exported_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT (post_id) DO UPDATE SET path = ?2, front_matter = ?3, suggested = ?4,
+                 with_front_matter = ?5, keep_title = ?6, exported_at = ?7",
+            params![
+                post_id,
+                settings.path.to_string_lossy(),
+                settings.front_matter,
+                settings.suggested,
+                settings.with_front_matter,
+                settings.keep_title,
+                now_millis()
+            ],
+        )?;
+        Ok(())
     }
 }
 
@@ -576,6 +684,74 @@ mod tests {
         drop(vault);
         let vault = Vault::open(&path, "pw").unwrap();
         assert_eq!(version_count(&vault), 0);
+    }
+
+    #[test]
+    fn exports_are_remembered_per_post() {
+        let (_dir, path) = temp_vault();
+        let vault = Vault::create(&path, "pw").unwrap();
+        let first = vault.create_post().unwrap();
+        let second = vault.create_post().unwrap();
+        assert_eq!(vault.export_settings(first).unwrap(), None);
+        assert_eq!(vault.latest_export_settings().unwrap(), None);
+
+        let settings = |path: &str, with_front_matter| ExportSettings {
+            path: PathBuf::from(path),
+            front_matter: format!("title: \"{path}\""),
+            suggested: "title: \"Hi\"".into(),
+            with_front_matter,
+            keep_title: !with_front_matter,
+        };
+        vault.record_export(first, &settings("/a/first.md", true)).unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        vault.record_export(second, &settings("/b/second.md", false)).unwrap();
+        assert_eq!(vault.export_settings(first).unwrap(), Some(settings("/a/first.md", true)));
+        assert_eq!(vault.latest_export_settings().unwrap(), Some(settings("/b/second.md", false)));
+
+        // Exporting again replaces what was remembered.
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        vault.record_export(first, &settings("/c/first.md", false)).unwrap();
+        assert_eq!(vault.export_settings(first).unwrap(), Some(settings("/c/first.md", false)));
+        assert_eq!(vault.latest_export_settings().unwrap(), Some(settings("/c/first.md", false)));
+
+        // Deleting a post forever forgets it.
+        vault.delete_post(first).unwrap();
+        vault.delete_post_forever(first).unwrap();
+        assert_eq!(vault.export_settings(first).unwrap(), None);
+        assert_eq!(vault.latest_export_settings().unwrap(), Some(settings("/b/second.md", false)));
+    }
+
+    #[test]
+    fn imports_make_or_update_a_post_and_remember_the_file() {
+        let (_dir, path) = temp_vault();
+        let vault = Vault::create(&path, "pw").unwrap();
+        let settings = ExportSettings {
+            path: PathBuf::from("/blog/hi.md"),
+            front_matter: "date: 2026-01-01".into(),
+            suggested: String::new(),
+            with_front_matter: true,
+            keep_title: false,
+        };
+        let id = vault.import_post("# Hi\n\nOne", &settings, None, "Before importing hi.md").unwrap();
+        assert_eq!(vault.post(id).unwrap().body, "# Hi\n\nOne");
+        assert_eq!(vault.export_settings(id).unwrap(), Some(settings.clone()));
+        assert_eq!(vault.export_paths().unwrap(), [(id, PathBuf::from("/blog/hi.md"))]);
+        assert!(vault.list_versions(id).unwrap().is_empty());
+
+        // Again, into the same post: the old text is kept as a version.
+        assert_eq!(vault.import_post("# Hi\n\nTwo", &settings, Some(id), "Before importing hi.md").unwrap(), id);
+        assert_eq!(vault.post(id).unwrap().body, "# Hi\n\nTwo");
+        let versions = vault.list_versions(id).unwrap();
+        assert_eq!(versions.len(), 1);
+        assert_eq!(versions[0].name, "Before importing hi.md");
+        assert_eq!(vault.version(versions[0].id).unwrap().body, "# Hi\n\nOne");
+        // Nothing changed: no version.
+        vault.import_post("# Hi\n\nTwo", &settings, Some(id), "x").unwrap();
+        assert_eq!(vault.list_versions(id).unwrap().len(), 1);
+
+        // Posts in the Trash don't count as the file's.
+        vault.delete_post(id).unwrap();
+        assert!(vault.export_paths().unwrap().is_empty());
     }
 
     #[test]
