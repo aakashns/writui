@@ -148,7 +148,23 @@ footer.site a { color: inherit; }
   .demo { margin: 2rem 0; }
 }
 
-.install pre { white-space: pre; }
+.install pre { white-space: pre; padding-right: 5.5em; }
+/* The install command, with a copy button in its corner. */
+.command { position: relative; }
+.copy {
+  position: absolute;
+  top: 0.6em;
+  right: 0.6em;
+  font: inherit;
+  font-size: 0.75em;
+  color: var(--muted);
+  background: #18181b;
+  border: 1px solid var(--faint);
+  border-radius: 4px;
+  padding: 0.15em 0.6em;
+  cursor: pointer;
+}
+.copy:hover, .copy:focus-visible { color: var(--text); border-color: var(--muted); }
 .install .note { color: var(--muted); font-size: 0.9em; }
 
 /* Blog lists */

@@ -10,6 +10,9 @@
     "directory": "./public",
     "not_found_handling": "404-page"
   },
+  // Branch builds (e.g. a pull request's) make a Preview with `wrangler
+  // preview`, which needs this block, even empty.
+  "previews": {},
   "routes": [
     { "pattern": "writui.com", "custom_domain": true },
     { "pattern": "www.writui.com", "custom_domain": true }

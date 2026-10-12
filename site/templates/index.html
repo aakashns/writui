@@ -11,8 +11,35 @@
 {% block content %}
 <section class="hero">
   <h1>A writing app for the terminal.</h1>
-  <p class="lede">Markdown, encrypted, no nonsense.</p>
+  <p class="lede">No nonsense. Markdown. Local. Encrypted.</p>
 </section>
+
+<section class="install">
+  <h2>Install</h2>
+  <p>On macOS or Linux, paste this into a terminal:</p>
+  <div class="command">
+    <pre><code id="install-command">{{ config.extra.install }}</code></pre>
+    <button type="button" class="copy" data-copy="install-command" hidden>Copy</button>
+  </div>
+  <p class="note">Then run <code>writui</code>. Upgrade later with <code>writui upgrade</code>.
+    On Windows, <a href="{{ config.extra.repo }}#windows">build it from source</a>.</p>
+</section>
+<script>
+  // The copy button, shown only where it can work.
+  for (const button of document.querySelectorAll("button.copy")) {
+    button.hidden = !navigator.clipboard;
+    button.addEventListener("click", async () => {
+      const text = document.getElementById(button.dataset.copy).textContent;
+      try {
+        await navigator.clipboard.writeText(text);
+        button.textContent = "Copied";
+      } catch {
+        button.textContent = "Couldn't copy";
+      }
+      setTimeout(() => { button.textContent = "Copy"; }, 1500);
+    });
+  }
+</script>
 
 <figure class="demo">
   <video src="{{ get_url(path='demo.mp4') }}" poster="{{ get_url(path='demo.png') }}" autoplay loop muted playsinline
@@ -21,14 +48,6 @@
 
 <section class="about">
 {{ section.content | safe }}
-</section>
-
-<section class="install">
-  <h2>Install</h2>
-  <p>On macOS or Linux, paste this into a terminal:</p>
-  <pre><code>{{ config.extra.install }}</code></pre>
-  <p class="note">Then run <code>writui</code>. Upgrade later with <code>writui upgrade</code>.
-    On Windows, <a href="{{ config.extra.repo }}#windows">build it from source</a>.</p>
 </section>
 
 {% set blog = get_section(path="blog/_index.md") %}

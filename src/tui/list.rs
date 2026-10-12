@@ -24,6 +24,49 @@ use crate::vault::{DELETED_RETENTION_DAYS, PostSummary};
 /// The longest search that can be typed.
 const MAX_FILTER: usize = 80;
 
+/// The search field's icon.
+const SEARCH_ICON: &str = "🔎 ";
+
+/// How the posts are ordered: most recently updated or created first, or
+/// by title.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Sort {
+    Updated,
+    Created,
+    Title,
+}
+
+impl Sort {
+    const ALL: [Sort; 3] = [Sort::Updated, Sort::Created, Sort::Title];
+
+    fn label(self) -> &'static str {
+        match self {
+            Sort::Updated => "Updated",
+            Sort::Created => "Created",
+            Sort::Title => "Title",
+        }
+    }
+
+    /// As remembered in the vault.
+    pub fn name(self) -> &'static str {
+        match self {
+            Sort::Updated => "updated",
+            Sort::Created => "created",
+            Sort::Title => "title",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Sort {
+        Sort::ALL.into_iter().find(|sort| sort.name() == name).unwrap_or(Sort::Updated)
+    }
+
+    /// The next (`by` 1) or previous (-1) way of sorting, round and round.
+    fn step(self, by: isize) -> Sort {
+        let i = Sort::ALL.iter().position(|s| *s == self).unwrap_or(0) as isize;
+        Sort::ALL[(i + by).rem_euclid(Sort::ALL.len() as isize) as usize]
+    }
+}
+
 pub enum Mode {
     /// The normal list, with a "Trash" row if anything is there.
     Posts { deleted_count: usize },
@@ -40,6 +83,9 @@ enum Cmd {
     /// Empty the search field.
     ClearSearch,
     Settings,
+    /// The next way of sorting.
+    NextSort,
+    Lock,
     /// A hint of the import dialog.
     Form(FormCmd),
     /// The file was imported before: update that post, or make a new one.
@@ -58,11 +104,21 @@ enum Cmd {
 enum Row {
     New,
     Import,
-    /// The search field: typing goes into it while it's highlighted.
+    /// A blank line, above the search field.
+    Gap,
+    /// The search field.
     Search,
+    /// "Sort by": the ways of sorting, clicked or cycled with Tab.
+    Sort,
     Post(usize),
     Trash,
-    Settings,
+}
+
+impl Row {
+    /// Whether the highlight can be on it (↑/↓ pass over the others).
+    fn selectable(self) -> bool {
+        !matches!(self, Row::Gap | Row::Sort)
+    }
 }
 
 pub struct List {
@@ -70,8 +126,16 @@ pub struct List {
     posts: Vec<PostSummary>,
     rows: Vec<Row>,
     state: ListState,
+    /// Typing goes into the search field. While something's typed, the
+    /// highlight is on the first match (↑/↓ move it), so Enter opens it.
+    typing: bool,
     /// What's typed in the search field.
     filter: String,
+    sort: Sort,
+    /// Where each way of sorting was drawn, for the mouse.
+    sort_hits: Vec<(Rect, Sort)>,
+    /// A post was asked to be highlighted; otherwise it's the first listed.
+    chosen: bool,
     /// The posts (indexes into `posts`) that match `filter`, once the
     /// vault has said; `None` while not searching.
     matches: Option<Vec<usize>>,
@@ -97,7 +161,11 @@ impl List {
             posts,
             rows: Vec::new(),
             state: ListState::default(),
+            typing: false,
             filter: String::new(),
+            sort: Sort::Updated,
+            sort_hits: Vec::new(),
+            chosen: false,
             matches: None,
             dialog: None,
             importing: None,
@@ -108,13 +176,44 @@ impl List {
             hints: HintBar::default(),
         };
         list.rebuild_rows();
-        let selected = select
-            .and_then(|id| list.posts.iter().position(|p| p.id == id))
-            .or(if list.posts.is_empty() { None } else { Some(0) })
-            .and_then(|i| list.rows.iter().position(|r| *r == Row::Post(i)))
-            .unwrap_or(0);
-        list.state.select(Some(selected));
+        let chosen = select.and_then(|id| list.posts.iter().position(|p| p.id == id));
+        list.chosen = chosen.is_some();
+        list.highlight(chosen);
         list
+    }
+
+    /// Highlight post `index`, or else the first listed.
+    fn highlight(&mut self, index: Option<usize>) {
+        let row = match index {
+            Some(i) => self.rows.iter().position(|r| *r == Row::Post(i)),
+            None => self.rows.iter().position(|r| matches!(r, Row::Post(_))),
+        };
+        self.state.select(Some(row.unwrap_or(0)));
+    }
+
+    /// Sorted this way (a post asked for stays highlighted).
+    pub fn with_sort(mut self, sort: Sort) -> Self {
+        self.sort = sort;
+        self.rebuild_rows();
+        if !self.chosen {
+            self.highlight(None);
+        }
+        self
+    }
+
+    /// The posts (indexes into `posts`) in the order they're listed. The
+    /// Trash is always most recently deleted first.
+    fn ordered(&self) -> Vec<usize> {
+        let mut order: Vec<usize> = (0..self.posts.len()).collect();
+        if !self.trash_view() {
+            match self.sort {
+                // As the vault lists them.
+                Sort::Updated => {}
+                Sort::Created => order.sort_by_key(|&i| std::cmp::Reverse(self.posts[i].created_at)),
+                Sort::Title => order.sort_by_cached_key(|&i| display_title(&self.posts[i].title).to_lowercase()),
+            }
+        }
+        order
     }
 
     /// The rows for the posts shown (all of them, or the search's matches),
@@ -123,22 +222,19 @@ impl List {
         let selected = self.selected_row();
         let mut rows = Vec::new();
         if matches!(self.mode, Mode::Posts { .. }) {
-            rows.extend([Row::New, Row::Import, Row::Search]);
+            rows.extend([Row::New, Row::Import, Row::Gap, Row::Search, Row::Sort]);
         }
-        match &self.matches {
-            Some(matches) => rows.extend(matches.iter().map(|&i| Row::Post(i))),
-            None => rows.extend((0..self.posts.len()).map(Row::Post)),
-        }
+        let shown = |i: &usize| self.matches.as_ref().is_none_or(|m| m.contains(i));
+        rows.extend(self.ordered().into_iter().filter(shown).map(Row::Post));
         if let Mode::Posts { deleted_count } = self.mode
             && !self.searching()
+            && deleted_count > 0
         {
-            if deleted_count > 0 {
-                rows.push(Row::Trash);
-            }
-            rows.push(Row::Settings);
+            rows.push(Row::Trash);
         }
         self.rows = rows;
         let index = selected
+            .filter(|row| row.selectable())
             .and_then(|row| self.rows.iter().position(|r| *r == row))
             .or_else(|| self.rows.iter().position(|r| matches!(r, Row::Post(_))))
             .unwrap_or(0);
@@ -159,6 +255,20 @@ impl List {
         let matches = ids.iter().filter_map(|id| self.posts.iter().position(|p| p.id == *id)).collect();
         self.matches = Some(matches);
         self.rebuild_rows();
+        if self.typing {
+            self.highlight_first_match();
+        }
+    }
+
+    /// While typing a search: the highlight on the first match (or the
+    /// field, if nothing matches).
+    fn highlight_first_match(&mut self) {
+        let row = self.rows.iter().position(|r| matches!(r, Row::Post(_)));
+        self.state.select(row.or_else(|| self.search_row()));
+    }
+
+    fn search_row(&self) -> Option<usize> {
+        self.rows.iter().position(|r| *r == Row::Search)
     }
 
     /// Change the search; the app looks for the matches.
@@ -171,6 +281,9 @@ impl List {
         if self.filter.trim().is_empty() {
             self.matches = None;
             self.rebuild_rows();
+            if self.typing {
+                self.state.select(self.search_row());
+            }
             return Action::None;
         }
         Action::Search(self.filter.clone())
@@ -238,12 +351,20 @@ impl List {
 
     /// Typing goes into the search field.
     fn in_search(&self) -> bool {
-        self.selected_row() == Some(Row::Search)
+        self.typing
     }
 
-    /// The first post the search found, which Enter in the field opens.
-    fn first_match(&self) -> Option<usize> {
-        self.matches.as_ref().and_then(|m| m.first().copied())
+    /// Change how the posts are sorted; the app remembers it.
+    fn set_sort(&mut self, sort: Sort) -> Action {
+        if sort == self.sort {
+            return Action::None;
+        }
+        self.sort = sort;
+        self.rebuild_rows();
+        if self.typing && self.searching() {
+            self.highlight_first_match();
+        }
+        Action::SortBy(sort)
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
@@ -278,18 +399,27 @@ impl List {
             .map(|row| match *row {
                 Row::New => ListItem::new(Line::from("+ New".bold())),
                 Row::Import => ListItem::new(Line::from("» Import".bold())),
+                Row::Gap => ListItem::new(Line::default()),
                 Row::Search => {
-                    let shown = scrolled(&self.filter, width.saturating_sub(3));
+                    let shown = scrolled(&self.filter, width.saturating_sub(SEARCH_ICON.width()));
                     let text = if shown.is_empty() { Span::raw("Type to filter…").dim() } else { Span::raw(shown) };
-                    let line = Line::from(vec![Span::raw("/ ").bold(), text]);
+                    let line = Line::from(vec![Span::raw(SEARCH_ICON), text]);
                     // Underlined while typing goes into it.
                     ListItem::new(if in_search { line.underlined() } else { line })
+                }
+                Row::Sort => {
+                    let mut spans = vec![Span::raw("Sort by").dim()];
+                    for sort in Sort::ALL {
+                        spans.push(Span::raw("  "));
+                        let label = Span::raw(sort.label());
+                        spans.push(if sort == self.sort { label.bold().underlined() } else { label.dim() });
+                    }
+                    ListItem::new(Line::from(spans))
                 }
                 Row::Trash => {
                     let Mode::Posts { deleted_count } = self.mode else { unreachable!() };
                     ListItem::new(Line::from(format!("Trash ({deleted_count})").dim()))
                 }
-                Row::Settings => ListItem::new(Line::from("Settings".dim())),
                 Row::Post(i) => {
                     let post = &self.posts[i];
                     let right = match post.deleted_at {
@@ -321,19 +451,32 @@ impl List {
         }
         self.rows_area = list_area;
         // The search field shows the cursor, not the highlight.
-        let highlight = if in_search { Style::new() } else { Style::new().reversed() };
+        let on_field = self.selected_row() == Some(Row::Search);
+        let highlight = if on_field { Style::new() } else { Style::new().reversed() };
         frame.render_stateful_widget(ListWidget::new(items).highlight_style(highlight), list_area, &mut self.state);
+        // Where rows ended up, now the list has scrolled.
+        let row_rect = |index: usize| -> Option<Rect> {
+            let y = list_area.y + index.checked_sub(self.state.offset())? as u16;
+            (y < list_area.bottom()).then_some(Rect { y, height: 1, ..list_area })
+        };
+        self.sort_hits.clear();
+        if let Some(rect) = self.rows.iter().position(|r| *r == Row::Sort).and_then(row_rect) {
+            let mut x = rect.x + "Sort by".len() as u16;
+            for sort in Sort::ALL {
+                x += 2;
+                let width = sort.label().len() as u16;
+                self.sort_hits.push((Rect { x, width, ..rect }, sort));
+                x += width;
+            }
+        }
         if in_search
             && self.dialog.is_none()
             && self.importing.is_none()
-            && let Some(index) = self.state.selected()
-            && index >= self.state.offset()
+            && let Some(rect) = self.search_row().and_then(row_rect)
         {
-            let y = list_area.y + (index - self.state.offset()) as u16;
-            let x = col.x + 2 + scrolled(&self.filter, width.saturating_sub(3)).width() as u16;
-            if y < list_area.bottom() {
-                frame.set_cursor_position(Position::new(x.min(col.right().saturating_sub(1)), y));
-            }
+            let icon = SEARCH_ICON.width();
+            let x = rect.x + (icon + scrolled(&self.filter, width.saturating_sub(icon)).width()) as u16;
+            frame.set_cursor_position(Position::new(x.min(col.right().saturating_sub(1)), rect.y));
         }
 
         if let Some(text) = &self.notice {
@@ -366,14 +509,15 @@ impl List {
             hints
         } else if in_search {
             let mut hints = Vec::new();
-            if self.first_match().is_some() {
-                hints.push(hint("Enter", "open the first", Cmd::Open));
+            if has_post {
+                hints.push(hint("Enter", "open", Cmd::Open));
             }
             if self.searching() {
                 hints.push(hint("Esc", "clear", Cmd::ClearSearch));
             } else {
                 hints.push(hint("Esc", "done", Cmd::Back));
             }
+            hints.push(hint("Tab", "sort", Cmd::NextSort));
             hints
         } else {
             let mut hints = vec![
@@ -391,6 +535,10 @@ impl List {
             } else {
                 hints.push(hint("Esc", "quit", Cmd::Quit));
             }
+            hints.push(hint("Ctrl+O", "lock", Cmd::Lock));
+            // Last, so it's the first left out on a narrow screen: the
+            // sorts can be clicked too.
+            hints.push(hint("Tab", "sort", Cmd::NextSort));
             hints
         };
         self.hints.render(frame, hint_area, &hints);
@@ -436,11 +584,12 @@ impl List {
                     KeyCode::Esc => self.run(Cmd::Quit),
                     KeyCode::Char('n') if plain => self.run(Cmd::New),
                     KeyCode::Char('i') if plain => self.run(Cmd::Import),
-                    KeyCode::Char('o') if key.modifiers.contains(KeyModifiers::CONTROL) => self.run(Cmd::Import),
                     KeyCode::Char('d') if plain => self.run(Cmd::Delete),
                     KeyCode::Char('s') if plain => self.run(Cmd::Settings),
                     KeyCode::Char('/') if plain => self.run(Cmd::Search),
                     KeyCode::Delete => self.run(Cmd::Delete),
+                    KeyCode::Tab if !self.trash_view() => self.set_sort(self.sort.step(1)),
+                    KeyCode::BackTab if !self.trash_view() => self.set_sort(self.sort.step(-1)),
                     KeyCode::Up => self.move_by(-1),
                     KeyCode::Down => self.move_by(1),
                     KeyCode::PageUp => self.move_by(-(self.rows_area.height as isize)),
@@ -457,11 +606,15 @@ impl List {
                     if let Some(cmd) = self.hints.hit(mouse.column, mouse.row) {
                         return self.run(cmd);
                     }
-                    if !self.rows_area.contains(Position::new(mouse.column, mouse.row)) {
+                    let pos = Position::new(mouse.column, mouse.row);
+                    if let Some(&(_, sort)) = self.sort_hits.iter().find(|(rect, _)| rect.contains(pos)) {
+                        return self.set_sort(sort);
+                    }
+                    if !self.rows_area.contains(pos) {
                         return Action::None;
                     }
                     let index = self.state.offset() + (mouse.row - self.rows_area.y) as usize;
-                    let Some(&row) = self.rows.get(index) else {
+                    let Some(&row) = self.rows.get(index).filter(|row| row.selectable()) else {
                         return Action::None;
                     };
                     // Buttons act on the first click; posts open on the second.
@@ -471,6 +624,12 @@ impl List {
                         Row::Search => false,
                         _ => true,
                     };
+                    // A click in the field types there; anywhere else, not.
+                    self.typing = row == Row::Search;
+                    if self.typing && self.searching() {
+                        self.highlight_first_match();
+                        return Action::None;
+                    }
                     self.state.select(Some(index));
                     if act { self.run(Cmd::Open) } else { Action::None }
                 }
@@ -496,7 +655,6 @@ impl List {
                         filter.pop();
                         Some(self.set_filter(filter))
                     }
-                    KeyCode::Delete => Some(Action::None),
                     _ => None,
                 }
             }
@@ -508,19 +666,33 @@ impl List {
         }
     }
 
+    /// Move the highlight, passing over rows it can't be on. While a
+    /// search is typed, it moves among the matches and typing still goes
+    /// into the field; the empty field is just passed through.
     fn move_by(&mut self, delta: isize) -> Action {
-        let last = self.rows.len() as isize - 1;
-        let current = self.state.selected().unwrap_or(0) as isize;
-        self.state.select(Some(current.saturating_add(delta).clamp(0, last.max(0)) as usize));
+        let current = self.state.selected().unwrap_or(0);
+        let stops: Vec<usize> = if self.typing && self.searching() {
+            (0..self.rows.len()).filter(|&i| matches!(self.rows[i], Row::Post(_))).collect()
+        } else {
+            (0..self.rows.len()).filter(|&i| self.rows[i].selectable()).collect()
+        };
+        let Some(at) = stops.iter().position(|&i| i == current).or(if stops.is_empty() { None } else { Some(0) }) else {
+            return Action::None;
+        };
+        let next = stops[(at as isize).saturating_add(delta).clamp(0, stops.len() as isize - 1) as usize];
+        self.state.select(Some(next));
+        if !(self.typing && self.searching()) {
+            self.typing = self.rows[next] == Row::Search;
+        }
         Action::None
     }
 
-    /// The post to highlight after `index` disappears from the list.
+    /// The post to highlight after post `index` disappears from the list:
+    /// the one listed after it, or else before it.
     fn neighbour_of(&self, index: usize) -> Option<i64> {
-        self.posts
-            .get(index + 1)
-            .or_else(|| index.checked_sub(1).and_then(|i| self.posts.get(i)))
-            .map(|p| p.id)
+        let listed: Vec<usize> = self.rows.iter().filter_map(|r| if let Row::Post(i) = r { Some(*i) } else { None }).collect();
+        let at = listed.iter().position(|&i| i == index)?;
+        listed.get(at + 1).or_else(|| at.checked_sub(1).and_then(|a| listed.get(a))).map(|&i| self.posts[i].id)
     }
 
     fn run(&mut self, cmd: Cmd) -> Action {
@@ -540,16 +712,21 @@ impl List {
                 Action::None
             }
             Cmd::ConfirmQuit => Action::Quit,
+            Cmd::Lock => Action::Lock,
             Cmd::New if !self.trash_view() => Action::NewPost,
             Cmd::Settings if !self.trash_view() => Action::ShowSettings,
             Cmd::Search if !self.trash_view() => {
-                if let Some(index) = self.rows.iter().position(|r| *r == Row::Search) {
-                    self.state.select(Some(index));
+                self.typing = true;
+                if self.searching() {
+                    self.highlight_first_match();
+                } else {
+                    self.state.select(self.search_row());
                 }
                 Action::None
             }
             Cmd::ClearSearch => self.set_filter(String::new()),
-            Cmd::New | Cmd::Settings | Cmd::Search => Action::None,
+            Cmd::NextSort if !self.trash_view() => self.set_sort(self.sort.step(1)),
+            Cmd::New | Cmd::Settings | Cmd::Search | Cmd::NextSort => Action::None,
             Cmd::Import if !self.trash_view() => {
                 self.importing = Some(Box::new(FileDialog::new(
                     "Import",
@@ -580,22 +757,21 @@ impl List {
             }
             Cmd::Back if self.trash_view() => Action::BackToList(None),
             Cmd::Back => {
-                // Out of the search field, to the posts.
-                if self.in_search() {
-                    let next = self.state.selected().map_or(0, |i| i + 1);
-                    self.state.select(Some(next.min(self.rows.len().saturating_sub(1))));
+                // Out of the search field, to the first post.
+                if self.typing {
+                    self.typing = false;
+                    if self.selected_row() == Some(Row::Search) {
+                        let first = self.rows.iter().position(|r| matches!(r, Row::Post(_)));
+                        self.state.select(first.or(self.search_row()));
+                    }
                 }
                 Action::None
             }
             Cmd::Open => match (self.selected_row(), self.trash_view()) {
                 (Some(Row::New), _) => Action::NewPost,
                 (Some(Row::Import), _) => self.run(Cmd::Import),
-                (Some(Row::Search), _) => match self.first_match() {
-                    Some(i) => Action::OpenPost(self.posts[i].id),
-                    None => Action::None,
-                },
+                (Some(Row::Search | Row::Gap | Row::Sort), _) => Action::None,
                 (Some(Row::Trash), _) => Action::ShowTrash,
-                (Some(Row::Settings), _) => Action::ShowSettings,
                 (Some(Row::Post(i)), false) => Action::OpenPost(self.posts[i].id),
                 (Some(Row::Post(i)), true) => {
                     Action::RestorePost { id: self.posts[i].id, select: self.neighbour_of(i) }
@@ -812,18 +988,15 @@ mod tests {
         let text = screen(&mut list);
         assert!(text.contains("Imported before") && text.contains("Update it"));
         assert!(matches!(press(&mut list, KeyCode::Char('u'), KeyModifiers::NONE), Action::Import { into: ImportInto::Post(7), .. }));
-        // Esc closes the dialog; i opens it again (and Ctrl+O, as before).
+        // Esc closes the dialog; i opens it again.
         press(&mut list, KeyCode::Esc, KeyModifiers::NONE);
         assert!(list.importing.is_none());
         press(&mut list, KeyCode::Char('i'), KeyModifiers::NONE);
         assert!(list.importing.is_some());
-        press(&mut list, KeyCode::Esc, KeyModifiers::NONE);
-        press(&mut list, KeyCode::Char('o'), KeyModifiers::CONTROL);
-        assert!(list.importing.is_some());
     }
 
     fn post(id: i64, title: &str) -> PostSummary {
-        PostSummary { id, title: title.into(), updated_at: Timestamp::now(), deleted_at: None }
+        PostSummary { id, title: title.into(), created_at: at(&format!("2026-01-0{id}T00:00:00Z")), updated_at: Timestamp::now(), deleted_at: None }
     }
 
     #[test]
@@ -851,24 +1024,31 @@ mod tests {
     fn typing_in_the_search_field_searches() {
         let posts = vec![post(1, "One"), post(2, "Two"), post(3, "Three")];
         let mut list = List::new(Mode::Posts { deleted_count: 2 }, posts, None);
-        assert!(screen(&mut list).contains("Type to filter…"));
+        let text = screen(&mut list);
+        assert!(text.contains("🔎") && text.contains("Type to filter…") && text.contains("Sort by  Updated  Created  Title"), "{text}");
+        assert!(!text.contains("Settings\n") && !text.contains("  Settings  "), "{text}");
         // / goes into the field; letters are typed there, not shortcuts.
         press(&mut list, KeyCode::Char('/'), KeyModifiers::NONE);
         assert!(matches!(press(&mut list, KeyCode::Char('n'), KeyModifiers::NONE), Action::Search(f) if f == "n"));
         let Action::Search(filter) = press(&mut list, KeyCode::Char('e'), KeyModifiers::NONE) else { panic!() };
         assert_eq!(filter, "ne");
-        // Until the vault answers, nothing is said; then only the matches.
+        // When the vault answers: only the matches, the first highlighted,
+        // and typing still goes into the field.
         list.show_matches("ne", &[3, 1]);
         let text = screen(&mut list);
-        assert!(text.contains("/ ne") && text.contains("Three") && text.contains("One"), "{text}");
-        assert!(!text.contains("Two") && !text.contains("Trash") && !text.contains("Settings"), "{text}");
-        assert!(text.contains("Enter open the first"));
+        assert!(text.contains(" ne ") && text.contains("Three") && text.contains("One"), "{text}");
+        assert!(!text.contains("Two") && !text.contains("Trash"), "{text}");
+        assert!(text.contains("Enter open") && !text.contains("open the first"));
+        assert_eq!(list.selected_post(), Some(0)); // "One": listed most recently updated first
+        // ↓ moves among the matches, still typing.
+        press(&mut list, KeyCode::Down, KeyModifiers::NONE);
+        assert_eq!(list.selected_post(), Some(2));
+        assert!(list.in_search());
         // A stale answer is ignored.
         list.show_matches("n", &[1, 2, 3]);
         assert!(!screen(&mut list).contains("Two"));
-        // Enter opens the first match.
         assert!(matches!(press(&mut list, KeyCode::Enter, KeyModifiers::NONE), Action::OpenPost(3)));
-        // No matches.
+        // Typing more highlights the first match again.
         press(&mut list, KeyCode::Char('x'), KeyModifiers::NONE);
         list.show_matches("nex", &[]);
         assert!(screen(&mut list).contains("No posts match."));
@@ -876,21 +1056,53 @@ mod tests {
         // Esc clears it, then leaves the field; everything's back.
         press(&mut list, KeyCode::Esc, KeyModifiers::NONE);
         assert!(list.filter.is_empty() && list.in_search());
-        let text = screen(&mut list);
-        assert!(text.contains("Two") && text.contains("Trash (2)") && text.contains("Settings"));
+        assert!(screen(&mut list).contains("Two") && screen(&mut list).contains("Trash (2)"));
         press(&mut list, KeyCode::Esc, KeyModifiers::NONE);
+        assert!(!list.in_search());
         assert_eq!(list.selected_post(), Some(0));
-        // ↓ from the field goes to the results, where letters are shortcuts.
-        press(&mut list, KeyCode::Char('/'), KeyModifiers::NONE);
-        press(&mut list, KeyCode::Char('t'), KeyModifiers::NONE);
-        list.show_matches("t", &[2, 3]);
-        press(&mut list, KeyCode::Down, KeyModifiers::NONE);
-        assert_eq!(list.selected_post(), Some(1));
         assert!(matches!(press(&mut list, KeyCode::Char('n'), KeyModifiers::NONE), Action::NewPost));
-        // Esc there clears the search first, keeping the post highlighted.
-        press(&mut list, KeyCode::Esc, KeyModifiers::NONE);
-        assert!(list.filter.is_empty());
+        // ↑/↓ pass through the empty field, and over the sort row.
+        press(&mut list, KeyCode::Up, KeyModifiers::NONE);
+        assert!(list.in_search());
+        press(&mut list, KeyCode::Up, KeyModifiers::NONE);
+        assert!(!list.in_search() && list.selected_row() == Some(Row::Import));
+        press(&mut list, KeyCode::Down, KeyModifiers::NONE);
+        press(&mut list, KeyCode::Down, KeyModifiers::NONE);
+        assert_eq!(list.selected_post(), Some(0));
+    }
+
+    #[test]
+    fn posts_sort_by_updated_created_or_title() {
+        // As the vault lists them: most recently updated first.
+        let posts = vec![post(2, "beta"), post(3, "Alpha"), post(1, "")];
+        let titles = |list: &mut List| -> Vec<String> {
+            list.rows.iter().filter_map(|r| if let Row::Post(i) = r { Some(display_title(&list.posts[*i].title).to_string()) } else { None }).collect()
+        };
+        let mut list = List::new(Mode::Posts { deleted_count: 0 }, posts.clone(), None);
+        assert_eq!(titles(&mut list), ["beta", "Alpha", "Untitled"]);
+        // Tab goes through the sorts, and the app remembers the choice.
+        assert!(matches!(press(&mut list, KeyCode::Tab, KeyModifiers::NONE), Action::SortBy(Sort::Created)));
+        assert_eq!(titles(&mut list), ["Alpha", "beta", "Untitled"]);
+        assert!(matches!(press(&mut list, KeyCode::Tab, KeyModifiers::NONE), Action::SortBy(Sort::Title)));
+        assert_eq!(titles(&mut list), ["Alpha", "beta", "Untitled"]);
+        assert!(matches!(press(&mut list, KeyCode::BackTab, KeyModifiers::NONE), Action::SortBy(Sort::Created)));
+        // Or click one.
+        screen(&mut list);
+        let (rect, _) = *list.sort_hits.iter().find(|(_, sort)| *sort == Sort::Updated).unwrap();
+        let click = ratatui::crossterm::event::MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: rect.x,
+            row: rect.y,
+            modifiers: KeyModifiers::NONE,
+        };
+        assert!(matches!(list.handle(Event::Mouse(click)), Action::SortBy(Sort::Updated)));
+        // Opening sorted: the first listed is highlighted.
+        let list = List::new(Mode::Posts { deleted_count: 0 }, posts.clone(), None).with_sort(Sort::Title);
         assert_eq!(list.selected_post(), Some(1));
+        let list = List::new(Mode::Posts { deleted_count: 0 }, posts, Some(1)).with_sort(Sort::Title);
+        assert_eq!(list.selected_post(), Some(2));
+        assert_eq!(Sort::from_name("title"), Sort::Title);
+        assert_eq!(Sort::from_name("nonsense"), Sort::Updated);
     }
 
     #[test]

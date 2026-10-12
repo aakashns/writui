@@ -20,8 +20,9 @@ The creator's batch of list / editor ideas (`0.12.0`, in review): "New"
 and "Import" (text files too), single-key shortcuts and a search field on
 the list, Esc asks to quit, a Settings screen (author, line width), Cmd
 shortcuts and Ctrl+L for the menu, a steady menu, a right-click menu,
-imports dated by the file, exports defaulting to Documents, and opening
-on the screen writui was left on. After it merges:
+imports dated by the file, exports defaulting to Documents, opening on
+the screen writui was left on, sorting, and lock (Ctrl+O). The site's
+branch builds needed a `previews` block in `site/wrangler.jsonc`. After it merges:
 
 1. M6 (LLM chat sidebar) and on in order. The Settings screen exists now;
    add the rest of its settings as they come up.
@@ -72,7 +73,7 @@ selection to copy.)
 
 - [x] Headings, bold, italic, strikethrough, inline code, code blocks
 - [x] Links, quotes, lists, horizontal rules, tables; markdown symbols faded
-- [x] Links open in the browser (Ctrl+O, Ctrl+click)
+- [x] Links open in the browser (Ctrl+click, or the menu)
 - [x] List items and quotes wrap with a hanging indent
 - [x] Stays fast on long posts
 - [ ] Syntax highlighting in code blocks, per language (later)
@@ -150,11 +151,13 @@ The creator's batch of ideas, after M3.
 - [x] The menu doesn't change size while filtering
 - [x] Right-click menu: cut, copy, paste
 - [x] Open on the screen writui was left on
+- [x] Search field highlights the first match while typing; sort by
+      updated / created / title
+- [x] Lock (Ctrl+O), back to the same screen
 
 ## Later
 
 - [ ] Homebrew tap (maybe)
-- [ ] Lock shortcut that comes back to the same screen (asked for, then put off)
 - [ ] Auto-lock after inactivity
 - [ ] Change password
 - [ ] Diffs between versions

@@ -62,6 +62,10 @@ pub enum Action {
     Search(String),
     ShowSettings,
     SaveSettings(Settings),
+    /// Remember how the list is sorted.
+    SortBy(list::Sort),
+    /// Lock writui: back to the password, then to the same screen.
+    Lock,
 }
 
 /// Which post an imported file goes into.
@@ -269,6 +273,20 @@ impl App {
         }
     }
 
+    /// Store the post being written, remember the screen, and forget the
+    /// vault (closing it, so its key is gone): only the password opens it
+    /// again, back on the same screen. If the post can't be stored, the
+    /// editor says so and stays open.
+    fn lock(&mut self) {
+        if !self.store_post(Leaving::No) {
+            return;
+        }
+        self.remember_screen();
+        self.vault = None;
+        self.quit_unsaved = false;
+        self.screen = Screen::Unlock(unlock::Unlock::locked());
+    }
+
     /// Right after unlocking: the screen writui was left on, if it's
     /// still there, or else the list.
     fn resume(&mut self) -> Result<()> {
@@ -337,6 +355,13 @@ impl App {
             let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
             if ctrl && key.code == KeyCode::Char('q') {
                 return Action::Quit;
+            }
+            // Ctrl+O (or Cmd+O) locks, from anywhere once unlocked.
+            if key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::SUPER)
+                && key.code == KeyCode::Char('o')
+                && self.vault.is_some()
+            {
+                return Action::Lock;
             }
             // Ctrl+C will mean "copy" in the editor; elsewhere it quits.
             if ctrl && key.code == KeyCode::Char('c') && !matches!(self.screen, Screen::Editor(_)) {
@@ -431,6 +456,11 @@ impl App {
                 }
             }
             Action::ShowSettings => self.show_settings()?,
+            Action::Lock => self.lock(),
+            // Only a convenience: not worth an error.
+            Action::SortBy(sort) => {
+                let _ = self.vault()?.set_list_sort(sort.name());
+            }
             Action::SaveSettings(settings) => {
                 if let Err(err) = self.vault()?.set_settings(&settings)
                     && let Screen::Settings(screen) = &mut self.screen
@@ -494,14 +524,15 @@ impl App {
             ImportInto::Post(id) => Some(id),
         };
         let today = jiff::Zoned::now().date();
+        // A file without a date of its own is dated when it was made.
+        let made = file.created.map_or(today, |time| time.to_zoned(jiff::tz::TimeZone::system()).date());
         let author = vault.settings().map_err(failed)?.author;
+        let suggestion = files::front_matter::suggest(&file.title, &file.body, made, today, &author);
+        let front_matter = files::front_matter::with_date(&file.front_matter, &suggestion);
         let settings = ExportSettings {
             path: path.to_path_buf(),
-            front_matter: file.front_matter.clone(),
-            suggested: files::front_matter::suggested_of(
-                &files::front_matter::suggest(&file.title, &file.body, today, &author),
-                &file.front_matter,
-            ),
+            suggested: files::front_matter::suggested_of(&suggestion, &front_matter),
+            front_matter,
             with_front_matter: file.had_front_matter,
             keep_title: file.had_title_line,
         };
@@ -533,7 +564,8 @@ impl App {
         let vault = self.vault()?;
         let mode = list::Mode::Posts { deleted_count: vault.count_deleted()? };
         let folder = files::display_folder(&files::last_folder(vault.latest_export_settings()?.as_ref()));
-        let list = list::List::new(mode, vault.list_posts()?, select).with_import_folder(folder);
+        let sort = list::Sort::from_name(&vault.list_sort()?.unwrap_or_default());
+        let list = list::List::new(mode, vault.list_posts()?, select).with_import_folder(folder).with_sort(sort);
         self.show(list, notice);
         Ok(())
     }
@@ -672,6 +704,18 @@ mod tests {
         app.apply(Action::BackToList(None)).unwrap();
         app.apply(Action::Import { path: file.clone(), into: ImportInto::New }).unwrap();
         assert_eq!(app.vault.as_ref().unwrap().list_posts().unwrap().len(), 2);
+        // A file with no date is dated when it was made.
+        let plain = dir.path().join("plain.txt");
+        std::fs::write(&plain, "Just text.\n").unwrap();
+        app.apply(Action::BackToList(None)).unwrap();
+        app.apply(Action::Import { path: plain.clone(), into: ImportInto::Check }).unwrap();
+        let Screen::Editor(editor) = &app.screen else { panic!("not opened") };
+        let settings = app.vault.as_ref().unwrap().export_settings(editor.post_id()).unwrap().unwrap();
+        let metadata = std::fs::metadata(&plain).unwrap();
+        let made = jiff::Timestamp::try_from(metadata.created().or_else(|_| metadata.modified()).unwrap()).unwrap();
+        let made = made.to_zoned(jiff::tz::TimeZone::system()).date();
+        assert_eq!(files::front_matter::get(&settings.front_matter, "date"), Some(made.to_string()));
+        assert!(!settings.with_front_matter);
         // A file that can't be read leaves the list showing why.
         app.apply(Action::BackToList(None)).unwrap();
         app.apply(Action::Import { path: dir.path().join("gone.md"), into: ImportInto::Check }).unwrap();
@@ -709,6 +753,28 @@ mod tests {
         app.remember_screen();
         let app = reopen();
         assert!(matches!(&app.screen, Screen::List(list) if !list.trash_view()));
+    }
+
+    #[test]
+    fn ctrl_o_locks_and_unlocking_comes_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut app = App::new(dir.path().join("writui.db"), false);
+        app.perform(Action::CreateVault(Zeroizing::new("pw".into()))).unwrap();
+        app.apply(Action::NewPost).unwrap();
+        app.remember_screen();
+        app.handle(key(KeyCode::Char('x'), KeyModifiers::NONE, KeyEventKind::Press));
+        let Screen::Editor(editor) = &app.screen else { panic!("not opened") };
+        let id = editor.post_id();
+        // Ctrl+O: the typing is stored, the vault closed.
+        let action = app.handle(key(KeyCode::Char('o'), KeyModifiers::CONTROL, KeyEventKind::Press));
+        app.apply(action).unwrap();
+        assert!(matches!(app.screen, Screen::Unlock(_)) && app.vault.is_none());
+        assert_eq!(app.title(), "writui");
+        // Locked, Ctrl+O does nothing; the password opens the same post.
+        assert!(matches!(app.handle(key(KeyCode::Char('o'), KeyModifiers::CONTROL, KeyEventKind::Press)), Action::None));
+        app.perform(Action::Unlock(Zeroizing::new("pw".into()))).unwrap();
+        let Screen::Editor(editor) = &app.screen else { panic!("not reopened") };
+        assert_eq!((editor.post_id(), editor.text().as_str()), (id, "# x"));
     }
 
     #[test]

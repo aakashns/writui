@@ -1,7 +1,7 @@
 {
   "name": "writui",
   "short_name": "writui",
-  "description": "A writing app for the terminal. Markdown, encrypted, no nonsense.",
+  "description": "A writing app for the terminal. No nonsense. Markdown. Local. Encrypted.",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#111113",

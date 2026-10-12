@@ -73,6 +73,7 @@ impl From<rusqlite::Error> for OpenError {
 pub struct PostSummary {
     pub id: i64,
     pub title: String,
+    pub created_at: Timestamp,
     pub updated_at: Timestamp,
     /// Set for posts in the Trash.
     pub deleted_at: Option<Timestamp>,
@@ -192,19 +193,20 @@ impl Vault {
     fn summaries(&self, filter_and_order: &str) -> Result<Vec<PostSummary>> {
         let mut stmt = self.conn.prepare(&format!(
             "SELECT id, substr(body, 1, instr(body || char(10), char(10)) - 1),
-                    updated_at, deleted_at
+                    updated_at, deleted_at, created_at
              FROM posts WHERE {filter_and_order}"
         ))?;
         let rows = stmt.query_map([], |row| {
             let first_line: String = row.get(1)?;
             let deleted_at: Option<i64> = row.get(3)?;
-            Ok((row.get(0)?, first_line, row.get(2)?, deleted_at))
+            Ok((row.get(0)?, first_line, row.get(2)?, deleted_at, row.get::<_, i64>(4)?))
         })?;
         rows.map(|row| {
-            let (id, first_line, updated_at, deleted_at) = row?;
+            let (id, first_line, updated_at, deleted_at, created_at) = row?;
             Ok(PostSummary {
                 id,
                 title: title_from_first_line(&first_line),
+                created_at: from_millis(created_at)?,
                 updated_at: from_millis(updated_at)?,
                 deleted_at: deleted_at.map(from_millis).transpose()?,
             })
@@ -471,6 +473,15 @@ impl Vault {
 
     pub fn set_last_screen(&self, screen: &str) -> Result<()> {
         self.set_value("last_screen", screen)
+    }
+
+    /// How the list is sorted, as `set_list_sort` put it.
+    pub fn list_sort(&self) -> Result<Option<String>> {
+        self.value("list_sort")
+    }
+
+    pub fn set_list_sort(&self, sort: &str) -> Result<()> {
+        self.set_value("list_sort", sort)
     }
 
     fn value(&self, key: &str) -> Result<Option<String>> {
@@ -880,10 +891,12 @@ mod tests {
         let settings = Settings { author: "Ada".into(), line_width: 80 };
         vault.set_settings(&settings).unwrap();
         vault.set_last_screen("post:3").unwrap();
+        vault.set_list_sort("title").unwrap();
         drop(vault);
         let vault = Vault::open(&path, "pw").unwrap();
         assert_eq!(vault.settings().unwrap(), settings);
         assert_eq!(vault.last_screen().unwrap().as_deref(), Some("post:3"));
+        assert_eq!(vault.list_sort().unwrap().as_deref(), Some("title"));
         // A width out of range is the default.
         vault.set_value("line_width", "7").unwrap();
         assert_eq!(vault.settings().unwrap().line_width, DEFAULT_LINE_WIDTH);

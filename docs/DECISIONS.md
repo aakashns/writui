@@ -536,3 +536,27 @@ terminal's own Cmd+C copy writui's selection, since writui draws it.
 A post made by importing a file takes the file's creation time (birth
 time, from `metadata.created()`), or else its last modified time, as its
 `created_at`. Updating a post from its file leaves the date alone.
+
+## Lock
+
+Ctrl+O locks (the creator's pick, after Ctrl+L went to the menu), so
+"Open link" lost Ctrl+O: it's Ctrl+click and the menu now. Locking closes
+the vault rather than hiding the screen, so the key and the text aren't
+kept in memory while locked; unlocking reopens the remembered screen the
+same way starting writui does. The cost: a post's undo history doesn't
+survive a lock.
+
+## The search field's highlight
+
+While a search is typed, the highlight sits on the first match and moves
+with ↑/↓, but typing still goes into the field (like the command menu).
+So the list keeps "typing" apart from "which row is highlighted". The
+empty field is a row the arrows pass through, so ↓ from Import to the
+posts still works with the arrows alone.
+
+## Nerd Font icons
+
+Asked for: a plain magnifier from a Nerd Font when there is one, the
+emoji otherwise. Not possible: no terminal reports its font, and a
+missing glyph still advances the cursor by its width, so it can't be
+measured either. A setting could choose, if it's ever wanted.

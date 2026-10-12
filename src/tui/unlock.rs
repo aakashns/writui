@@ -9,7 +9,7 @@ use ratatui::widgets::Paragraph;
 
 use super::Action;
 use super::hints::{HintBar, hint};
-use super::widgets::{COLUMN_WIDTH, PasswordField, centered, dev_password_note};
+use super::widgets::{COLUMN_WIDTH, PasswordField, centered, dev_password_note, overview};
 
 const LABEL: &str = "Password  ";
 
@@ -22,12 +22,18 @@ enum Cmd {
 #[derive(Default)]
 pub struct Unlock {
     field: PasswordField,
+    /// writui was locked (Ctrl+O), rather than just started.
+    locked: bool,
     error: Option<&'static str>,
     busy: bool,
     hints: HintBar<Cmd>,
 }
 
 impl Unlock {
+    pub fn locked() -> Self {
+        Unlock { locked: true, ..Unlock::default() }
+    }
+
     pub fn set_busy(&mut self, busy: bool) {
         self.busy = busy;
     }
@@ -46,18 +52,23 @@ impl Unlock {
             Line::from("Unlocking…".dim())
         } else if let Some(error) = self.error {
             Line::from(error.red())
+        } else if self.locked {
+            Line::from("Locked. Unlock to pick up where you were.".dim())
         } else {
             Line::default()
         };
-        let lines = vec![
+        let mut lines = vec![
             Line::from("writui".bold()),
             Line::default(),
             Line::from(vec![Span::raw(LABEL).bold(), Span::raw(self.field.masked())]),
             Line::default(),
             status,
             Line::default(),
-            Line::from(dev_password_note().unwrap_or_default().dim()),
         ];
+        lines.extend(overview());
+        if let Some(note) = dev_password_note() {
+            lines.extend([Line::default(), Line::from(note.dim())]);
+        }
         let area = centered(body, COLUMN_WIDTH, lines.len() as u16);
         if !self.busy {
             let x = area.x + (LABEL.len() + self.field.len()) as u16;

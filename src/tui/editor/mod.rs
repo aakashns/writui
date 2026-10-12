@@ -84,6 +84,7 @@ enum Cmd {
     /// A hint of the export dialog.
     Form(FormCmd),
     ConfirmReplace,
+    Lock,
     Quit,
 }
 
@@ -445,7 +446,7 @@ impl Editor {
             item("History", "Ctrl+R", Cmd::History),
             item("Copy as markdown", "Ctrl+Shift+C", Cmd::CopyMarkdown),
             item("Export as markdown", "Ctrl+Shift+S", Cmd::Export),
-            item("Open link", "Ctrl+O", Cmd::OpenLink),
+            item("Open link", "Ctrl+click", Cmd::OpenLink),
             item("Undo", "Ctrl+Z", Cmd::Undo),
             item("Redo", "Ctrl+Y", Cmd::Redo),
             item("Copy", "Ctrl+C", Cmd::Copy),
@@ -453,6 +454,7 @@ impl Editor {
             item("Paste", "Ctrl+V", Cmd::Paste),
             item("Select all", "Ctrl+A", Cmd::SelectAll),
             item("Back to posts", "Esc", Cmd::Back),
+            item("Lock", "Ctrl+O", Cmd::Lock),
             item("Quit", "Ctrl+Q", Cmd::Quit),
         ]
     }
@@ -603,7 +605,6 @@ impl Editor {
             KeyCode::Char('c') if ctrl => return self.run(Cmd::Copy),
             KeyCode::Char('x') if ctrl => return self.run(Cmd::Cut),
             KeyCode::Char('v') if ctrl => return self.run(Cmd::Paste),
-            KeyCode::Char('o') if ctrl => return self.run(Cmd::OpenLink),
             // Ctrl+L too: Alacritty sends it for Cmd+K.
             KeyCode::Char('k' | 'l') if ctrl => return self.run(Cmd::Menu),
             KeyCode::Char('a') if ctrl => return self.run(Cmd::SelectAll),
@@ -779,6 +780,7 @@ impl Editor {
                     return self.export(&path);
                 }
             }
+            Cmd::Lock => return Action::Lock,
             Cmd::Quit => return Action::Quit,
         }
         Action::None
@@ -818,7 +820,7 @@ impl Editor {
     fn open_export(&mut self) {
         let title = self.raw_title();
         let today = jiff::Zoned::now().date();
-        let suggested = front_matter::suggest(&title, &self.buffer.text(), today, &self.author);
+        let suggested = front_matter::suggest(&title, &self.buffer.text(), today, today, &self.author);
         let (last, same_post) = match &self.exports.this_post {
             Some(this_post) => (Some(this_post), true),
             None => (self.exports.latest.as_ref(), false),
@@ -1676,14 +1678,16 @@ mod tests {
     }
 
     #[test]
-    fn links_open_with_ctrl_o_or_ctrl_click() {
+    fn links_open_from_the_menu_or_with_ctrl_click() {
         let mut h = Harness::new("# Title\nSee [the docs](https://example.com) and file:///x");
-        // Not on a link: Ctrl+O says how.
-        h.ctrl('o');
+        // Not on a link: "Open link" says how.
+        h.editor.run(Cmd::OpenLink);
+        h.draw();
         assert!(h.screen_row(10).contains("Put the cursor on a link"));
-        // On a link, Ctrl+O opens it.
+        // On a link, it opens it.
         h.mouse(MouseEventKind::Down(MouseButton::Left), LEFT + 6, 2);
-        h.ctrl('o');
+        h.editor.run(Cmd::OpenLink);
+        h.draw();
         assert!(h.screen_row(10).contains("Opened https://example.com"));
         // Ctrl+click on the link opens it without moving the cursor.
         h.key(KeyCode::Home);

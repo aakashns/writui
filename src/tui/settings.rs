@@ -31,6 +31,7 @@ enum Cmd {
     Save,
     Cancel,
     Back,
+    Lock,
 }
 
 pub struct Settings {
@@ -68,8 +69,7 @@ impl Settings {
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
-        let [_, header, subheader, _, rows, notice, _, hint_area] = Layout::vertical([
-            Constraint::Length(1),
+        let [_, header, _, rows, notice, _, hint_area] = Layout::vertical([
             Constraint::Length(1),
             Constraint::Length(1),
             Constraint::Length(1),
@@ -80,8 +80,6 @@ impl Settings {
         ])
         .areas(frame.area());
         frame.render_widget(Paragraph::new("Settings".bold()), column(header, COLUMN_WIDTH));
-        let note = "Kept in the vault, with your writing.";
-        frame.render_widget(Paragraph::new(note.dim()), column(subheader, COLUMN_WIDTH));
 
         let col = column(rows, COLUMN_WIDTH);
         let width = col.width as usize;
@@ -120,7 +118,7 @@ impl Settings {
             self.hints.render(frame, hint_area, &hints);
             return;
         }
-        self.hints.render(frame, hint_area, &[hint("Enter", "change", Cmd::Change), hint("Esc", "back to posts", Cmd::Back)]);
+        self.hints.render(frame, hint_area, &[hint("Enter", "change", Cmd::Change), hint("Esc", "back to posts", Cmd::Back), hint("Ctrl+O", "lock", Cmd::Lock)]);
     }
 
     pub fn handle(&mut self, event: Event) -> Action {
@@ -173,6 +171,7 @@ impl Settings {
     fn run(&mut self, cmd: Cmd) -> Action {
         match cmd {
             Cmd::Back => Action::BackToList(None),
+            Cmd::Lock => Action::Lock,
             Cmd::Change => {
                 self.dialog = Some(self.dialog_for(self.field()));
                 Action::None

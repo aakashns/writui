@@ -1,6 +1,6 @@
 # writui
 
-A writing app for the terminal. Markdown, encrypted, no nonsense.
+A writing app for the terminal. No nonsense. Markdown. Local. Encrypted.
 
 - **Private.** All your posts live in one file, encrypted with your password.
   Without the password nobody can read them.
@@ -116,8 +116,13 @@ the password each time it starts.
   single keys, shown at the bottom. Esc asks before quitting. writui opens
   where you left it: on the post you were writing, cursor and all.
 - **Search:** press `/` (or click "Type to filter…") and type. Posts with
-  every word you type, anywhere in their text or front matter, are listed;
-  Enter opens the first. ↓ goes down to them, Esc clears the search.
+  every word you type, anywhere in their text or front matter, are listed,
+  and the first is highlighted: Enter opens it, ↑/↓ pick another. Esc
+  clears the search.
+- **Sort** the list by when posts were updated or created, or by title:
+  click one under the search, or press Tab.
+- **Lock** with Ctrl+O, wherever you are: writui asks for the password
+  again, then takes you back to where you were.
 - **Zen writing:** the editor shows only your words. Hold Ctrl to see the
   post's word count and when you started it. (This needs a terminal that can
   report Ctrl on its own, like Alacritty, Ghostty, kitty, WezTerm or a recent
@@ -148,8 +153,8 @@ the password each time it starts.
   `~~strikethrough~~`, task lists and tables), so text is formatted only
   when it really will be: `**bold` stays plain until you close it. Wrapped
   list items and quotes line up under their text.
-- **Links:** with the cursor on a link, Ctrl+O opens it in your browser, or
-  Ctrl+click it. That works for `[text](https://…)` links and for web
+- **Links:** Ctrl+click a link to open it in your browser (or put the
+  cursor on it and pick "Open link" from the menu). That works for `[text](https://…)` links and for web
   addresses written out in the text. Only web and email links open.
 - **Moving by line, word and paragraph:** Ctrl+Left/Right (or Cmd+Left/Right
   on a Mac, where the terminal passes Cmd on, as Alacritty does) go to the
@@ -171,7 +176,7 @@ the password each time it starts.
   a published post here.
 - **Deleting** (`d`) moves a post to the Trash, where you can restore it
   for 30 days.
-- **Settings** (at the end of the list, or `s`): your name, added as the
+- **Settings** (`s` on the list): your name, added as the
   `author` in exported front matter, and how wide the text is while
   writing (68 characters unless you change it).
 

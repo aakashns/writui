@@ -20,6 +20,11 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 **Details**
 
+  > change the "Markdown, encrypted, no nonsense." to "No nonsense.
+  > Markdown. Local. Encrypted." everywhere
+
+- The tagline is "No nonsense. Markdown. Local. Encrypted." (README, the
+  site and its social card, `writui --help`, the GitHub repo description).
 - Terminal agnostic. The creator mostly uses Alacritty, sometimes Ghostty and
   iTerm2. Nothing may depend on one terminal's special features.
 - Everything works with the mouse; everything also has a keyboard shortcut.
@@ -135,6 +140,19 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   `~/Library/Application Support/writui/writui.db` (platform equivalent
   elsewhere).
 - Auto-lock after a period of inactivity — planned, not urgent.
+
+  > and finally, on the password screen, let's add an "Overview" describing
+  > how the app works in no more than 5-6 points, each no longer than one
+  > line. this is for new users and returning ones, run the copy by me once
+
+- Both password screens (creating the vault, and unlocking) end with an
+  "Overview" (creator-approved copy):
+  - All your writing lives in one file, encrypted with this password.
+  - Forget the password and the writing is gone: there's no recovery.
+  - Write in markdown. Every post starts with a # title.
+  - Posts save as you type; Ctrl+S also keeps a version to go back to.
+  - While writing, Ctrl+K shows every command and its shortcut.
+  - Ctrl+O locks writui; unlocking takes you back where you were.
 - Change password — planned.
 
 ## The screens
@@ -147,11 +165,11 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 **Details**
 
-- Flat list of posts, most recently updated first. Each row shows the title
-  and when it was last updated.
+- Flat list of posts, most recently updated first unless sorted otherwise.
+  Each row shows the title and when it was last updated.
 - A "New" action, always visible, "Import" right below it (with a
-  different icon: "+ New", "» Import"), then a search field ("/ Type to
-  filter…"). A "Settings" row is at the end of the list, after the Trash.
+  different icon: "+ New", "» Import"), a blank line, then a search field
+  ("🔎 Type to filter…") and a "Sort by  Updated  Created  Title" row.
 
   > change "New Post" to just "New"
 
@@ -176,24 +194,64 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   > post
 
   The list's shortcuts are single keys: `n` new, `i` import, `/` search,
-  `d` (or Delete) delete, `s` settings (and in the Trash, `d` deletes
-  forever). The Ctrl versions still work but aren't shown. Esc asks "Quit
+  `d` (or Delete) delete, `s` settings, Tab sort (and in the Trash, `d`
+  deletes forever). Ctrl+N and Ctrl+D still work but aren't shown. Esc asks "Quit
   writui?" (Quit is the selected button, `y`); Ctrl+Q and Ctrl+C still quit
   straight away, unshown.
+
+  > add a line gap above type to filter. and below type to filter, i want
+  > "Sort by": "Updated", "Created", "Title". for filter use the maginifier
+  > icon: 🔎
+
+  > remove settings from the list, it's odd. change "open the first" to just
+  > "open" and when i am typing, keep the first result selected by default,
+  > basically focus shifts to first result as soon as i type the first
+  > chracer, but i am still typing in the sarch box, you understand?
+
+  > btw, can you make it such that if there a nerd font, then we use the
+  > non-colored magnifying glass character, and if not we use the emoji,
+  > only if it is possible
+
+  (It isn't: terminals don't say which font they use, and a missing glyph
+  still takes its space, so writui can't tell. The emoji it is; a setting
+  could choose later.)
 
   Searching (creator's call: a field you move into, so letters can stay
   shortcuts): `/`, ↓ from Import, or a click puts typing into the field.
   Every word typed has to appear somewhere in the post's text or its front
-  matter, ignoring case; the matching posts are listed in the usual order,
-  and the Trash and Settings rows hide while searching. Enter in the field
-  opens the first match. ↓ goes down to the matches, where the single-key
-  shortcuts work again. Esc empties the field, then leaves it; on the
-  posts, Esc empties the search before it asks to quit.
+  matter, ignoring case; the matching posts are listed in the list's order,
+  and the Trash row hides while searching. As soon as something's typed,
+  the first match is highlighted while typing still goes into the field:
+  Enter opens the highlighted post, ↑/↓ move the highlight among the
+  matches, Delete deletes it. Esc empties the field, then leaves it (to
+  the first post). The empty field is just a row ↑/↓ pass through; a
+  click on a post leaves the field too. On the posts, Esc empties the
+  search before it asks to quit.
+
+  Sorting: most recently updated first, most recently created first, or
+  by title (A–Z, ignoring case). Tab (Shift+Tab back) goes through them,
+  in the field too, or click one; the current one is bold and underlined.
+  ↑/↓ skip the row. The choice is remembered (in the vault). The Trash is
+  always most recently deleted first.
+
+  Settings isn't a row on the list; it's `s`, shown in the hint bar.
+
+  > let's implment the lock using ctrl+o
+
+- **Lock** (Ctrl+O, or Cmd+O; anywhere once unlocked; shown on the list's
+  and Settings' hint bars and in the editor's menu): stores the post being
+  written, remembers the screen, and closes the vault, so its key is gone
+  from memory. The unlock screen says "Locked. Unlock to pick up where you
+  were."; the password opens the same screen again (a post with the cursor
+  where it was; its undo history doesn't survive). Anything half-done in a
+  dialog is dropped. If the post can't be stored, it doesn't lock and the
+  editor says why.
 
   > remember the screen i was previously on at exit, and open back to same
   > screen
 
-- writui opens on the screen it was left on: the post that was open (with
+- writui opens on the screen it was left on (and so does unlocking after a
+  lock): the post that was open (with
   the cursor where it was), the list, the Trash or Settings. A post that's
   been deleted since means the list. The screen is remembered in the vault
   every time it changes, so a closed terminal counts too.
@@ -371,7 +429,9 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   plain.
 - Formatting follows CommonMark (plus GitHub's strikethrough, task lists and
   tables), so half-typed markdown stays plain until it's complete.
-- Links open in the browser: Ctrl+O with the cursor on one, or Ctrl+click.
+- Links open in the browser: Ctrl+click, or "Open link" in the menu with
+  the cursor on one (it was Ctrl+O until `0.12.0`, when Ctrl+O became
+  lock).
   Markdown links and web addresses written out in the text both count. Only
   `http(s)` and `mailto` links open.
 - List items and quotes wrap with a hanging indent: later rows line up under
@@ -495,6 +555,14 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   - A new post made by importing was started when the file was made (or
     else last changed, where the system doesn't know), not when it was
     imported. Updating a post from its file keeps the post's own date.
+
+    > btw, for an imported file, use the created at date fromm the file
+    > metadata
+
+  - A file without a `date` in its front matter gets that same day as its
+    `date` (after `title`), not the day it's first exported. A file with
+    no front matter at all keeps none, but turning it on in the export
+    dialog starts with that date.
 - **Copy as formatted text**: the whole post (or the selection) as rich
   text, so pasting into Substack, Gmail, Medium, Google Docs etc. keeps
   headings, bold, links, lists.
@@ -533,8 +601,7 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 **Details**
 
-- A Settings screen, reached from the "Settings" row at the end of the
-  list (or `s` there). Each row is a setting and its value; Enter or a
+- A Settings screen, reached with `s` on the list (it's on the hint bar). Each row is a setting and its value; Enter or a
   click changes it in a dialog; Esc goes back to the list. Changes are
   stored right away.
 - For now:
@@ -566,8 +633,15 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - The site lives in `site/` in this repo, and is published at
   **writui.com** (Cloudflare Workers).
 - It looks like the app: light Inter text on a dark background, one narrow
-  column. Pages: a landing page (what writui is, a short recording of it,
-  install) and the blog. "Changelog" in the menu links to the GitHub
+  column. Pages: a landing page (what writui is, install, a short
+  recording of it, then what it does) and the blog.
+
+  > and on the site, let's move installation above the demo tape and add a
+  > copy button
+
+  The install command has a "Copy" button in its corner (shown only where
+  the browser allows copying; it says "Copied" for a moment). The landing
+  page is kept up to date with each new feature (see CLAUDE.md). "Changelog" in the menu links to the GitHub
   releases page.
 - Posts live in the encrypted vault, but the blog lives in the public repo —
   so blog posts get into `site/content/blog/` via "export as markdown",
