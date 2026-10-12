@@ -43,7 +43,7 @@ pub fn overview() -> Vec<Line<'static>> {
 /// into those three parts.
 #[rustfmt::skip]
 const BANNER: [[&str; 3]; 6] = [
-    ["         ", "  ", "                    ██                   ██"],
+    ["         ", "  ", "                      ██                   ██"],
     ["▄▄▄      ", "▄▄", "                            ██"],
     [" ▀██▄    ", "██", "    ██   ██  ██ ▄██  ▀██   █████  ██  ██  ▀██"],
     ["   ▀██▄  ", "██", "    ██ ▄ ██  ███▀     ██    ██    ██  ██   ██"],
@@ -185,6 +185,19 @@ mod tests {
         let lines = title(Rect::new(0, 0, 100, 30), 10);
         assert_eq!(lines.len(), BANNER.len() + 1);
         assert!(lines.iter().all(|line| line.width() <= COLUMN_WIDTH as usize));
+    }
+
+    #[test]
+    fn the_dots_of_the_is_sit_over_their_stems() {
+        let columns = |line: &str, piece: &str| -> Vec<usize> {
+            let chars: Vec<char> = line.chars().collect();
+            let piece: Vec<char> = piece.chars().collect();
+            (0..chars.len()).filter(|&i| chars[i..].starts_with(&piece)).collect()
+        };
+        let dots = columns(BANNER[0][2], "██");
+        let stems: Vec<usize> =
+            columns(BANNER[2][2], "▀██").into_iter().filter(|&i| i > 10).map(|i| i + 1).collect();
+        assert_eq!(dots, stems);
     }
 
     #[test]
