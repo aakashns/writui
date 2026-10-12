@@ -70,10 +70,6 @@ impl Setup {
             Line::default(),
             Line::from("Create your vault"),
             Line::default(),
-            Line::from("Everything you write in writui is encrypted with this password."),
-            Line::from("There is no way to recover it: if you forget the password, your"),
-            Line::from("writing is gone for good."),
-            Line::default(),
             // The two password boxes go here, side by side.
             Line::default(),
             Line::default(),
@@ -88,7 +84,7 @@ impl Setup {
             rest.extend([Line::default(), Line::from(note.dim())]);
         }
         let mut lines = title(body, rest.len());
-        let first_field_line = lines.len() as u16 + 7;
+        let first_field_line = lines.len() as u16 + 3;
         lines.extend(rest);
 
         let area = centered(body, COLUMN_WIDTH, lines.len() as u16);
