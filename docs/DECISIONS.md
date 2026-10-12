@@ -560,3 +560,16 @@ Asked for: a plain magnifier from a Nerd Font when there is one, the
 emoji otherwise. Not possible: no terminal reports its font, and a
 missing glyph still advances the cursor by its width, so it can't be
 measured either. A setting could choose, if it's ever wanted.
+
+## Try online: in the browser, no server
+
+writui.com/try runs writui in the browser via Ratzilla (ratatui's web
+backend), as static files on the site. The alternative, running the real
+binary on a server and streaming it to a web terminal, would be exactly the
+real app but needs hosting and abuse protection, so no. SQLCipher with
+vendored OpenSSL doesn't build for the browser easily, and a demo has nothing
+private to protect, so the demo keeps posts in the browser without
+encryption. Phones are a must (the creator's call), so input goes through a
+hidden text field (phone keyboards don't report real keys, and autocorrect
+and swipe typing replace whole words), with an extra-keys row for Esc, Ctrl,
+Tab and the arrows.

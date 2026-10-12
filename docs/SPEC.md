@@ -650,6 +650,34 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - A "writui site" preview preset matching the site's CSS, so blog posts can be
   previewed exactly as they'll look.
 
+### Try online
+
+> any chance in hell we can have a "try online" version of writui via wasm
+> without that we can embed on the site at writui.com/try ? like is that even
+> possible
+
+> i definitely want it to work ona phone, what's the blocker?
+
+> okay, make it the next item of work
+
+**Details**
+
+- **writui.com/try** runs writui in the visitor's browser, with no server:
+  the same screens, built for the web (Ratzilla, ratatui's web backend), as
+  static files on the site.
+- It's a demo: no encryption or password, posts kept in that browser only
+  (or forgotten with the tab), no files, no `writui upgrade`. Import / export
+  become upload / download, or are hidden.
+- Shortcuts the browser keeps for itself (Ctrl+W, Ctrl+T, Ctrl+N, …) get
+  other keys in the demo.
+- It must work on a phone: tapping opens the on-screen keyboard (a hidden
+  text field that typing goes through, so autocorrect and swipe typing
+  work), a row of extra keys above it (Esc, Ctrl, Tab, arrows), taps act as
+  clicks, touch scrolls, and every screen works at phone width (about 40–50
+  columns).
+- The real app's behaviour doesn't change for this; CI checks that the web
+  build still builds.
+
 ## Open source
 
 > I think we'll be open sourcing sooner rather than later, so that I can use

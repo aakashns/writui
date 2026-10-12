@@ -24,7 +24,9 @@ imports dated by the file, exports defaulting to Documents, opening on
 the screen writui was left on, sorting, and lock (Ctrl+O). The site's
 branch builds needed a `previews` block in `site/wrangler.jsonc`. After it merges:
 
-1. M6 (LLM chat sidebar) and on in order. The Settings screen exists now;
+1. **Try online** (writui.com/try), below: the creator wants it next, and
+   it must work on a phone. Probably two or three PRs, in the order listed.
+2. M6 (LLM chat sidebar) and on in order. The Settings screen exists now;
    add the rest of its settings as they come up.
 
 ## M0 — Writing core
@@ -105,6 +107,22 @@ The repo went public early (during M0), so most of this is already done.
 - [x] ~~`writui upgrade` asks for the password and migrates the vault right away~~
       (dropped in `0.10.0`: the next unlock migrates, without a second password)
 - [x] Migration backups deleted once the migrated vault passes integrity checks
+
+## Try online
+
+writui in the browser at writui.com/try, phones included (see the spec's
+"Try online").
+
+- [ ] Separate the screens from the terminal and the vault, so they can run
+      on another backend (the real app behaves the same)
+- [ ] Web build with Ratzilla: in-browser storage, no encryption / files /
+      upgrade, other keys for shortcuts the browser keeps; CI builds it
+- [ ] Phones: hidden text field for the on-screen keyboard (autocorrect,
+      swipe typing), extra-keys row (Esc, Ctrl, Tab, arrows), tap = click,
+      touch scrolling
+- [ ] Every screen works at phone width (about 40–50 columns)
+- [ ] Published at writui.com/try, tested on a real iPhone and Android
+      phone, then linked from the landing page
 
 ## M6 — LLM chat sidebar
 
