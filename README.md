@@ -116,13 +116,13 @@ the password each time it starts.
   highlighted when the list opens). The list's shortcuts are single keys,
   shown next to "New" and "Import" and at the bottom. Esc asks before quitting. writui opens
   where you left it: on the post you were writing, cursor and all.
-- **Search:** press `/` (or click "Type to filter…") and type. Posts with
+- **Search:** press `/` (or click "Type to filter (/)") and type. Posts with
   every word you type, anywhere in their text or front matter, are listed,
   and the first is highlighted: Enter opens it, ↑/↓ pick another. Esc
   clears the search.
 - **Sort** the list by when posts were updated or created, or by title,
-  either way round: click "Sort" on the right of the search, or press
-  Tab, and pick one.
+  either way round: click "Sort" on the right of the search and pick one,
+  or press Tab (Shift+Tab) to go through them.
 - **Lock** with Ctrl+O, wherever you are: writui asks for the password
   again, then takes you back to where you were.
 - **Zen writing:** the editor shows only your words. Hold Ctrl to see the
@@ -160,9 +160,11 @@ the password each time it starts.
   addresses written out in the text. Only web and email links open.
 - **Moving by line, word and paragraph:** Ctrl+Left/Right (or Cmd+Left/Right
   on a Mac, where the terminal passes Cmd on, as Alacritty does) go to the
-  start / end of the line, like Home and End. Option+Left/Right (Alt on Linux
-  and Windows) jump by word, Option+Up/Down (Ctrl+Up/Down) by paragraph. Add
-  Shift to select as you go.
+  start / end of the line, like Home and End; pressed again, they go on to
+  the start / end of the sentence or of the next line, whichever is nearer.
+  Ctrl+Up/Down (Cmd+Up/Down) go to the start / end of the post. Option+Left/Right (Alt on Linux and
+  Windows) jump by word, Option+Up/Down by paragraph. Add Shift to select as
+  you go.
 - **Getting your writing out:** Ctrl+Shift+C copies the whole post as
   markdown, and Ctrl+Shift+S exports it to a `.md` file wherever you choose
   (both are in the menu too, for terminals where Ctrl+Shift doesn't come

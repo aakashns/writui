@@ -587,3 +587,40 @@ and an older build reading a new name falls back to "Updated ↓".
 Later the same day the creator dropped the notes ("not needed"); the
 arrows are on their own, and the menu leaves no room for keys when it has
 none.
+
+## Ctrl/Cmd+Up/Down go to the start / end of the post
+
+Ctrl+Up/Down moved by paragraph, like Option+Up/Down. They now go to the
+start / end of the post, as Cmd+Up/Down do in macOS text fields (Cmd only
+in macOS builds, where the terminal passes it on, as with Cmd+Left/Right).
+Paragraph jumps are Option/Alt+Up/Down only. macOS keeps plain Ctrl+Up/Down
+for Mission Control by default, so on a Mac it's Cmd+Up/Down in practice.
+
+## Tab cycles the sort
+
+On the list, Tab sorts the next way (Shift+Tab the previous) instead of
+opening the "Sort" menu; clicking "Sort" still opens it. The hint is still
+"Tab sort", and clicking the hint cycles too.
+
+## Ctrl/Cmd+Left/Right go on by sentence
+
+Pressed at the start (end) of a row, Ctrl/Cmd+Left (Right) used to do
+nothing. Now they go to the nearer of the sentence's start (end) and the
+row before's start (the row after's end), so repeated presses step
+through the text in sentence-or-row sized pieces. Rows, not lines: on a
+wrapped paragraph, Home / End and these keys work on what's on screen.
+Sentences are found by punctuation alone (`.`, `!`, `?`, `…`, then
+closing quotes / brackets / `*` / `_`, then a space), so "e.g. this"
+counts as a sentence break; good enough for moving the cursor. Home and
+End are unchanged: they stop at the row's ends.
+
+## Release notes from commit messages
+
+GitHub's generated notes listed only each PR's title. The release workflow
+now writes its own (`.github/release-notes.sh`): for each PR merged on
+`main` since the previous tag, its title (from the merge commit), then
+each of its commits' subject in bold and its body, without the
+Co-Authored-By lines. Commit bodies are wrapped at about 72 columns and
+GitHub shows every line break in release notes, so each paragraph or list
+item is joined back into one line. No "@user in #n" or "New
+contributors": it's one person's project so far.

@@ -115,6 +115,8 @@ enum Cmd {
     Settings,
     /// Open the "Sort" menu.
     SortMenu,
+    /// Sort the next (or previous) way in the "Sort" menu.
+    CycleSort(bool),
     /// The way highlighted in the "Sort" menu.
     PickSort,
     Sort(Sort),
@@ -469,7 +471,7 @@ impl List {
                 Row::Gap => ListItem::new(Line::default()),
                 Row::Search => {
                     let shown = scrolled(&self.filter, field_width.saturating_sub(self.search_icon.width()));
-                    let text = if shown.is_empty() { "Type to filter…" } else { shown };
+                    let text = if shown.is_empty() { "Type to filter (/)" } else { shown };
                     let pad = field_width.saturating_sub(self.search_icon.width() + text.width());
                     // Underlined, so it reads as a field; dim, all of it (so
                     // the underline's one colour), until typing goes into it.
@@ -581,7 +583,7 @@ impl List {
             } else {
                 hints.push(hint("Esc", "done", Cmd::Back));
             }
-            hints.push(hint("Tab", "sort", Cmd::SortMenu));
+            hints.push(hint("Tab", "sort", Cmd::CycleSort(true)));
             hints
         } else {
             // n and i are shown on "New" and "Import".
@@ -598,7 +600,7 @@ impl List {
             hints.push(hint("Ctrl+O", "lock", Cmd::Lock));
             // Last, so it's the first left out on a narrow screen: "Sort
             // by" can be clicked too.
-            hints.push(hint("Tab", "sort", Cmd::SortMenu));
+            hints.push(hint("Tab", "sort", Cmd::CycleSort(true)));
             hints
         };
         self.hints.render(frame, hint_area, &hints);
@@ -661,7 +663,8 @@ impl List {
                     KeyCode::Char('s') if plain => self.run(Cmd::Settings),
                     KeyCode::Char('/') if plain => self.run(Cmd::Search),
                     KeyCode::Delete => self.run(Cmd::Delete),
-                    KeyCode::Tab | KeyCode::BackTab => self.run(Cmd::SortMenu),
+                    KeyCode::Tab => self.run(Cmd::CycleSort(true)),
+                    KeyCode::BackTab => self.run(Cmd::CycleSort(false)),
                     KeyCode::Up => self.move_by(-1),
                     KeyCode::Down => self.move_by(1),
                     // Unshown; in the search field they're typed.
@@ -814,6 +817,11 @@ impl List {
                 self.open_sort_menu();
                 Action::None
             }
+            Cmd::CycleSort(forward) if !self.trash_view() => {
+                let current = Sort::ALL.iter().position(|&sort| sort == self.sort).unwrap_or(0);
+                let step = if forward { 1 } else { Sort::ALL.len() - 1 };
+                self.set_sort(Sort::ALL[(current + step) % Sort::ALL.len()])
+            }
             Cmd::PickSort => match self.sort_menu.as_ref().and_then(ContextMenu::selected) {
                 Some(cmd) => self.run(cmd),
                 None => Action::None,
@@ -826,7 +834,7 @@ impl List {
                 self.sort_menu = None;
                 Action::None
             }
-            Cmd::New | Cmd::Settings | Cmd::Search | Cmd::SortMenu => Action::None,
+            Cmd::New | Cmd::Settings | Cmd::Search | Cmd::SortMenu | Cmd::CycleSort(_) => Action::None,
             Cmd::Import if !self.trash_view() => {
                 self.importing = Some(Box::new(FileDialog::new(
                     "Import",
@@ -1134,7 +1142,7 @@ mod tests {
         let posts = vec![post(1, "One"), post(2, "Two"), post(3, "Three")];
         let mut list = List::new(Mode::Posts { deleted_count: 2 }, posts, None);
         let text = screen(&mut list);
-        assert!(text.contains("🔎") && text.contains("Type to filter…") && text.contains("Sort: Updated ↓"), "{text}");
+        assert!(text.contains("🔎") && text.contains("Type to filter (/)") && text.contains("Sort: Updated ↓"), "{text}");
         assert!(!text.contains("Settings\n") && !text.contains("  Settings  "), "{text}");
         // / goes into the field; letters are typed there, not shortcuts.
         press(&mut list, KeyCode::Char('/'), KeyModifiers::NONE);
@@ -1202,11 +1210,27 @@ mod tests {
         assert_eq!(titles(&mut list), ["beta", "Alpha", "Untitled"]);
         // "Sort" is on the right of the search field, on the same row.
         let text = screen(&mut list);
-        let row = text.lines().find(|line| line.contains("Type to filter…")).unwrap();
+        let row = text.lines().find(|line| line.contains("Type to filter (/)")).unwrap();
         assert!(row.trim_end().ends_with("Sort: Updated ↓"), "{row}");
-        // Tab opens the menu on the current way; ↓ Enter picks the next,
-        // and the app remembers it.
-        press(&mut list, KeyCode::Tab, KeyModifiers::NONE);
+        // Tab sorts the next way, Shift+Tab the one before, round and
+        // round; the app remembers it.
+        assert!(matches!(press(&mut list, KeyCode::Tab, KeyModifiers::NONE), Action::SortBy(s) if s == by(SortBy::Updated, false)));
+        assert!(list.sort_menu.is_none());
+        assert_eq!(titles(&mut list), ["Untitled", "Alpha", "beta"]);
+        assert!(matches!(press(&mut list, KeyCode::BackTab, KeyModifiers::SHIFT), Action::SortBy(s) if s == Sort::DEFAULT));
+        assert!(matches!(press(&mut list, KeyCode::BackTab, KeyModifiers::SHIFT), Action::SortBy(s) if s == by(SortBy::Title, true)));
+        assert!(matches!(press(&mut list, KeyCode::Tab, KeyModifiers::NONE), Action::SortBy(s) if s == Sort::DEFAULT));
+        // In the search field too.
+        press(&mut list, KeyCode::Char('/'), KeyModifiers::NONE);
+        assert!(matches!(press(&mut list, KeyCode::Tab, KeyModifiers::NONE), Action::SortBy(s) if s == by(SortBy::Updated, false)));
+        assert!(list.filter.is_empty());
+        press(&mut list, KeyCode::BackTab, KeyModifiers::SHIFT);
+        press(&mut list, KeyCode::Esc, KeyModifiers::NONE);
+        // Clicking "Sort" opens the menu on the current way; ↓ Enter
+        // picks the next.
+        screen(&mut list);
+        let area = list.sort_area.unwrap();
+        assert!(matches!(click(&mut list, area.x, area.y), Action::None));
         let text = screen(&mut list);
         assert!(text.contains("Updated ↑") && text.contains("Title ↓") && !text.contains("oldest first"), "{text}");
         assert!(text.contains("Enter sort") && text.contains("Esc close"), "{text}");
@@ -1215,7 +1239,8 @@ mod tests {
         assert!(list.sort_menu.is_none());
         assert_eq!(titles(&mut list), ["Untitled", "Alpha", "beta"]);
         // Esc just closes it.
-        press(&mut list, KeyCode::Tab, KeyModifiers::NONE);
+        screen(&mut list);
+        click(&mut list, area.x, area.y);
         assert!(matches!(press(&mut list, KeyCode::Esc, KeyModifiers::NONE), Action::None));
         assert!(list.sort_menu.is_none() && list.dialog.is_none());
         // Or click "Sort", then a way of sorting.

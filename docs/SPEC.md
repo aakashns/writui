@@ -90,8 +90,26 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   terminal's own title comes back on quitting, where the terminal keeps a
   title stack (xterm's push / pop title; others ignore it).
 - Shortcuts use Ctrl (not Cmd — most terminals swallow Cmd). The one
-  exception: Cmd+Left/Right also go to the start/end of the line on macOS,
-  where the terminal passes Cmd on (Alacritty does).
+  exception: Cmd+arrows also move on macOS, where the terminal passes Cmd
+  on (Alacritty does).
+
+  > Cmd/Ctrl+up/down should jump to the start/end of the post
+
+  > similarly, option/alt+up/down should jump logical units
+
+  > also with Cmd/Ctrl+left, if i'm at the beginning of a line, i should go
+  > the beginning of the sentence or the beginning of the previous line,
+  > whicheer is closer. similarly for Cmd/Ctrl+right
+
+  Ctrl/Cmd+Left/Right go to the start / end of the line (like Home / End;
+  a line here is a row on screen). From there, Ctrl/Cmd+Left goes to the
+  start of the sentence or of the row before, whichever is nearer, and
+  Ctrl/Cmd+Right to the end of the sentence or of the row after. A
+  sentence ends at `.`, `!`, `?` or `…` (and any closing quotes, brackets,
+  `*` or `_`) before a space, or at the end of its paragraph; a blank line
+  counts as a row. Ctrl/Cmd+Up/Down to the start / end of the post (like Ctrl+Home /
+  Ctrl+End). Option/Alt+Left/Right jump by word, Option/Alt+Up/Down by
+  paragraph. Shift with any of them selects.
 
   > support cmd+c and cmd+v for cut/copy/paste (mac defaults)
 
@@ -169,11 +187,13 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   Each row shows the title and when it was last updated.
 - A "New" action, always visible, "Import" right below it (with a
   different icon: "+ New (n)", "» Import (i)", the shortcuts dim), a blank
-  line, then a search field ("🔎 Type to filter…", always underlined, and
+  line, then a search field ("🔎 Type to filter (/)", always underlined, and
   all of it dim until typing goes into it) with "Sort: Updated ↓" on its
   right, on the same row. "New" is highlighted
   when the list opens (unless it's coming back to a post, which stays
   highlighted).
+
+  > Change Type to filter.. to Type to filter (/)
 
   > change "New Post" to just "New"
 
@@ -263,11 +283,17 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
   Sorting: by when posts were updated or created, or by title (ignoring
   case), either way round. ↓ is newest first (or Z to A), ↑ oldest first
-  (or A to Z). Clicking "Sort" or pressing Tab (in the field too) drops
+  (or A to Z). Clicking "Sort" drops
   down a menu under it, right-aligned, with six rows: Updated ↓ / ↑,
   Created ↓ / ↑, Title ↑ / ↓. The
   current one is highlighted; ↑/↓ and Enter, or a click, picks one; Esc
-  or a click outside closes it. The choice is remembered (in the vault).
+  or a click outside closes it.
+
+  > i want tab to cycle through the sort options, not open the dropdown
+  > (i'll use the mouse for that)
+
+  Tab (in the field too) sorts the next way in the menu's order, Shift+Tab
+  the one before, round and round. The choice is remembered (in the vault).
   The Trash is always most recently deleted first.
 
   Settings isn't a row on the list; it's `s`, shown in the hint bar.

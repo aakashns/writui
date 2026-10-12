@@ -217,6 +217,63 @@ impl Buffer {
         self.cursor = if line < self.rope.len_lines() { self.line_end(line) } else { self.len() };
     }
 
+    /// Where the sentence before `pos` starts: after a `.`, `!`, `?` or `…`
+    /// (and any closing quotes or brackets) and a space, or at the start of
+    /// its paragraph.
+    pub fn sentence_start(&self, pos: usize) -> usize {
+        let mut i = pos;
+        while i > 0 && self.rope.char(i - 1).is_whitespace() {
+            i -= 1;
+        }
+        if i == 0 {
+            return 0;
+        }
+        let start = self.rope.line_to_char(self.rope.char_to_line(i - 1));
+        let ends_sentence = |mut k: usize| {
+            while k > start && self.rope.char(k - 1).is_whitespace() {
+                k -= 1;
+            }
+            while k > start && is_closer(self.rope.char(k - 1)) {
+                k -= 1;
+            }
+            k > start && is_terminator(self.rope.char(k - 1))
+        };
+        let mut j = i - 1;
+        while j > start {
+            if self.rope.char(j - 1).is_whitespace() && !self.rope.char(j).is_whitespace() && ends_sentence(j) {
+                return j;
+            }
+            j -= 1;
+        }
+        start
+    }
+
+    /// Where the sentence after `pos` ends: after its `.`, `!`, `?` or `…`
+    /// (and any closing quotes or brackets), or at the end of its paragraph.
+    pub fn sentence_end(&self, pos: usize) -> usize {
+        let mut i = pos;
+        while i < self.len() && self.rope.char(i).is_whitespace() {
+            i += 1;
+        }
+        if i == self.len() {
+            return i;
+        }
+        let end = self.line_end(self.rope.char_to_line(i));
+        while i < end {
+            if is_terminator(self.rope.char(i)) {
+                let mut k = i + 1;
+                while k < end && is_closer(self.rope.char(k)) {
+                    k += 1;
+                }
+                if k == end || self.rope.char(k).is_whitespace() {
+                    return k;
+                }
+            }
+            i += 1;
+        }
+        end
+    }
+
     /// The chars of the word at `pos` (or the run of spaces or punctuation
     /// there), for a double-click.
     pub fn word_at(&self, pos: usize) -> Range<usize> {
@@ -313,6 +370,16 @@ impl Buffer {
 
 /// Letters, digits and the like (and the marks and apostrophes inside
 /// words), as opposed to spaces and punctuation.
+fn is_terminator(ch: char) -> bool {
+    matches!(ch, '.' | '!' | '?' | '…')
+}
+
+/// What can follow a sentence's full stop: closing quotes and brackets,
+/// and markdown's `*` / `_` around it.
+fn is_closer(ch: char) -> bool {
+    matches!(ch, '"' | '\'' | '”' | '’' | ')' | ']' | '*' | '_')
+}
+
 fn is_word(ch: char) -> bool {
     ch.is_alphanumeric() || matches!(ch, '_' | '\'' | '’' | '\u{300}'..='\u{36f}')
 }

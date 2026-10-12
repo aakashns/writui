@@ -123,11 +123,13 @@ README.md     for people using writui; CONTRIBUTING.md for working on it
 ## Versions and releases
 
 The repo is public, and merging a PR that bumps `version` in `Cargo.toml`
-publishes a GitHub release of it, with notes generated from the merged PRs.
-So every PR that changes the app bumps the version (and `Cargo.lock`, via
+publishes a GitHub release of it. Its notes (`.github/release-notes.sh`)
+list each PR merged since the last release: its title, then the full
+message of each of its commits, so write commit messages for users too.
+Every PR that changes the app bumps the version (and `Cargo.lock`, via
 `cargo build`): minor for new behaviour, patch for fixes only (`0.1.0` →
 `0.2.0` / `0.1.1`). Docs-only PRs don't bump and don't release. Release
-builds are macOS and Linux only; Windows is build-from-source. The PR title becomes a line in the release notes, so make it
+builds are macOS and Linux only; Windows is build-from-source. The PR title becomes a heading in the release notes, so make it
 read well to users, not just the creator. CI (`.github/workflows/ci.yml`) runs
 clippy and the tests on Linux and macOS for every PR; keep it green. Windows
 isn't in CI; the README's Windows section says how to run the checks there.
