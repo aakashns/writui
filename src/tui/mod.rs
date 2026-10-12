@@ -1,5 +1,6 @@
 //! The terminal UI: terminal setup, the event loop, and switching screens.
 
+mod context_menu;
 mod dialog;
 mod editor;
 mod file_dialog;
@@ -459,7 +460,7 @@ impl App {
             Action::Lock => self.lock(),
             // Only a convenience: not worth an error.
             Action::SortBy(sort) => {
-                let _ = self.vault()?.set_list_sort(sort.name());
+                let _ = self.vault()?.set_list_sort(&sort.name());
             }
             Action::SaveSettings(settings) => {
                 if let Err(err) = self.vault()?.set_settings(&settings)

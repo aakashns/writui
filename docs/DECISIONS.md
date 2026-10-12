@@ -573,3 +573,13 @@ encryption. Phones are a must (the creator's call), so input goes through a
 hidden text field (phone keyboards don't report real keys, and autocorrect
 and swipe typing replace whole words), with an extra-keys row for Esc, Ctrl,
 Tab and the arrows.
+
+## The "Sort by" dropdown
+
+The dropdown is the editor's right-click menu, moved up to be shared:
+same keys, same look, so the list didn't get a second kind of popup. Its
+dim right-hand column, a shortcut in the editor, holds "newest first" /
+"A to Z" here, since an arrow alone doesn't say which way is which. The
+vault now keeps the sort as e.g. `updated-desc`; the names 0.12.0 stored
+(`updated`, `created`, `title`) still read, as each one's usual direction,
+and an older build reading a new name falls back to "Updated ↓".

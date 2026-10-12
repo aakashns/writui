@@ -112,15 +112,17 @@ vault: the encrypted file that holds all your posts. After that, it asks for
 the password each time it starts.
 
 - **Posts** are listed with the most recently changed first. Open one with
-  Enter or a click, start a new one with `n`. The list's shortcuts are
-  single keys, shown at the bottom. Esc asks before quitting. writui opens
+  Enter or a click, start a new one with `n` (or Enter: "New" is
+  highlighted when the list opens). The list's shortcuts are single keys,
+  shown next to "New" and "Import" and at the bottom. Esc asks before quitting. writui opens
   where you left it: on the post you were writing, cursor and all.
 - **Search:** press `/` (or click "Type to filter…") and type. Posts with
   every word you type, anywhere in their text or front matter, are listed,
   and the first is highlighted: Enter opens it, ↑/↓ pick another. Esc
   clears the search.
-- **Sort** the list by when posts were updated or created, or by title:
-  click one under the search, or press Tab.
+- **Sort** the list by when posts were updated or created, or by title,
+  either way round: click "Sort by" on the right of the search, or press
+  Tab, and pick one.
 - **Lock** with Ctrl+O, wherever you are: writui asks for the password
   again, then takes you back to where you were.
 - **Zen writing:** the editor shows only your words. Hold Ctrl to see the

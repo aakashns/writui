@@ -118,7 +118,7 @@ impl Settings {
             self.hints.render(frame, hint_area, &hints);
             return;
         }
-        self.hints.render(frame, hint_area, &[hint("Enter", "change", Cmd::Change), hint("Esc", "back to posts", Cmd::Back), hint("Ctrl+O", "lock", Cmd::Lock)]);
+        self.hints.render(frame, hint_area, &[hint("Enter", "change", Cmd::Change), hint("Esc", "back", Cmd::Back), hint("Ctrl+O", "lock", Cmd::Lock)]);
     }
 
     pub fn handle(&mut self, event: Event) -> Action {

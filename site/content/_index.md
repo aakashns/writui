@@ -16,7 +16,7 @@
   works in any modern terminal: Alacritty, Ghostty, iTerm2, and others.
 - **Finds anything.** Type to search the full text of every post, front
   matter and all, and sort the list by when posts were updated or created,
-  or by title.
+  or by title, either way round.
 - **Gets out of the way.** A single centred column of text. The word count
   and shortcuts show up while you hold Ctrl, and it opens where you left
   off.

@@ -1,6 +1,7 @@
-//! The menu a right click opens in the text: Cut, Copy and Paste, each
-//! faded and doing nothing when it can't be done. ↑/↓ and the mouse
-//! highlight, Enter or a click runs one, Esc or a click outside closes it.
+//! A small menu that drops down where it's opened: the right-click menu in
+//! the text (Cut, Copy and Paste, each faded and doing nothing when it
+//! can't be done), and the list's "Sort by". ↑/↓ and the mouse highlight,
+//! Enter or a click runs one, Esc or a click outside closes it.
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{Event, KeyCode, MouseButton, MouseEventKind};
@@ -10,11 +11,12 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, Paragraph};
 use unicode_width::UnicodeWidthStr;
 
-use super::super::menu::Outcome;
+use super::menu::Outcome;
 
 pub struct Entry<C> {
     pub label: &'static str,
-    /// The command's own shortcut, e.g. "Ctrl+X".
+    /// Dim, on the right: the command's own shortcut, e.g. "Ctrl+X", or a
+    /// note, e.g. "newest first".
     pub key: &'static str,
     pub cmd: C,
     pub enabled: bool,
@@ -34,12 +36,34 @@ impl<C: Copy> ContextMenu<C> {
         ContextMenu { entries, at, selected: None, area: Rect::default() }
     }
 
-    pub fn render(&mut self, frame: &mut Frame) {
-        let screen = frame.area();
+    /// With entry `i` highlighted, e.g. the choice already made.
+    pub fn with_selected(mut self, i: usize) -> Self {
+        self.selected = Some(i).filter(|&i| self.entries.get(i).is_some_and(|e| e.enabled));
+        self
+    }
+
+    /// The highlighted entry's command, if it can be run.
+    pub fn selected(&self) -> Option<C> {
+        self.selected.and_then(|i| self.entries.get(i)).filter(|e| e.enabled).map(|e| e.cmd)
+    }
+
+    /// Opened at `at` instead.
+    pub fn moved_to(mut self, at: Position) -> Self {
+        self.at = at;
+        self
+    }
+
+    /// How wide it's drawn, in columns.
+    pub fn width(&self) -> u16 {
         let label_width = self.entries.iter().map(|e| e.label.width()).max().unwrap_or(0);
         let key_width = self.entries.iter().map(|e| e.key.width()).max().unwrap_or(0);
         // Borders, a space each side, and three between label and key.
-        let width = (label_width + key_width + 7) as u16;
+        (label_width + key_width + 7) as u16
+    }
+
+    pub fn render(&mut self, frame: &mut Frame) {
+        let screen = frame.area();
+        let width = self.width();
         let height = self.entries.len() as u16 + 2;
         let x = self.at.x.min(screen.right().saturating_sub(width));
         let y = if self.at.y + height <= screen.bottom() { self.at.y } else { self.at.y.saturating_sub(height) };
