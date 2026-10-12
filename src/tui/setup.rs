@@ -11,7 +11,9 @@ use ratatui::widgets::Paragraph;
 
 use super::Action;
 use super::hints::{HintBar, hint};
-use super::widgets::{COLUMN_WIDTH, PasswordField, centered, dev_password_note, overview, truncate};
+use super::widgets::{
+    COLUMN_WIDTH, PasswordField, centered, dev_password_note, overview, title, truncate,
+};
 
 const MIN_PASSWORD_LEN: usize = 8;
 const LABEL_WIDTH: usize = 18;
@@ -62,8 +64,7 @@ impl Setup {
             Line::default()
         };
         let path = format!("Vault: {}", self.vault_path.display());
-        let mut lines = vec![
-            Line::from("writui".bold()),
+        let mut rest = vec![
             Line::default(),
             Line::from("Create your vault"),
             Line::default(),
@@ -79,16 +80,18 @@ impl Setup {
             Line::from(truncate(&path, COLUMN_WIDTH as usize).dim()),
             Line::default(),
         ];
-        lines.extend(overview());
+        rest.extend(overview());
         if let Some(note) = dev_password_note() {
-            lines.extend([Line::default(), Line::from(note.dim())]);
+            rest.extend([Line::default(), Line::from(note.dim())]);
         }
-        const FIRST_FIELD_LINE: u16 = 8;
+        let mut lines = title(body, rest.len());
+        let first_field_line = lines.len() as u16 + 7;
+        lines.extend(rest);
 
         let area = centered(body, COLUMN_WIDTH, lines.len() as u16);
         for i in 0..2 {
             self.field_areas[i] =
-                Rect::new(area.x, area.y + FIRST_FIELD_LINE + i as u16, area.width, 1);
+                Rect::new(area.x, area.y + first_field_line + i as u16, area.width, 1);
         }
         if !self.busy {
             let field = &self.field_areas[self.focus];

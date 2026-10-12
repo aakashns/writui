@@ -18,10 +18,10 @@ Pages for the repo (it's still enabled, with the writui.com domain).
 
 The creator's batch of list / editor ideas shipped in `0.12.0`, and the
 "Sort" dropdown and list tweaks in `0.13.0`, a Nerd Font setting,
-`writui info` and Select All in `0.14.0`. In review (`0.15.0`): Tab cycles
-the sort, Ctrl/Cmd+Up/Down jump to the start / end of the post, Ctrl/Cmd+
-Left/Right go on by sentence or row, and "Type to filter (/)". After it
-merges:
+`writui info` and Select All in `0.14.0`, Tab cycling the sort and
+Ctrl/Cmd+arrow jumps in `0.15.0`. In review (`0.16.0`): the logo as a big
+banner on the password screens, and the whole repo run through `cargo fmt`.
+After it merges:
 
 1. **Try online** (writui.com/try), below: the creator wants it next, and
    it must work on a phone. Probably two or three PRs, in the order listed.

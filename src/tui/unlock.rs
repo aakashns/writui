@@ -9,7 +9,9 @@ use ratatui::widgets::Paragraph;
 
 use super::Action;
 use super::hints::{HintBar, hint};
-use super::widgets::{COLUMN_WIDTH, PasswordField, centered, dev_password_note, overview};
+use super::widgets::{
+    COLUMN_WIDTH, PasswordField, centered, dev_password_note, overview, title,
+};
 
 const LABEL: &str = "Password  ";
 
@@ -57,22 +59,25 @@ impl Unlock {
         } else {
             Line::default()
         };
-        let mut lines = vec![
-            Line::from("writui".bold()),
+        let mut rest = vec![
             Line::default(),
             Line::from(vec![Span::raw(LABEL).bold(), Span::raw(self.field.masked())]),
             Line::default(),
             status,
             Line::default(),
         ];
-        lines.extend(overview());
+        rest.extend(overview());
         if let Some(note) = dev_password_note() {
-            lines.extend([Line::default(), Line::from(note.dim())]);
+            rest.extend([Line::default(), Line::from(note.dim())]);
         }
+        let mut lines = title(body, rest.len());
+        let field_line = lines.len() as u16 + 1;
+        lines.extend(rest);
         let area = centered(body, COLUMN_WIDTH, lines.len() as u16);
         if !self.busy {
             let x = area.x + (LABEL.len() + self.field.len()) as u16;
-            frame.set_cursor_position(Position::new(x.min(area.right() - 1), area.y + 2));
+            let position = Position::new(x.min(area.right() - 1), area.y + field_line);
+            frame.set_cursor_position(position);
         }
         frame.render_widget(Paragraph::new(lines), area);
 

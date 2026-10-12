@@ -159,6 +159,17 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   elsewhere).
 - Auto-lock after a period of inactivity — planned, not urgent.
 
+  > on the password page, can we put writui in a fancy ascii font?
+
+  > no i want something that feels closer to the normal monospace font
+  > that we have for the logo
+
+- Both password screens open with the logo drawn large in block characters:
+  the `>` mark, the green caret bar, and "writui" in bold lowercase pixel
+  letters, all sitting on one baseline and fitting the 68-column text
+  column. Windows narrower than that, or too short to fit it, get the plain
+  "writui" title instead.
+
   > and finally, on the password screen, let's add an "Overview" describing
   > how the app works in no more than 5-6 points, each no longer than one
   > line. this is for new users and returning ones, run the copy by me once
