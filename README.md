@@ -121,7 +121,7 @@ the password each time it starts.
   and the first is highlighted: Enter opens it, ↑/↓ pick another. Esc
   clears the search.
 - **Sort** the list by when posts were updated or created, or by title,
-  either way round: click "Sort by" on the right of the search, or press
+  either way round: click "Sort" on the right of the search, or press
   Tab, and pick one.
 - **Lock** with Ctrl+O, wherever you are: writui asks for the password
   again, then takes you back to where you were.
@@ -148,8 +148,8 @@ the password each time it starts.
   paragraph, or hold Shift while moving (Ctrl+A selects everything).
   Typing or Backspace replaces what's selected. Ctrl+C copies, Ctrl+X cuts
   and Ctrl+V pastes, using the system clipboard (your terminal's own paste,
-  like Cmd+V, works too). Right-click for a menu with Cut, Copy and Paste.
-  Esc drops the selection. Copying a whole post and pasting it into an empty
+  like Cmd+V, works too). Right-click for a menu with Cut, Copy, Paste and
+  Select All. Esc drops the selection. Copying a whole post and pasting it into an empty
   one gives the same post, not a doubled `# `.
 - **Formatting** follows standard markdown (CommonMark, plus GitHub's
   `~~strikethrough~~`, task lists and tables), so text is formatted only
@@ -179,8 +179,10 @@ the password each time it starts.
 - **Deleting** (`d`) moves a post to the Trash, where you can restore it
   for 30 days.
 - **Settings** (`s` on the list): your name, added as the
-  `author` in exported front matter, and how wide the text is while
-  writing (68 characters unless you change it).
+  `author` in exported front matter, how wide the text is while
+  writing (68 characters unless you change it), and whether your
+  terminal's font is a [Nerd Font](https://www.nerdfonts.com), so writui
+  can use its icons.
 
 ### Cmd keys on a Mac
 
@@ -225,7 +227,8 @@ the same way (`keybind = super+k=unbind` in Ghostty).
 | Windows  | `%APPDATA%\writui\writui.db`                       |
 
 It's a single file, so backing up means copying it somewhere safe. The copy
-is just as encrypted as the original.
+is just as encrypted as the original. `writui info` prints where your vault
+and config file are, and which version of writui you have.
 
 To keep the vault somewhere else (say, a synced folder), run
 `writui --db ~/path/to/writui.db`, or make it the default by putting this in

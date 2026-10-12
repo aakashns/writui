@@ -43,10 +43,11 @@ Sleep 1.5s
 Type@5ms "writui-dev"
 Enter
 Sleep 1s
+Type "n"
+Sleep 600ms
 Show
 
-Sleep 1.2s
-Type "n"
+# It starts on the new post, as its title is typed.
 Sleep 600ms
 Type "Writing in the terminal"
 Enter

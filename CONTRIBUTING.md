@@ -17,7 +17,7 @@ install.sh    the one-line installer for macOS and Linux
 .github/      CI and release workflows
 ```
 
-`CLAUDE.md` describes the day-to-day workflow in detail: how PRs are put
+`AGENTS.md` (which `CLAUDE.md` points to) describes the day-to-day workflow in detail: how PRs are put
 together, tested and shipped.
 
 ## Build and run

@@ -1,5 +1,6 @@
 //! The Settings screen: a few things to set, kept in the vault. Each row
-//! shows a setting's value; Enter (or a click) changes it in a dialog.
+//! shows a setting's value; Enter (or a click) changes it in a dialog, or
+//! switches it on or off.
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{Event, KeyCode, MouseButton, MouseEventKind};
@@ -21,9 +22,10 @@ const MAX_AUTHOR: usize = 80;
 enum Field {
     Author,
     LineWidth,
+    NerdFont,
 }
 
-const FIELDS: [Field; 2] = [Field::Author, Field::LineWidth];
+const FIELDS: [Field; 3] = [Field::Author, Field::LineWidth, Field::NerdFont];
 
 #[derive(Clone, Copy)]
 enum Cmd {
@@ -90,6 +92,7 @@ impl Settings {
                     Field::Author if self.values.author.is_empty() => ("Author", Span::raw("none").dim().italic()),
                     Field::Author => ("Author", Span::raw(self.values.author.clone())),
                     Field::LineWidth => ("Line width", Span::raw(format!("{} characters", self.values.line_width))),
+                    Field::NerdFont => ("Nerd Font", Span::raw(if self.values.nerd_font { "on" } else { "off" })),
                 };
                 let value = Span::styled(truncate(&value.content, width.saturating_sub(name.len() + 2)), value.style);
                 let pad = width.saturating_sub(name.len() + value.width());
@@ -118,7 +121,8 @@ impl Settings {
             self.hints.render(frame, hint_area, &hints);
             return;
         }
-        self.hints.render(frame, hint_area, &[hint("Enter", "change", Cmd::Change), hint("Esc", "back", Cmd::Back), hint("Ctrl+O", "lock", Cmd::Lock)]);
+        let change = if self.field() == Field::NerdFont { "switch" } else { "change" };
+        self.hints.render(frame, hint_area, &[hint("Enter", change, Cmd::Change), hint("Esc", "back", Cmd::Back), hint("Ctrl+O", "lock", Cmd::Lock)]);
     }
 
     pub fn handle(&mut self, event: Event) -> Action {
@@ -172,6 +176,12 @@ impl Settings {
         match cmd {
             Cmd::Back => Action::BackToList(None),
             Cmd::Lock => Action::Lock,
+            // On or off: no need to ask.
+            Cmd::Change if self.field() == Field::NerdFont => {
+                let mut values = self.values.clone();
+                values.nerd_font = !values.nerd_font;
+                self.save(values)
+            }
             Cmd::Change => {
                 self.dialog = Some(self.dialog_for(self.field()));
                 Action::None
@@ -194,16 +204,22 @@ impl Settings {
                             return Action::None;
                         }
                     },
+                    Field::NerdFont => {}
                 }
-                if values == self.values {
-                    return Action::None;
-                }
-                self.values = values.clone();
-                self.error = None;
-                self.notice = Some("Saved.".into());
-                Action::SaveSettings(values)
+                self.save(values)
             }
         }
+    }
+
+    /// Keep `values`, if they've changed; the app stores them.
+    fn save(&mut self, values: Values) -> Action {
+        if values == self.values {
+            return Action::None;
+        }
+        self.values = values.clone();
+        self.error = None;
+        self.notice = Some("Saved.".into());
+        Action::SaveSettings(values)
     }
 
     fn dialog_for(&self, field: Field) -> Dialog<Cmd> {
@@ -241,6 +257,7 @@ impl Settings {
                 .with_input("68", 3)
                 .with_text(&self.values.line_width.to_string())
             }
+            Field::NerdFont => unreachable!("switched on or off, not asked"),
         }
     }
 }
@@ -296,6 +313,13 @@ mod tests {
         type_text(&mut settings, "80");
         let Action::SaveSettings(values) = press(&mut settings, KeyCode::Enter) else { panic!("not saved") };
         assert_eq!((values.author.as_str(), values.line_width), ("Ada", 80));
+        // Nerd Font: Enter switches it, no dialog.
+        press(&mut settings, KeyCode::Down);
+        let text = screen(&mut settings);
+        assert!(text.contains("Nerd Font") && text.contains("off") && text.contains("Enter switch"), "{text}");
+        let Action::SaveSettings(values) = press(&mut settings, KeyCode::Enter) else { panic!("not saved") };
+        assert!(values.nerd_font && settings.dialog.is_none());
+        assert!(screen(&mut settings).contains("on"));
         // Esc goes back.
         assert!(matches!(press(&mut settings, KeyCode::Esc), Action::BackToList(None)));
     }

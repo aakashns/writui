@@ -16,10 +16,12 @@ The site is on Cloudflare Workers: writui.com serves it (and
 `install.sh`), and www redirects. Still to do by hand: turn off GitHub
 Pages for the repo (it's still enabled, with the writui.com domain).
 
-The creator's batch of list / editor ideas shipped in `0.12.0`. A
-follow-up (`0.13.0`, in review): "Sort by" as a dropdown on the search
-row, either way round; "New" highlighted on opening; "(n)" / "(i)" on
-their rows; "/ filter"; Settings' "Esc back". After it merges:
+The creator's batch of list / editor ideas shipped in `0.12.0`, and the
+"Sort" dropdown and list tweaks in `0.13.0`. In review (`0.14.0`): "Sort
+by" shortened to "Sort", the filter line dim until it's in use, the
+dropdown without its notes, a Nerd Font setting, `writui info`, Select
+All in the right-click menu, and site touches (no "Install" heading, the
+Copy button centred, the demo starting on a new post). After it merges:
 
 1. **Try online** (writui.com/try), below: the creator wants it next, and
    it must work on a phone. Probably two or three PRs, in the order listed.
@@ -169,8 +171,10 @@ The creator's batch of ideas, after M3.
 - [x] Search field highlights the first match while typing; sort by
       updated / created / title
 - [x] Lock (Ctrl+O), back to the same screen
-- [x] "Sort by" dropdown on the search row, ascending or descending;
+- [x] "Sort" dropdown on the search row, ascending or descending;
       "New" highlighted on opening; shortcuts on "New" / "Import"
+- [x] Nerd Font setting (the search icon); `writui info`; Select All in
+      the right-click menu
 
 ## Later
 

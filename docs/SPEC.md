@@ -169,8 +169,9 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   Each row shows the title and when it was last updated.
 - A "New" action, always visible, "Import" right below it (with a
   different icon: "+ New (n)", "» Import (i)", the shortcuts dim), a blank
-  line, then a search field ("🔎 Type to filter…", always underlined) with
-  "Sort by: Updated ↓" on its right, on the same row. "New" is highlighted
+  line, then a search field ("🔎 Type to filter…", always underlined, and
+  all of it dim until typing goes into it) with "Sort: Updated ↓" on its
+  right, on the same row. "New" is highlighted
   when the list opens (unless it's coming back to a post, which stays
   highlighted).
 
@@ -226,6 +227,12 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   still takes its space, so writui can't tell. The emoji it is; a setting
   could choose later.)
 
+  > add a nerd fonts on/off setting in settings, and use a nerd font char
+  > instead of search magnifying glass
+
+  (So it's a setting: with Nerd Font on, the search field's icon is the
+  Nerd Font magnifier, nf-fa-search, in the terminal's own colour.)
+
   Searching (creator's call: a field you move into, so letters can stay
   shortcuts): `/`, ↓ from Import, or a click puts typing into the field.
   Every word typed has to appear somewhere in the post's text or its front
@@ -248,11 +255,17 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   > for import. and change "/" in the bottom menu to say filter instead of
   > search. and always show an underline for type to filter
 
+  > change "Sort by" to just Sort", keep the entire type to filter line in
+  > muted text till it ise selcted (so the underline does not have 2
+  > colors).
+
+  > and the hints are not needed in the short menu
+
   Sorting: by when posts were updated or created, or by title (ignoring
   case), either way round. ↓ is newest first (or Z to A), ↑ oldest first
-  (or A to Z). Clicking "Sort by" or pressing Tab (in the field too) drops
-  down a menu under it, right-aligned, with six rows, each with a dim note
-  of what the arrow means: Updated ↓ / ↑, Created ↓ / ↑, Title ↑ / ↓. The
+  (or A to Z). Clicking "Sort" or pressing Tab (in the field too) drops
+  down a menu under it, right-aligned, with six rows: Updated ↓ / ↑,
+  Created ↓ / ↑, Title ↑ / ↓. The
   current one is highlighted; ↑/↓ and Enter, or a click, picks one; Esc
   or a click outside closes it. The choice is remembered (in the vault).
   The Trash is always most recently deleted first.
@@ -367,9 +380,12 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   > add a context menu for when i right click on a selection to cut, copy,
   > paste (disabled if clipboard is empty)
 
-- Right-clicking the text opens a small menu there: Cut, Copy, Paste, with
-  their shortcuts. Cut and Copy are faded (and do nothing) without a
-  selection, Paste when the clipboard is empty. Right-clicking inside the
+  > in the context menu in a post, add  "Select All"
+
+- Right-clicking the text opens a small menu there: Cut, Copy, Paste,
+  Select All, with their shortcuts. Cut and Copy are faded (and do
+  nothing) without a selection, Paste when the clipboard is empty, Select
+  All when the post is empty. Right-clicking inside the
   selection keeps it; elsewhere, the cursor moves there first. ↑/↓ and the
   mouse highlight, Enter or a click runs one, Esc or a click outside
   closes it.
@@ -624,6 +640,9 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 > and on the settings page Esc should just say "back"
 
+> add a nerd fonts on/off setting in settings, and use a nerd font char
+> instead of search magnifying glass
+
 **Details**
 
 - A Settings screen, reached with `s` on the list (it's on the hint bar). Each row is a setting and its value; Enter or a
@@ -637,6 +656,10 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
     front matter.
   - **Line width**: how wide the text is in the editor (and the history),
     from 40 to 120 characters; 68 by default.
+  - **Nerd Font**: on or off (off by default), for terminals whose font is
+    a Nerd Font: writui uses its icons (so far, the search field's
+    magnifier). Enter or a click switches it, no dialog; the hint says
+    "Enter switch".
 - Later: what Tab types, default preview preset, API keys, default
   model, auto-lock timeout — all stored in the vault.
 - The vault file location has to be known *before* unlocking, so it lives
@@ -667,7 +690,7 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
   The install command has a "Copy" button in its corner (shown only where
   the browser allows copying; it says "Copied" for a moment). The landing
-  page is kept up to date with each new feature (see CLAUDE.md). "Changelog" in the menu links to the GitHub
+  page is kept up to date with each new feature (see AGENTS.md). "Changelog" in the menu links to the GitHub
   releases page.
 - Posts live in the encrypted vault, but the blog lives in the public repo —
   so blog posts get into `site/content/blog/` via "export as markdown",
@@ -761,6 +784,9 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 > also, i want you to remove the migrate step within upgrade, since migration
 > is auto applied on next open, so no point asking for the password twice
 
+> add a writui info command that prints current version, database file
+> location, config file location
+
 **Details**
 
 - Plain `writui` opens the app; subcommands (e.g. `writui list`,
@@ -768,6 +794,9 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - The CLI still needs the vault unlocked, so it asks for the password. How
   that works for scripting is to be decided when we get there.
 - `writui --version` prints the version.
+- `writui info` prints the version, the vault's location and the config
+  file's (respecting `--db`), saying "(not there yet)" for one that
+  doesn't exist. It doesn't need the password.
 - `writui upgrade` checks GitHub for a newer release, shows "0.1.0 → 0.2.0"
   and a link to what's new, asks before upgrading (`--yes` skips that), then
   downloads it, checks its checksum and replaces itself. It doesn't touch

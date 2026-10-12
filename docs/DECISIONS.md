@@ -583,3 +583,7 @@ dim right-hand column, a shortcut in the editor, holds "newest first" /
 vault now keeps the sort as e.g. `updated-desc`; the names 0.12.0 stored
 (`updated`, `created`, `title`) still read, as each one's usual direction,
 and an older build reading a new name falls back to "Updated ↓".
+
+Later the same day the creator dropped the notes ("not needed"); the
+arrows are on their own, and the menu leaves no room for keys when it has
+none.

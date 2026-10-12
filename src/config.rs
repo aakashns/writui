@@ -22,7 +22,7 @@ fn dev_dir() -> PathBuf {
     PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.dev-data"))
 }
 
-fn config_path() -> Result<PathBuf> {
+pub fn config_path() -> Result<PathBuf> {
     if cfg!(debug_assertions) {
         return Ok(dev_dir().join("config.toml"));
     }

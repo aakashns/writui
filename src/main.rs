@@ -29,6 +29,8 @@ enum Command {
         #[arg(short, long)]
         yes: bool,
     },
+    /// Show writui's version, and where its vault and config file are.
+    Info,
     /// Does nothing. writui 0.5.0 to 0.9.0 run this on the new binary after
     /// upgrading; the vault is now updated the next time it's unlocked.
     #[command(hide = true)]
@@ -43,6 +45,20 @@ fn main() -> Result<()> {
             tui::run(vault_path)
         }
         Some(Command::Upgrade { yes }) => upgrade::run(yes),
+        Some(Command::Info) => info(cli.db),
         Some(Command::Migrate) => Ok(()),
     }
+}
+
+/// `writui info`: the version, then where the vault and the config file
+/// are, saying if one isn't there (yet).
+fn info(db: Option<PathBuf>) -> Result<()> {
+    let line = |name: &str, path: &std::path::Path| {
+        let missing = if path.exists() { "" } else { " (not there yet)" };
+        println!("{:<8}{}{missing}", format!("{name}:"), path.display());
+    };
+    println!("writui {}", env!("CARGO_PKG_VERSION"));
+    line("Vault", &config::vault_path(db)?);
+    line("Config", &config::config_path()?);
+    Ok(())
 }

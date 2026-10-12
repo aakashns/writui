@@ -111,11 +111,13 @@ pub struct Settings {
     pub author: String,
     /// How wide the text is in the editor, in characters.
     pub line_width: u16,
+    /// The terminal's font is a Nerd Font: use its icons.
+    pub nerd_font: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { author: String::new(), line_width: DEFAULT_LINE_WIDTH }
+        Settings { author: String::new(), line_width: DEFAULT_LINE_WIDTH, nerd_font: false }
     }
 }
 
@@ -455,13 +457,15 @@ impl Vault {
             .and_then(|value| value.parse().ok())
             .filter(|width| LINE_WIDTHS.contains(width))
             .unwrap_or(defaults.line_width);
-        Ok(Settings { author: self.value("author")?.unwrap_or(defaults.author), line_width })
+        let nerd_font = self.value("nerd_font")?.map_or(defaults.nerd_font, |value| value == "on");
+        Ok(Settings { author: self.value("author")?.unwrap_or(defaults.author), line_width, nerd_font })
     }
 
     pub fn set_settings(&self, settings: &Settings) -> Result<()> {
         let tx = self.conn.unchecked_transaction()?;
         self.set_value("author", &settings.author)?;
         self.set_value("line_width", &settings.line_width.to_string())?;
+        self.set_value("nerd_font", if settings.nerd_font { "on" } else { "off" })?;
         tx.commit()?;
         Ok(())
     }
@@ -888,7 +892,7 @@ mod tests {
         let vault = Vault::create(&path, "pw").unwrap();
         assert_eq!(vault.settings().unwrap(), Settings::default());
         assert_eq!(vault.last_screen().unwrap(), None);
-        let settings = Settings { author: "Ada".into(), line_width: 80 };
+        let settings = Settings { author: "Ada".into(), line_width: 80, nerd_font: true };
         vault.set_settings(&settings).unwrap();
         vault.set_last_screen("post:3").unwrap();
         vault.set_list_sort("title").unwrap();
