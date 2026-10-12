@@ -149,11 +149,13 @@ footer.site a { color: inherit; }
 }
 
 .install pre { white-space: pre; padding-right: 5.5em; }
-/* The install command, with a copy button in its corner. */
-.command { position: relative; }
+/* The install command, with a copy button on its right, centred. */
+.command { position: relative; margin-bottom: 1.1em; }
+.command pre { margin: 0; }
 .copy {
   position: absolute;
-  top: 0.6em;
+  top: 50%;
+  transform: translateY(-50%);
   right: 0.6em;
   font: inherit;
   font-size: 0.75em;

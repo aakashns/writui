@@ -805,6 +805,7 @@ impl Editor {
             entry("Cut", "Ctrl+X", Cmd::Cut, selected),
             entry("Copy", "Ctrl+C", Cmd::Copy, selected),
             entry("Paste", "Ctrl+V", Cmd::Paste, can_paste),
+            entry("Select All", "Ctrl+A", Cmd::SelectAll, self.buffer.rope().len_chars() > 0),
         ];
         self.context = Some(ContextMenu::new(entries, Position::new(column, row + 1)));
     }
@@ -1504,7 +1505,7 @@ mod tests {
     }
 
     #[test]
-    fn right_click_cuts_copies_and_pastes() {
+    fn right_click_cuts_copies_pastes_and_selects_all() {
         let mut h = Harness::new("# Title\nHello world");
         // Nothing selected, nothing copied: all faded, and doing nothing.
         h.mouse(MouseEventKind::Down(MouseButton::Right), LEFT + 8, 2);
@@ -1535,6 +1536,11 @@ mod tests {
         h.mouse(MouseEventKind::Down(MouseButton::Left), 70, 9);
         assert!(h.editor.context.is_none());
         assert_eq!(h.editor.text(), "# Title\nHello worldHello");
+        // Select All, under Paste.
+        h.mouse(MouseEventKind::Down(MouseButton::Right), LEFT + 1, 2);
+        assert!(h.screen().contains("Select All"));
+        h.mouse(MouseEventKind::Down(MouseButton::Left), LEFT + 4, 7);
+        assert_eq!(selected(&h).as_deref(), Some("# Title\nHello worldHello"));
     }
 
     #[test]

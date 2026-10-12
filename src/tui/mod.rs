@@ -566,7 +566,11 @@ impl App {
         let mode = list::Mode::Posts { deleted_count: vault.count_deleted()? };
         let folder = files::display_folder(&files::last_folder(vault.latest_export_settings()?.as_ref()));
         let sort = list::Sort::from_name(&vault.list_sort()?.unwrap_or_default());
-        let list = list::List::new(mode, vault.list_posts()?, select).with_import_folder(folder).with_sort(sort);
+        let nerd_font = vault.settings()?.nerd_font;
+        let list = list::List::new(mode, vault.list_posts()?, select)
+            .with_import_folder(folder)
+            .with_sort(sort)
+            .with_nerd_font(nerd_font);
         self.show(list, notice);
         Ok(())
     }

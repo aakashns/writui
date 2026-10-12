@@ -1,5 +1,5 @@
 //! The first screen: all posts, most recently updated first, under "New",
-//! "Import" and a field that searches them, with "Sort by" on its right.
+//! "Import" and a field that searches them, with "Sort" on its right.
 //! The same screen also shows the Trash.
 
 use jiff::Timestamp;
@@ -26,11 +26,13 @@ use crate::vault::{DELETED_RETENTION_DAYS, PostSummary};
 /// The longest search that can be typed.
 const MAX_FILTER: usize = 80;
 
-/// The search field's icon.
+/// The search field's icon: an emoji, or with a Nerd Font, its magnifier
+/// (nf-fa-search), which takes the terminal's own colour.
 const SEARCH_ICON: &str = "🔎 ";
+const NERD_SEARCH_ICON: &str = "\u{f002} ";
 
 /// Before the way of sorting, on the right of the search field.
-const SORT_PREFIX: &str = "Sort by: ";
+const SORT_PREFIX: &str = "Sort: ";
 
 /// How the posts are ordered: by when they were updated or created, or by
 /// title, either way round.
@@ -49,7 +51,7 @@ enum SortBy {
 }
 
 impl Sort {
-    /// As listed in the "Sort by" menu: each way of sorting, its usual
+    /// As listed in the "Sort" menu: each way of sorting, its usual
     /// direction first.
     const ALL: [Sort; 6] = [
         Sort { by: SortBy::Updated, descending: true },
@@ -72,16 +74,6 @@ impl Sort {
             (SortBy::Created, false) => "Created ↑",
             (SortBy::Title, false) => "Title ↑",
             (SortBy::Title, true) => "Title ↓",
-        }
-    }
-
-    /// What the arrow means, in the menu.
-    fn note(self) -> &'static str {
-        match (self.by, self.descending) {
-            (SortBy::Title, false) => "A to Z",
-            (SortBy::Title, true) => "Z to A",
-            (_, true) => "newest first",
-            (_, false) => "oldest first",
         }
     }
 
@@ -121,9 +113,9 @@ enum Cmd {
     /// Empty the search field.
     ClearSearch,
     Settings,
-    /// Open the "Sort by" menu.
+    /// Open the "Sort" menu.
     SortMenu,
-    /// The way highlighted in the "Sort by" menu.
+    /// The way highlighted in the "Sort" menu.
     PickSort,
     Sort(Sort),
     CloseSortMenu,
@@ -148,7 +140,7 @@ enum Row {
     Import,
     /// A blank line, above the search field.
     Gap,
-    /// The search field, with "Sort by" on its right.
+    /// The search field, with "Sort" on its right.
     Search,
     Post(usize),
     Trash,
@@ -172,9 +164,9 @@ pub struct List {
     /// What's typed in the search field.
     filter: String,
     sort: Sort,
-    /// Where "Sort by" was drawn, for the mouse.
+    /// Where "Sort" was drawn, for the mouse.
     sort_area: Option<Rect>,
-    /// The "Sort by" menu, open.
+    /// The "Sort" menu, open.
     sort_menu: Option<ContextMenu<Cmd>>,
     /// A post was asked to be highlighted; otherwise it's the first listed.
     chosen: bool,
@@ -182,6 +174,8 @@ pub struct List {
     /// vault has said; `None` while not searching.
     matches: Option<Vec<usize>>,
     dialog: Option<(usize, Dialog<Cmd>)>,
+    /// `SEARCH_ICON`, or `NERD_SEARCH_ICON`.
+    search_icon: &'static str,
     /// The import dialog, open.
     importing: Option<Box<FileDialog>>,
     /// Where the import dialog starts.
@@ -211,6 +205,7 @@ impl List {
             chosen: false,
             matches: None,
             dialog: None,
+            search_icon: SEARCH_ICON,
             importing: None,
             import_folder: String::new(),
             reimport: None,
@@ -343,6 +338,12 @@ impl List {
         self
     }
 
+    /// The terminal's font is a Nerd Font: use its icons.
+    pub fn with_nerd_font(mut self, nerd_font: bool) -> Self {
+        self.search_icon = if nerd_font { NERD_SEARCH_ICON } else { SEARCH_ICON };
+        self
+    }
+
     /// The folder the import dialog starts in, e.g. `~/blog/`.
     pub fn with_import_folder(mut self, folder: String) -> Self {
         self.import_folder = folder;
@@ -402,14 +403,14 @@ impl List {
         self.typing
     }
 
-    /// Open the "Sort by" menu under where it's drawn, the current way
+    /// Open the "Sort" menu under where it's drawn, the current way
     /// highlighted.
     fn open_sort_menu(&mut self) {
         let Some(area) = self.sort_area else { return };
-        let entries = Sort::ALL.iter().map(|&sort| Entry { label: sort.label(), key: sort.note(), cmd: Cmd::Sort(sort), enabled: true }).collect();
+        let entries = Sort::ALL.iter().map(|&sort| Entry { label: sort.label(), key: "", cmd: Cmd::Sort(sort), enabled: true }).collect();
         let current = Sort::ALL.iter().position(|&sort| sort == self.sort).unwrap_or(0);
         let menu = ContextMenu::new(entries, Position::default()).with_selected(current);
-        // Right-aligned with "Sort by", just below it.
+        // Right-aligned with "Sort", just below it.
         let x = area.right().saturating_sub(menu.width());
         self.sort_menu = Some(menu.moved_to(Position::new(x, area.y + 1)));
     }
@@ -452,7 +453,7 @@ impl List {
         let now = Timestamp::now();
         let tz = TimeZone::system();
         let width = col.width as usize;
-        // The search field, then "Sort by: Updated ↓" right-aligned; the
+        // The search field, then "Sort: Updated ↓" right-aligned; the
         // field is as wide whichever way it's sorted.
         let longest_sort = Sort::ALL.iter().map(|sort| sort.label().width()).max().unwrap_or(0);
         let field_width = width.saturating_sub(SORT_PREFIX.width() + longest_sort + 2);
@@ -467,11 +468,13 @@ impl List {
                 Row::Import => ListItem::new(Line::from(vec!["» Import".bold(), " (i)".dim()])),
                 Row::Gap => ListItem::new(Line::default()),
                 Row::Search => {
-                    let shown = scrolled(&self.filter, field_width.saturating_sub(SEARCH_ICON.width()));
-                    let text = if shown.is_empty() { Span::raw("Type to filter…").dim() } else { Span::raw(shown) };
-                    let pad = field_width.saturating_sub(SEARCH_ICON.width() + text.width());
-                    // Underlined, so it reads as a field.
-                    let field = [Span::raw(SEARCH_ICON), text, Span::raw(" ".repeat(pad))].map(Stylize::underlined);
+                    let shown = scrolled(&self.filter, field_width.saturating_sub(self.search_icon.width()));
+                    let text = if shown.is_empty() { "Type to filter…" } else { shown };
+                    let pad = field_width.saturating_sub(self.search_icon.width() + text.width());
+                    // Underlined, so it reads as a field; dim, all of it (so
+                    // the underline's one colour), until typing goes into it.
+                    let style = if in_search { Style::new().underlined() } else { Style::new().underlined().dim() };
+                    let field = [Span::raw(self.search_icon), Span::raw(text), Span::raw(" ".repeat(pad))].map(|span| span.style(style));
                     let gap = width.saturating_sub(field_width + sort_width);
                     let sort = [Span::raw(" ".repeat(gap)), Span::raw(SORT_PREFIX).dim(), Span::raw(self.sort.label()).bold()];
                     ListItem::new(Line::from(field.into_iter().chain(sort).collect::<Vec<_>>()))
@@ -529,7 +532,7 @@ impl List {
             && self.sort_menu.is_none()
             && let Some(rect) = self.search_row().and_then(row_rect)
         {
-            let icon = SEARCH_ICON.width();
+            let icon = self.search_icon.width();
             let x = rect.x + (icon + scrolled(&self.filter, field_width.saturating_sub(icon)).width()) as u16;
             frame.set_cursor_position(Position::new(x.min(col.right().saturating_sub(1)), rect.y));
         }
@@ -1131,7 +1134,7 @@ mod tests {
         let posts = vec![post(1, "One"), post(2, "Two"), post(3, "Three")];
         let mut list = List::new(Mode::Posts { deleted_count: 2 }, posts, None);
         let text = screen(&mut list);
-        assert!(text.contains("🔎") && text.contains("Type to filter…") && text.contains("Sort by: Updated ↓"), "{text}");
+        assert!(text.contains("🔎") && text.contains("Type to filter…") && text.contains("Sort: Updated ↓"), "{text}");
         assert!(!text.contains("Settings\n") && !text.contains("  Settings  "), "{text}");
         // / goes into the field; letters are typed there, not shortcuts.
         press(&mut list, KeyCode::Char('/'), KeyModifiers::NONE);
@@ -1197,15 +1200,15 @@ mod tests {
         let by = |by, descending| Sort { by, descending };
         let mut list = List::new(Mode::Posts { deleted_count: 0 }, posts.clone(), None);
         assert_eq!(titles(&mut list), ["beta", "Alpha", "Untitled"]);
-        // "Sort by" is on the right of the search field, on the same row.
+        // "Sort" is on the right of the search field, on the same row.
         let text = screen(&mut list);
         let row = text.lines().find(|line| line.contains("Type to filter…")).unwrap();
-        assert!(row.trim_end().ends_with("Sort by: Updated ↓"), "{row}");
+        assert!(row.trim_end().ends_with("Sort: Updated ↓"), "{row}");
         // Tab opens the menu on the current way; ↓ Enter picks the next,
         // and the app remembers it.
         press(&mut list, KeyCode::Tab, KeyModifiers::NONE);
         let text = screen(&mut list);
-        assert!(text.contains("Updated ↑") && text.contains("oldest first") && text.contains("Z to A"), "{text}");
+        assert!(text.contains("Updated ↑") && text.contains("Title ↓") && !text.contains("oldest first"), "{text}");
         assert!(text.contains("Enter sort") && text.contains("Esc close"), "{text}");
         press(&mut list, KeyCode::Down, KeyModifiers::NONE);
         assert!(matches!(press(&mut list, KeyCode::Enter, KeyModifiers::NONE), Action::SortBy(s) if s == by(SortBy::Updated, false)));
@@ -1215,7 +1218,7 @@ mod tests {
         press(&mut list, KeyCode::Tab, KeyModifiers::NONE);
         assert!(matches!(press(&mut list, KeyCode::Esc, KeyModifiers::NONE), Action::None));
         assert!(list.sort_menu.is_none() && list.dialog.is_none());
-        // Or click "Sort by", then a way of sorting.
+        // Or click "Sort", then a way of sorting.
         screen(&mut list);
         let area = list.sort_area.unwrap();
         assert!(matches!(click(&mut list, area.x, area.y), Action::None));
@@ -1223,7 +1226,7 @@ mod tests {
         let line = text.lines().position(|line| line.contains("Title ↓")).unwrap() as u16;
         assert!(matches!(click(&mut list, area.right() - 2, line), Action::SortBy(s) if s == by(SortBy::Title, true)));
         assert_eq!(titles(&mut list), ["Untitled", "beta", "Alpha"]);
-        assert!(screen(&mut list).contains("Sort by: Title ↓"));
+        assert!(screen(&mut list).contains("Sort: Title ↓"));
         list.set_sort(by(SortBy::Title, false));
         assert_eq!(titles(&mut list), ["Alpha", "beta", "Untitled"]);
         list.set_sort(by(SortBy::Created, true));

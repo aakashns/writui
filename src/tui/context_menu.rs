@@ -1,6 +1,6 @@
 //! A small menu that drops down where it's opened: the right-click menu in
-//! the text (Cut, Copy and Paste, each faded and doing nothing when it
-//! can't be done), and the list's "Sort by". ↑/↓ and the mouse highlight,
+//! the text (Cut, Copy, Paste and Select All, each faded and doing nothing
+//! when it can't be done), and the list's "Sort". ↑/↓ and the mouse highlight,
 //! Enter or a click runs one, Esc or a click outside closes it.
 
 use ratatui::Frame;
@@ -15,8 +15,8 @@ use super::menu::Outcome;
 
 pub struct Entry<C> {
     pub label: &'static str,
-    /// Dim, on the right: the command's own shortcut, e.g. "Ctrl+X", or a
-    /// note, e.g. "newest first".
+    /// Dim, on the right: the command's own shortcut, e.g. "Ctrl+X" (or
+    /// empty).
     pub key: &'static str,
     pub cmd: C,
     pub enabled: bool,
@@ -57,8 +57,10 @@ impl<C: Copy> ContextMenu<C> {
     pub fn width(&self) -> u16 {
         let label_width = self.entries.iter().map(|e| e.label.width()).max().unwrap_or(0);
         let key_width = self.entries.iter().map(|e| e.key.width()).max().unwrap_or(0);
-        // Borders, a space each side, and three between label and key.
-        (label_width + key_width + 7) as u16
+        // Borders, a space each side, and three between label and key
+        // (if there are keys).
+        let between = if key_width > 0 { 3 } else { 0 };
+        (label_width + between + key_width + 4) as u16
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
