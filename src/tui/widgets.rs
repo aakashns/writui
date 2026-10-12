@@ -43,24 +43,27 @@ pub fn overview() -> Vec<Line<'static>> {
 /// into those three parts.
 #[rustfmt::skip]
 const BANNER: [[&str; 3]; 6] = [
-    ["         ", "  ", "                         ██                         ██"],
-    ["▄▄▄      ", "▄▄", "                                 ██"],
-    [" ▀██▄    ", "██", "    ██    ██ ██ ▄████ █████    ███████  ██    ██ █████"],
-    ["   ▀██▄  ", "██", "    ██ ▄▄ ██ ███▀        ██      ██     ██    ██    ██"],
-    ["  ▄██▀   ", "██", "    ██▄██▄██ ██          ██      ██     ██    ██    ██"],
-    ["▄██▀     ", "██", "    ▀█▀  ▀█▀ ██       ████████   ▀█████ ▀██▄▄▄██ ████████"],
+    ["         ", "  ", "                    ██                   ██"],
+    ["▄▄▄      ", "▄▄", "                            ██"],
+    [" ▀██▄    ", "██", "    ██   ██  ██ ▄██  ▀██   █████  ██  ██  ▀██"],
+    ["   ▀██▄  ", "██", "    ██ ▄ ██  ███▀     ██    ██    ██  ██   ██"],
+    ["  ▄██▀   ", "██", "    ██▄█▄██  ██       ██    ██    ██  ██   ██"],
+    ["▄██▀     ", "██", "    ▀█▀ ▀█▀  ██      ▄██▄   ▀███  ▀████▀  ▄██▄"],
 ];
 
-/// The password screens' title: the banner, or just "writui" when `area`
-/// is too small to fit the banner above `other_lines` more lines.
+/// The password screens' title: the banner and a blank line under it, or
+/// just "writui" when `area` is too small to fit those above `other_lines`
+/// more lines.
 pub fn title(area: Rect, other_lines: usize) -> Vec<Line<'static>> {
-    if area.width < COLUMN_WIDTH || (area.height as usize) < BANNER.len() + other_lines {
+    if area.width < COLUMN_WIDTH || (area.height as usize) < BANNER.len() + 1 + other_lines {
         return vec![Line::from("writui".bold())];
     }
-    BANNER
+    let mut lines: Vec<Line> = BANNER
         .iter()
         .map(|[mark, bar, name]| Line::from(vec![Span::raw(*mark), bar.green(), Span::raw(*name)]))
-        .collect()
+        .collect();
+    lines.push(Line::default());
+    lines
 }
 
 /// A column of at most `width`, horizontally centred in `area`.
@@ -180,7 +183,7 @@ mod tests {
     #[test]
     fn the_banner_fits_the_column() {
         let lines = title(Rect::new(0, 0, 100, 30), 10);
-        assert_eq!(lines.len(), BANNER.len());
+        assert_eq!(lines.len(), BANNER.len() + 1);
         assert!(lines.iter().all(|line| line.width() <= COLUMN_WIDTH as usize));
     }
 
