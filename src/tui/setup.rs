@@ -6,22 +6,24 @@ use ratatui::Frame;
 use ratatui::crossterm::event::{Event, KeyCode, MouseButton, MouseEventKind};
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::Stylize;
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
 
 use super::Action;
 use super::hints::{HintBar, hint};
 use super::widgets::{
-    COLUMN_WIDTH, PasswordField, centered, dev_password_note, overview, title, truncate,
+    COLUMN_WIDTH, PASSWORD_BOX, PasswordField, centered, dev_password_note, overview, title,
+    truncate,
 };
 
 const MIN_PASSWORD_LEN: usize = 8;
-const LABEL_WIDTH: usize = 18;
+const LABELS: [&str; 2] = ["Password", "Confirm password"];
 
 #[derive(Clone, Copy)]
 enum Cmd {
     Submit,
     SwitchField,
+    Clear,
     Quit,
 }
 
@@ -72,11 +74,12 @@ impl Setup {
             Line::from("There is no way to recover it: if you forget the password, your"),
             Line::from("writing is gone for good."),
             Line::default(),
-            self.field_line(0, "Password"),
-            self.field_line(1, "Confirm password"),
+            // The two password boxes go here, side by side.
+            Line::default(),
+            Line::default(),
+            Line::default(),
             Line::default(),
             status,
-            Line::default(),
             Line::from(truncate(&path, COLUMN_WIDTH as usize).dim()),
             Line::default(),
         ];
@@ -89,33 +92,33 @@ impl Setup {
         lines.extend(rest);
 
         let area = centered(body, COLUMN_WIDTH, lines.len() as u16);
-        for i in 0..2 {
-            self.field_areas[i] =
-                Rect::new(area.x, area.y + first_field_line + i as u16, area.width, 1);
-        }
-        if !self.busy {
-            let field = &self.field_areas[self.focus];
-            let x = field.x + (LABEL_WIDTH + self.fields[self.focus].len()) as u16;
-            frame.set_cursor_position(Position::new(x.min(field.right() - 1), field.y));
-        }
         frame.render_widget(Paragraph::new(lines), area);
+        // Narrow windows get narrower boxes, still side by side.
+        let (width, height) = PASSWORD_BOX;
+        let width = width.min(area.width.saturating_sub(2) / 2);
+        for i in 0..2 {
+            let x = area.x + i as u16 * (area.width - width);
+            let field_area = Rect::new(x, area.y + first_field_line, width, height);
+            self.field_areas[i] = field_area.intersection(area);
+            let focused = i == self.focus;
+            let cursor =
+                self.fields[i].render_boxed(frame, self.field_areas[i], LABELS[i], focused);
+            if focused && !self.busy {
+                frame.set_cursor_position(cursor);
+            }
+        }
 
-        self.hints.render(
-            frame,
-            hint_area,
-            &[
-                hint("Enter", "create vault", Cmd::Submit),
-                hint("Tab", "next field", Cmd::SwitchField),
-                hint("Ctrl+Q", "quit", Cmd::Quit),
-            ],
-        );
-    }
-
-    fn field_line(&self, index: usize, label: &str) -> Line<'static> {
-        let label = format!("{label:<LABEL_WIDTH$}");
-        let label =
-            if index == self.focus { Span::raw(label).bold() } else { Span::raw(label).dim() };
-        Line::from(vec![label, Span::raw(self.fields[index].masked())])
+        // Esc clears both passwords, or quits if there's nothing to clear.
+        let mut hints = vec![
+            hint("Enter", "create vault", Cmd::Submit),
+            hint("Tab", "next field", Cmd::SwitchField),
+        ];
+        if self.fields.iter().all(PasswordField::is_empty) {
+            hints.push(hint("Esc", "quit", Cmd::Quit));
+        } else {
+            hints.extend([hint("Esc", "clear", Cmd::Clear), hint("Ctrl+Q", "quit", Cmd::Quit)]);
+        }
+        self.hints.render(frame, hint_area, &hints);
     }
 
     pub fn handle(&mut self, event: Event) -> Action {
@@ -129,6 +132,10 @@ impl Setup {
                     Action::None
                 }
                 KeyCode::Enter => self.run(Cmd::Submit),
+                KeyCode::Esc if self.fields.iter().all(PasswordField::is_empty) => {
+                    self.run(Cmd::Quit)
+                }
+                KeyCode::Esc => self.run(Cmd::Clear),
                 KeyCode::Tab | KeyCode::BackTab | KeyCode::Up | KeyCode::Down => {
                     self.run(Cmd::SwitchField)
                 }
@@ -162,6 +169,12 @@ impl Setup {
             Cmd::Quit => Action::Quit,
             Cmd::SwitchField => {
                 self.focus = 1 - self.focus;
+                Action::None
+            }
+            Cmd::Clear => {
+                self.fields.iter_mut().for_each(PasswordField::clear);
+                self.focus = 0;
+                self.error = None;
                 Action::None
             }
             Cmd::Submit => {

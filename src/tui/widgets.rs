@@ -1,14 +1,20 @@
 //! Small shared pieces: layout helpers and the password field.
 
+use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::layout::Rect;
-use ratatui::style::Stylize;
+use ratatui::layout::{Position, Rect};
+use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Paragraph};
 use unicode_width::UnicodeWidthChar;
 use zeroize::Zeroizing;
 
 /// The comfortable reading/writing width, in columns.
 pub const COLUMN_WIDTH: u16 = 68;
+
+/// A boxed password field: wide enough for a long password, and two fit
+/// side by side in the column.
+pub const PASSWORD_BOX: (u16, u16) = (33, 3);
 
 /// Shown on the setup and unlock screens of debug builds, so the shared
 /// password for `.dev-data/` vaults is never forgotten.
@@ -134,8 +140,29 @@ impl PasswordField {
         self.value.is_empty()
     }
 
-    pub fn masked(&self) -> String {
-        "•".repeat(self.len())
+    /// Draw the field in a box with `label` on its top edge, dimmed unless
+    /// `focused`. A password too long for the box shows its end. Returns
+    /// where the cursor goes.
+    pub fn render_boxed(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        label: &str,
+        focused: bool,
+    ) -> Position {
+        let style = if focused { Style::new() } else { Style::new().dim() };
+        let label = if focused { label.bold() } else { label.dim() };
+        let block = Block::bordered().border_style(style).title(Line::from(vec![
+            " ".into(),
+            label,
+            " ".into(),
+        ]));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        let inner = Rect { x: inner.x + 1, width: inner.width.saturating_sub(2), ..inner };
+        let shown = self.len().min(inner.width.saturating_sub(1) as usize);
+        frame.render_widget(Paragraph::new("•".repeat(shown)), inner);
+        Position::new(inner.x + shown as u16, inner.y)
     }
 }
 

@@ -2,20 +2,21 @@
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{Event, KeyCode, MouseButton, MouseEventKind};
-use ratatui::layout::{Constraint, Layout, Position};
+use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::Stylize;
-use ratatui::text::{Line, Span};
+use ratatui::text::Line;
 use ratatui::widgets::Paragraph;
 
 use super::Action;
 use super::hints::{HintBar, hint};
-use super::widgets::{COLUMN_WIDTH, PasswordField, centered, dev_password_note, overview, title};
-
-const LABEL: &str = "Password  ";
+use super::widgets::{
+    COLUMN_WIDTH, PASSWORD_BOX, PasswordField, centered, dev_password_note, overview, title,
+};
 
 #[derive(Clone, Copy)]
 enum Cmd {
     Unlock,
+    Clear,
     Quit,
 }
 
@@ -57,9 +58,12 @@ impl Unlock {
         } else {
             Line::default()
         };
+        // The password box is drawn over the second to fourth lines.
         let mut rest = vec![
             Line::default(),
-            Line::from(vec![Span::raw(LABEL).bold(), Span::raw(self.field.masked())]),
+            Line::default(),
+            Line::default(),
+            Line::default(),
             Line::default(),
             status,
             Line::default(),
@@ -72,18 +76,22 @@ impl Unlock {
         let field_line = lines.len() as u16 + 1;
         lines.extend(rest);
         let area = centered(body, COLUMN_WIDTH, lines.len() as u16);
-        if !self.busy {
-            let x = area.x + (LABEL.len() + self.field.len()) as u16;
-            let position = Position::new(x.min(area.right() - 1), area.y + field_line);
-            frame.set_cursor_position(position);
-        }
         frame.render_widget(Paragraph::new(lines), area);
+        let (width, height) = PASSWORD_BOX;
+        let field_area = Rect::new(area.x, area.y + field_line, width, height).intersection(area);
+        let cursor = self.field.render_boxed(frame, field_area, "Password", true);
+        if !self.busy {
+            frame.set_cursor_position(cursor);
+        }
 
-        self.hints.render(
-            frame,
-            hint_area,
-            &[hint("Enter", "unlock", Cmd::Unlock), hint("Ctrl+Q", "quit", Cmd::Quit)],
-        );
+        // Esc clears the password, or quits if there's nothing to clear.
+        let mut hints = vec![hint("Enter", "unlock", Cmd::Unlock)];
+        if self.field.is_empty() {
+            hints.push(hint("Esc", "quit", Cmd::Quit));
+        } else {
+            hints.extend([hint("Esc", "clear", Cmd::Clear), hint("Ctrl+Q", "quit", Cmd::Quit)]);
+        }
+        self.hints.render(frame, hint_area, &hints);
     }
 
     pub fn handle(&mut self, event: Event) -> Action {
@@ -92,6 +100,9 @@ impl Unlock {
         }
         match event {
             Event::Key(key) if key.code == KeyCode::Enter => self.run(Cmd::Unlock),
+            Event::Key(key) if key.code == KeyCode::Esc => {
+                self.run(if self.field.is_empty() { Cmd::Quit } else { Cmd::Clear })
+            }
             Event::Key(key) => {
                 if self.field.handle_key(key) {
                     self.error = None;
@@ -115,6 +126,11 @@ impl Unlock {
     fn run(&mut self, cmd: Cmd) -> Action {
         match cmd {
             Cmd::Quit => Action::Quit,
+            Cmd::Clear => {
+                self.field.clear();
+                self.error = None;
+                Action::None
+            }
             Cmd::Unlock if self.field.is_empty() => Action::None,
             Cmd::Unlock => Action::Unlock(self.field.value().clone()),
         }

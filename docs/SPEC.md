@@ -170,6 +170,14 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   column. Windows narrower than that, or too short to fit it, get the plain
   "writui" title instead.
 
+  > put a box around the password
+
+  > and esc to clear password, and if clear esc to quit
+
+- Password fields are boxes with the label on the top edge ("Create your
+  vault" puts its two side by side, so the banner still fits 30 rows). Esc
+  clears what's typed; with nothing typed, Esc quits.
+
   > and finally, on the password screen, let's add an "Overview" describing
   > how the app works in no more than 5-6 points, each no longer than one
   > line. this is for new users and returning ones, run the copy by me once
