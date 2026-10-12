@@ -96,13 +96,12 @@ impl Setup {
         // Narrow windows get narrower boxes, still side by side.
         let (width, height) = PASSWORD_BOX;
         let width = width.min(area.width.saturating_sub(2) / 2);
-        for i in 0..2 {
+        for (i, label) in LABELS.into_iter().enumerate() {
             let x = area.x + i as u16 * (area.width - width);
             let field_area = Rect::new(x, area.y + first_field_line, width, height);
             self.field_areas[i] = field_area.intersection(area);
             let focused = i == self.focus;
-            let cursor =
-                self.fields[i].render_boxed(frame, self.field_areas[i], LABELS[i], focused);
+            let cursor = self.fields[i].render_boxed(frame, self.field_areas[i], label, focused);
             if focused && !self.busy {
                 frame.set_cursor_position(cursor);
             }
