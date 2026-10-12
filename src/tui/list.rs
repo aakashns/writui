@@ -277,7 +277,7 @@ impl List {
             .iter()
             .map(|row| match *row {
                 Row::New => ListItem::new(Line::from("+ New".bold())),
-                Row::Import => ListItem::new(Line::from("↓ Import".bold())),
+                Row::Import => ListItem::new(Line::from("» Import".bold())),
                 Row::Search => {
                     let shown = scrolled(&self.filter, width.saturating_sub(3));
                     let text = if shown.is_empty() { Span::raw("Type to filter…").dim() } else { Span::raw(shown) };
@@ -791,7 +791,7 @@ mod tests {
         let folder = format!("{}/", dir.path().display());
         let mut list = List::new(Mode::Posts { deleted_count: 0 }, Vec::new(), None).with_import_folder(folder.clone());
         let text = screen(&mut list);
-        assert!(text.contains("+ New") && text.contains("↓ Import"));
+        assert!(text.contains("+ New") && text.contains("» Import"));
         assert!(text.contains("i import"));
         // Down to it, Enter: the dialog, starting in the folder.
         press(&mut list, KeyCode::Down, KeyModifiers::NONE);

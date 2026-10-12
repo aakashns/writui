@@ -150,7 +150,7 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - Flat list of posts, most recently updated first. Each row shows the title
   and when it was last updated.
 - A "New" action, always visible, "Import" right below it (with a
-  different icon: "+ New", "↓ Import"), then a search field ("/ Type to
+  different icon: "+ New", "» Import"), then a search field ("/ Type to
   filter…"). A "Settings" row is at the end of the list, after the Trash.
 
   > change "New Post" to just "New"
@@ -159,6 +159,11 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   > file, apart from md)
 
   > use a different icon for the "Import" option
+
+  > i dont' like the down icon for import, it can be confusing. what other
+  > optoins would you suggest?
+
+  (Creator's pick: "»", over "←", "↳" and "+ Import…".)
 
   > on the list page, i don't want to use ctrl for the shortcuts, direct
   > keypress is fine
