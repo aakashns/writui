@@ -95,8 +95,7 @@ fn run_list(
 fn apply(conn: &mut Connection, migrations: &[&str], current: usize) -> Result<()> {
     for (index, sql) in migrations.iter().enumerate().skip(current) {
         let tx = conn.transaction()?;
-        tx.execute_batch(sql)
-            .with_context(|| format!("running migration {}", index + 1))?;
+        tx.execute_batch(sql).with_context(|| format!("running migration {}", index + 1))?;
         tx.pragma_update(None, "user_version", index as i64 + 1)?;
         tx.commit()?;
     }
@@ -182,7 +181,8 @@ mod tests {
             assert_eq!(backups.len(), 1);
             let backup = Connection::open(dir.join(&backups[0])).unwrap();
             backup.pragma_update(None, "key", "test").unwrap();
-            let body: String = backup.query_row("SELECT body FROM posts", [], |r| r.get(0)).unwrap();
+            let body: String =
+                backup.query_row("SELECT body FROM posts", [], |r| r.get(0)).unwrap();
             assert_eq!(body, "# Hi");
             verify(conn)
         }

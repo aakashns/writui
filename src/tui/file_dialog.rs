@@ -4,7 +4,9 @@
 //! Ctrl+S anywhere goes ahead, Esc cancels, and everything can be clicked.
 
 use ratatui::Frame;
-use ratatui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind};
+use ratatui::crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEventKind,
+};
 use ratatui::layout::{Position, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
@@ -79,7 +81,13 @@ pub struct FileDialog {
 }
 
 impl FileDialog {
-    pub fn new(title: &'static str, intro: &'static str, help: &'static str, submit: &'static str, path: &str) -> Self {
+    pub fn new(
+        title: &'static str,
+        intro: &'static str,
+        help: &'static str,
+        submit: &'static str,
+        path: &str,
+    ) -> Self {
         FileDialog {
             title,
             intro: Line::from(intro),
@@ -110,7 +118,11 @@ impl FileDialog {
     /// Whether the front matter is on, what it says, and whether the
     /// `# Title` line stays too.
     pub fn front_matter(&self) -> Option<FrontMatterChoice> {
-        self.front_matter.as_ref().map(|f| FrontMatterChoice { on: f.on, keep_title: f.keep_title, text: f.text.text() })
+        self.front_matter.as_ref().map(|f| FrontMatterChoice {
+            on: f.on,
+            keep_title: f.keep_title,
+            text: f.text.text(),
+        })
     }
 
     /// Say why going ahead didn't work, and go back to the path.
@@ -170,13 +182,24 @@ impl FileDialog {
         let cancel = hint("Esc", "cancel", FormCmd::Cancel);
         match self.focus {
             Focus::Path if self.path.picking() => {
-                vec![hint("Enter", "keep", FormCmd::Keep), hint("Tab", "next", FormCmd::Complete), hint("Esc", "close list", FormCmd::Keep)]
+                vec![
+                    hint("Enter", "keep", FormCmd::Keep),
+                    hint("Tab", "next", FormCmd::Complete),
+                    hint("Esc", "close list", FormCmd::Keep),
+                ]
             }
             Focus::Path if self.path.listing() => {
-                vec![hint("Tab", "pick", FormCmd::Complete), hint("Enter", submit, FormCmd::Submit), hint("Esc", "close list", FormCmd::Keep)]
+                vec![
+                    hint("Tab", "pick", FormCmd::Complete),
+                    hint("Enter", submit, FormCmd::Submit),
+                    hint("Esc", "close list", FormCmd::Keep),
+                ]
             }
             Focus::Path => {
-                let mut hints = vec![hint("Tab", "complete", FormCmd::Complete), hint("Enter", submit, FormCmd::Submit)];
+                let mut hints = vec![
+                    hint("Tab", "complete", FormCmd::Complete),
+                    hint("Enter", submit, FormCmd::Submit),
+                ];
                 if self.front_matter.is_some() {
                     hints.push(hint("↓", "front matter", FormCmd::Next));
                 }
@@ -184,7 +207,11 @@ impl FileDialog {
                 hints
             }
             Focus::Toggle | Focus::TitleToggle => {
-                vec![hint("Space", "on/off", FormCmd::Toggle), hint("Ctrl+S", submit, FormCmd::Submit), cancel]
+                vec![
+                    hint("Space", "on/off", FormCmd::Toggle),
+                    hint("Ctrl+S", submit, FormCmd::Submit),
+                    cancel,
+                ]
             }
             Focus::FrontMatter => vec![hint("Ctrl+S", submit, FormCmd::Submit), cancel],
             Focus::Button(i) => {
@@ -206,7 +233,11 @@ impl FileDialog {
             }
             FormCmd::Keep => self.path.done(),
             FormCmd::Toggle => {
-                let focus = if self.focus == Focus::TitleToggle { Focus::TitleToggle } else { Focus::Toggle };
+                let focus = if self.focus == Focus::TitleToggle {
+                    Focus::TitleToggle
+                } else {
+                    Focus::Toggle
+                };
                 self.toggle(focus);
             }
             FormCmd::Next => self.step(false),
@@ -340,15 +371,23 @@ impl FileDialog {
             extra = 2;
             if front_matter.on {
                 let room = screen.height.saturating_sub(fixed + extra + 3).max(1);
-                text_rows = (front_matter.text.line_count() as u16 + 1).clamp(3, MAX_FRONT_MATTER_ROWS).min(room);
+                text_rows = (front_matter.text.line_count() as u16 + 1)
+                    .clamp(3, MAX_FRONT_MATTER_ROWS)
+                    .min(room);
                 extra += 3 + text_rows;
             }
         }
         let area = centered(screen, WIDTH, fixed + extra);
         frame.render_widget(Clear, area);
         frame.render_widget(Block::bordered().title(format!(" {} ", self.title)), area);
-        let inner = Rect { x: area.x + 2, y: area.y + 1, width: area.width.saturating_sub(4), height: area.height.saturating_sub(2) };
-        let row = |offset: u16| Rect { y: inner.y + offset, height: 1, ..inner }.intersection(inner);
+        let inner = Rect {
+            x: area.x + 2,
+            y: area.y + 1,
+            width: area.width.saturating_sub(4),
+            height: area.height.saturating_sub(2),
+        };
+        let row =
+            |offset: u16| Rect { y: inner.y + offset, height: 1, ..inner }.intersection(inner);
 
         frame.render_widget(Paragraph::new(self.intro.clone()), row(1));
         self.path_area = row(3);
@@ -360,7 +399,8 @@ impl FileDialog {
         self.title_toggle_area = Rect::default();
         if let Some(front_matter) = &mut self.front_matter {
             let checkbox = |on: bool, focus: Focus, label: &'static str, note: &'static str| {
-                let style = if self.focus == focus { Style::new().reversed() } else { Style::new() };
+                let style =
+                    if self.focus == focus { Style::new().reversed() } else { Style::new() };
                 let mark = Span::styled(if on { "[x]" } else { "[ ]" }, style);
                 Line::from(vec![mark, Span::raw(label), Span::raw(note).dim()])
             };
@@ -369,13 +409,23 @@ impl FileDialog {
             frame.render_widget(Paragraph::new(line), row(y));
             y += 1;
             if front_matter.on {
-                let note = if front_matter.keep_title { "  after the front matter" } else { "  the front matter has it" };
-                let line = checkbox(front_matter.keep_title, Focus::TitleToggle, " Keep the # title line", note);
+                let note = if front_matter.keep_title {
+                    "  after the front matter"
+                } else {
+                    "  the front matter has it"
+                };
+                let line = checkbox(
+                    front_matter.keep_title,
+                    Focus::TitleToggle,
+                    " Keep the # title line",
+                    note,
+                );
                 self.title_toggle_area = row(y);
                 frame.render_widget(Paragraph::new(line), row(y));
                 y += 1;
                 frame.render_widget(Paragraph::new("---".dim()), row(y));
-                let text_area = Rect { y: inner.y + y + 1, height: text_rows, ..inner }.intersection(inner);
+                let text_area =
+                    Rect { y: inner.y + y + 1, height: text_rows, ..inner }.intersection(inner);
                 let focused = self.focus == Focus::FrontMatter;
                 front_matter.text.render(frame, text_area, focused, focused);
                 frame.render_widget(Paragraph::new("---".dim()), row(y + 1 + text_rows));
@@ -397,7 +447,11 @@ impl FileDialog {
             }
             let text = format!("[ {label} ]");
             let width = text.chars().count() as u16;
-            let style = if self.focus == Focus::Button(i) { Style::new().reversed().bold() } else { Style::new() };
+            let style = if self.focus == Focus::Button(i) {
+                Style::new().reversed().bold()
+            } else {
+                Style::new()
+            };
             spans.push(Span::styled(text, style));
             self.buttons.push(Rect::new(x, buttons_row.y, width, 1).intersection(buttons_row));
             x += width;

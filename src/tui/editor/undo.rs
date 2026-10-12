@@ -13,7 +13,9 @@ const LIMIT: usize = 1000;
 #[derive(Clone, Copy, PartialEq)]
 pub enum Kind {
     /// Typing a character; `space` if it's whitespace.
-    Type { space: bool },
+    Type {
+        space: bool,
+    },
     Backspace,
     Delete,
     /// Anything else (Enter, Tab, paste) is always a step of its own.

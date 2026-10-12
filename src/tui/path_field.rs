@@ -33,7 +33,13 @@ pub struct PathField {
 
 impl PathField {
     pub fn new(value: &str) -> Self {
-        let mut field = PathField { value: String::new(), matches: Vec::new(), picked: None, note: None, hits: Vec::new() };
+        let mut field = PathField {
+            value: String::new(),
+            matches: Vec::new(),
+            picked: None,
+            note: None,
+            hits: Vec::new(),
+        };
         field.push(value);
         field
     }
@@ -141,7 +147,9 @@ impl PathField {
     /// click was on one.
     pub fn click(&mut self, column: u16, row: u16) -> bool {
         let pos = Position::new(column, row);
-        let Some(&(_, i)) = self.hits.iter().find(|(rect, _)| rect.contains(pos)) else { return false };
+        let Some(&(_, i)) = self.hits.iter().find(|(rect, _)| rect.contains(pos)) else {
+            return false;
+        };
         let picked = self.matches[i].clone();
         self.set(&picked);
         true
@@ -149,7 +157,15 @@ impl PathField {
 
     /// Draw the field (underlined) in `field`, and under it, in `info`, what
     /// Tab found, else `error` (in red), else `help` (faded).
-    pub fn render(&mut self, frame: &mut Frame, field: Rect, info: Rect, focused: bool, help: &str, error: Option<&str>) {
+    pub fn render(
+        &mut self,
+        frame: &mut Frame,
+        field: Rect,
+        info: Rect,
+        focused: bool,
+        help: &str,
+        error: Option<&str>,
+    ) {
         // Long paths scroll to keep their end in view.
         let width = field.width as usize;
         let mut shown = self.value.as_str();
@@ -159,7 +175,10 @@ impl PathField {
             shown = chars.as_str();
         }
         let pad = " ".repeat(width.saturating_sub(shown.width()));
-        frame.render_widget(Paragraph::new(Span::styled(format!("{shown}{pad}"), Style::new().underlined())), field);
+        frame.render_widget(
+            Paragraph::new(Span::styled(format!("{shown}{pad}"), Style::new().underlined())),
+            field,
+        );
         if focused {
             let x = (field.x + shown.width() as u16).min(field.right().saturating_sub(1));
             frame.set_cursor_position(Position::new(x, field.y));
@@ -196,7 +215,8 @@ impl PathField {
                 spans.push(Span::raw("…").dim());
                 break;
             }
-            let style = if Some(i) == self.picked { Style::new().reversed() } else { Style::new().dim() };
+            let style =
+                if Some(i) == self.picked { Style::new().reversed() } else { Style::new().dim() };
             spans.push(Span::styled(name.to_string(), style));
             spans.push(Span::raw(GAP));
             self.hits.push((Rect::new(x, info.y, name.width() as u16, 1), i));

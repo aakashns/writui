@@ -37,8 +37,10 @@ pub struct Markup {
 impl Markup {
     pub fn new(rope: &Rope) -> Self {
         let text = rope.to_string();
-        let mut styler = Styler { runs: Vec::new(), links: Vec::new(), stack: Vec::new(), pos: 0, text: None };
-        let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS | Options::ENABLE_TABLES;
+        let mut styler =
+            Styler { runs: Vec::new(), links: Vec::new(), stack: Vec::new(), pos: 0, text: None };
+        let options =
+            Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS | Options::ENABLE_TABLES;
         for (event, range) in Parser::new_ext(&text, options).into_offset_iter() {
             styler.event(&text, event, range);
         }
@@ -59,7 +61,10 @@ impl Markup {
         let links = styler
             .links
             .into_iter()
-            .map(|(range, url)| Link { range: rope.byte_to_char(range.start)..rope.byte_to_char(range.end), url })
+            .map(|(range, url)| Link {
+                range: rope.byte_to_char(range.start)..rope.byte_to_char(range.end),
+                url,
+            })
             .collect();
         Markup { runs, links }
     }
@@ -114,7 +119,9 @@ impl Styler {
             Event::Start(tag) => {
                 self.gap(text, range.start);
                 let (style, link) = match tag {
-                    Tag::Heading { .. } | Tag::Strong | Tag::TableHead => (Style::new().bold(), None),
+                    Tag::Heading { .. } | Tag::Strong | Tag::TableHead => {
+                        (Style::new().bold(), None)
+                    }
                     Tag::Emphasis => (Style::new().italic(), None),
                     Tag::Strikethrough => (Style::new().crossed_out(), None),
                     Tag::CodeBlock(_) => (code(), None),
@@ -236,7 +243,8 @@ fn web_addresses(text: &str) -> Vec<Range<usize>> {
         loop {
             let address = &text[start..end];
             let Some(last) = address.chars().last() else { break };
-            let unbalanced = last == ')' && address.matches('(').count() < address.matches(')').count();
+            let unbalanced =
+                last == ')' && address.matches('(').count() < address.matches(')').count();
             if ".,;:!?'\"*_~<>".contains(last) || unbalanced {
                 end -= last.len_utf8();
             } else {
@@ -244,7 +252,11 @@ fn web_addresses(text: &str) -> Vec<Range<usize>> {
             }
         }
         // Just the scheme isn't an address.
-        if text[start..end].trim_start_matches("https://").trim_start_matches("http://").contains('.') {
+        if text[start..end]
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .contains('.')
+        {
             found.push(start..end);
         }
         from = end.max(start + 1);
@@ -291,7 +303,10 @@ mod tests {
     #[test]
     fn headings_are_bold_with_faded_hashes() {
         assert_eq!(marked("# Title"), "[f:#] [b:Title]");
-        assert_eq!(marked("# Title\n\n## Part two\ntext"), "[f:#] [b:Title]\n\n[f:##] [b:Part two]\ntext");
+        assert_eq!(
+            marked("# Title\n\n## Part two\ntext"),
+            "[f:#] [b:Title]\n\n[f:##] [b:Part two]\ntext"
+        );
     }
 
     #[test]
@@ -331,7 +346,10 @@ mod tests {
 
     #[test]
     fn links_underline_their_text_and_fade_the_address() {
-        assert_eq!(marked("see [this](https://x.com) now"), "see [f:[][u:this][f:](https://x.com)] now");
+        assert_eq!(
+            marked("see [this](https://x.com) now"),
+            "see [f:[][u:this][f:](https://x.com)] now"
+        );
         let markup = Markup::new(&Rope::from_str("see [this](https://x.com) now"));
         assert_eq!(markup.link_at(4).map(|l| l.url.as_str()), Some("https://x.com"));
         assert_eq!(markup.link_at(24).map(|l| l.url.as_str()), Some("https://x.com"));
@@ -369,8 +387,14 @@ mod tests {
 
     #[test]
     fn long_posts_are_quick() {
-        let paragraph = "Some **bold** and *italic* text, a [link](https://x.com), `code`, and more words. ";
-        let text = format!("# Title\n\n{}", (0..2000).map(|i| format!("## Part {i}\n\n{paragraph}\n\n- a\n- b\n\n")).collect::<String>());
+        let paragraph =
+            "Some **bold** and *italic* text, a [link](https://x.com), `code`, and more words. ";
+        let text = format!(
+            "# Title\n\n{}",
+            (0..2000)
+                .map(|i| format!("## Part {i}\n\n{paragraph}\n\n- a\n- b\n\n"))
+                .collect::<String>()
+        );
         let rope = Rope::from_str(&text);
         let start = std::time::Instant::now();
         let markup = Markup::new(&rope);

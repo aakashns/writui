@@ -13,8 +13,8 @@ mod wrap;
 use std::ops::Range;
 use std::time::{Duration, Instant};
 
-use ratatui::Frame;
 use jiff::tz::TimeZone;
+use ratatui::Frame;
 use ratatui::crossterm::event::{
     Event, KeyCode, KeyEvent, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
@@ -25,6 +25,7 @@ use ratatui::widgets::{Clear, Paragraph};
 use ropey::Rope;
 
 use super::Action;
+use super::context_menu::{ContextMenu, Entry};
 use super::dialog::{Button, Dialog};
 use super::file_dialog::{FileDialog, FormCmd, Outcome as FormOutcome};
 use super::hints::{HintBar, hint};
@@ -32,11 +33,10 @@ use super::list::display_title;
 use super::menu::{self, Menu, item};
 use super::widgets::truncate;
 use crate::files::{self, front_matter};
-use crate::vault::{ExportSettings, Post, Settings, Version, TITLE_PREFIX, title_from_first_line};
+use crate::vault::{ExportSettings, Post, Settings, TITLE_PREFIX, Version, title_from_first_line};
 use autosave::Autosave;
 use buffer::Buffer;
 use clipboard::Clipboard;
-use super::context_menu::{ContextMenu, Entry};
 use history::{History, Outcome};
 use markdown::Markup;
 use undo::{Kind, Undo};
@@ -181,8 +181,17 @@ pub struct Editor {
 
 impl Editor {
     /// Opens with the cursor where it was left (or at the end of the post).
-    pub fn new(post: Post, last_version: Option<Version>, exports: Exports, settings: Settings) -> Self {
-        let created = post.created_at.to_zoned(TimeZone::system()).strftime("%b %-d, %Y, %-I:%M %p").to_string();
+    pub fn new(
+        post: Post,
+        last_version: Option<Version>,
+        exports: Exports,
+        settings: Settings,
+    ) -> Self {
+        let created = post
+            .created_at
+            .to_zoned(TimeZone::system())
+            .strftime("%b %-d, %Y, %-I:%M %p")
+            .to_string();
         Editor {
             last_version,
             post_id: post.id,
@@ -272,7 +281,12 @@ impl Editor {
 
     /// Show the post's history (newest version first).
     pub fn show_history(&mut self, versions: Vec<Version>) {
-        self.history = Some(History::new(self.raw_title(), versions, self.changed_since_version(), self.line_width));
+        self.history = Some(History::new(
+            self.raw_title(),
+            versions,
+            self.changed_since_version(),
+            self.line_width,
+        ));
     }
 
     /// Open a version (with its text) in the history, to read.
@@ -321,7 +335,8 @@ impl Editor {
         }
         self.refresh();
         let left = body.x + body.width.saturating_sub(width as u16) / 2;
-        self.text_area = Rect::new(left, body.y, (width as u16 + 1).min(body.right() - left), body.height);
+        self.text_area =
+            Rect::new(left, body.y, (width as u16 + 1).min(body.right() - left), body.height);
 
         let height = body.height as usize;
         let (cursor_row, cursor_x) = self.cursor_cell();
@@ -391,8 +406,12 @@ impl Editor {
         if let Some(exporting) = &mut self.exporting {
             exporting.form.render(frame);
             if self.dialog.is_none() {
-                let hints: Vec<_> =
-                    exporting.form.hints().into_iter().map(|h| hint(h.key, h.label, Cmd::Form(h.cmd))).collect();
+                let hints: Vec<_> = exporting
+                    .form
+                    .hints()
+                    .into_iter()
+                    .map(|h| hint(h.key, h.label, Cmd::Form(h.cmd)))
+                    .collect();
                 self.hints.render(frame, bar, &hints);
                 return;
             }
@@ -527,7 +546,9 @@ impl Editor {
             let outcome = exporting.form.handle(event);
             return self.form_outcome(outcome);
         }
-        if let Event::Key(_) | Event::Mouse(MouseEvent { kind: MouseEventKind::Down(_), .. }) = event {
+        if let Event::Key(_) | Event::Mouse(MouseEvent { kind: MouseEventKind::Down(_), .. }) =
+            event
+        {
             self.notice = None;
         }
         match event {
@@ -551,7 +572,8 @@ impl Editor {
         }
         // Cmd+letter is the same shortcut as Ctrl+letter (Cmd+C copies,
         // Cmd+Z undoes, …), where the terminal passes Cmd on; it never types.
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL) || (cmd && matches!(key.code, KeyCode::Char(_)));
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL)
+            || (cmd && matches!(key.code, KeyCode::Char(_)));
         let moving = match key.code {
             KeyCode::Left
             | KeyCode::Right
@@ -575,7 +597,9 @@ impl Editor {
                 && !cmd
             {
                 // Left and Right just drop the selection, at its near end.
-                self.step(|b| b.set_cursor(if key.code == KeyCode::Left { range.start } else { range.end }));
+                self.step(|b| {
+                    b.set_cursor(if key.code == KeyCode::Left { range.start } else { range.end })
+                });
                 self.buffer.clear_selection();
                 return Action::None;
             } else {
@@ -669,8 +693,12 @@ impl Editor {
                 }
                 self.click(mouse.column, mouse.row);
             }
-            MouseEventKind::Down(MouseButton::Right) => self.open_context_menu(mouse.column, mouse.row),
-            MouseEventKind::Drag(MouseButton::Left) if self.dragging => self.drag(mouse.column, mouse.row),
+            MouseEventKind::Down(MouseButton::Right) => {
+                self.open_context_menu(mouse.column, mouse.row)
+            }
+            MouseEventKind::Drag(MouseButton::Left) if self.dragging => {
+                self.drag(mouse.column, mouse.row)
+            }
             MouseEventKind::Up(MouseButton::Left) => self.dragging = false,
             _ => {}
         }
@@ -702,7 +730,12 @@ impl Editor {
                         Line::from("and go back to. Name it like a commit message.".dim()),
                     ],
                     vec![
-                        Button { label: "Save", key: "", cmd: Cmd::ConfirmSaveVersion, danger: false },
+                        Button {
+                            label: "Save",
+                            key: "",
+                            cmd: Cmd::ConfirmSaveVersion,
+                            danger: false,
+                        },
                         Button { label: "Cancel", key: "", cmd: Cmd::CancelDialog, danger: false },
                     ],
                     0,
@@ -823,7 +856,8 @@ impl Editor {
     fn open_export(&mut self) {
         let title = self.raw_title();
         let today = jiff::Zoned::now().date();
-        let suggested = front_matter::suggest(&title, &self.buffer.text(), today, today, &self.author);
+        let suggested =
+            front_matter::suggest(&title, &self.buffer.text(), today, today, &self.author);
         let (last, same_post) = match &self.exports.this_post {
             Some(this_post) => (Some(this_post), true),
             None => (self.exports.latest.as_ref(), false),
@@ -831,7 +865,11 @@ impl Editor {
         let text = front_matter::front_matter(&suggested, last, same_post);
         let on = last.is_none_or(|last| last.with_front_matter);
         let keep_title = last.is_some_and(|last| last.keep_title);
-        let path = files::default_path(&title, self.exports.this_post.as_ref(), self.exports.latest.as_ref());
+        let path = files::default_path(
+            &title,
+            self.exports.this_post.as_ref(),
+            self.exports.latest.as_ref(),
+        );
         let form = FileDialog::new(
             "Export as markdown",
             "Writes the post to a markdown file.",
@@ -856,12 +894,25 @@ impl Editor {
                         let dialog = Dialog::new(
                             "Replace file?",
                             vec![
-                                Line::from(truncate(&format!("{} already exists.", files::display(&path)), 50)),
+                                Line::from(truncate(
+                                    &format!("{} already exists.", files::display(&path)),
+                                    50,
+                                )),
                                 Line::from("Exporting replaces it with this post.".dim()),
                             ],
                             vec![
-                                Button { label: "Replace", key: "y", cmd: Cmd::ConfirmReplace, danger: true },
-                                Button { label: "Cancel", key: "n", cmd: Cmd::CancelDialog, danger: false },
+                                Button {
+                                    label: "Replace",
+                                    key: "y",
+                                    cmd: Cmd::ConfirmReplace,
+                                    danger: true,
+                                },
+                                Button {
+                                    label: "Cancel",
+                                    key: "n",
+                                    cmd: Cmd::CancelDialog,
+                                    danger: false,
+                                },
                             ],
                             1,
                             1,
@@ -881,7 +932,8 @@ impl Editor {
         let body = self.buffer.text();
         let Some(exporting) = &mut self.exporting else { return Action::None };
         let Some(choice) = exporting.form.front_matter() else { return Action::None };
-        let contents = files::contents(&body, choice.on.then_some(choice.text.as_str()), choice.keep_title);
+        let contents =
+            files::contents(&body, choice.on.then_some(choice.text.as_str()), choice.keep_title);
         if let Err(error) = files::write(path, &contents) {
             exporting.form.set_error(error);
             return Action::None;
@@ -905,7 +957,10 @@ impl Editor {
     fn open(&mut self, url: &str) {
         let result = browser::open(url);
         match result {
-            Ok(()) => self.notice = Some(format!("Opened {}", truncate(url, self.width.saturating_sub(7)))),
+            Ok(()) => {
+                self.notice =
+                    Some(format!("Opened {}", truncate(url, self.width.saturating_sub(7))))
+            }
             Err(error) => self.error = Some(error),
         }
     }
@@ -1023,7 +1078,9 @@ impl Editor {
             return;
         }
         let index = row_of(&self.rows, pos);
-        let row = self.rows.get(index + 1).map_or(self.buffer.len(), |r| if r.last { r.end } else { self.buffer.prev_boundary(r.end) });
+        let row = self.rows.get(index + 1).map_or(self.buffer.len(), |r| {
+            if r.last { r.end } else { self.buffer.prev_boundary(r.end) }
+        });
         let sentence = self.buffer.sentence_end(pos);
         self.step(|b| b.set_cursor(row.min(sentence)));
     }
@@ -1038,7 +1095,11 @@ impl Editor {
         let pos = self.pos_at(column, row);
         let now = Instant::now();
         let count = match self.last_click {
-            Some(last) if now - last.at < MULTI_CLICK && (last.column, last.row) == (column, row) => last.count % 3 + 1,
+            Some(last)
+                if now - last.at < MULTI_CLICK && (last.column, last.row) == (column, row) =>
+            {
+                last.count % 3 + 1
+            }
             _ => 1,
         };
         self.last_click = Some(Click { at: now, column, row, count });
@@ -1087,9 +1148,12 @@ impl Editor {
     fn pos_at(&mut self, column: u16, row: u16) -> usize {
         self.refresh();
         // The blank rows above the title count as its first row.
-        let index = (self.top + row.saturating_sub(self.text_area.y) as usize).saturating_sub(PAD_TOP);
+        let index =
+            (self.top + row.saturating_sub(self.text_area.y) as usize).saturating_sub(PAD_TOP);
         match self.rows.get(index) {
-            Some(&r) => pos_at_x(self.buffer.rope(), r, column.saturating_sub(self.text_area.x) as usize),
+            Some(&r) => {
+                pos_at_x(self.buffer.rope(), r, column.saturating_sub(self.text_area.x) as usize)
+            }
             None => self.buffer.len(),
         }
     }
@@ -1114,7 +1178,11 @@ impl Editor {
         let pos = self.buffer.cursor();
         let row = row_of(&self.rows, pos);
         let x = x_of(self.buffer.rope(), self.rows[row], pos);
-        let (row, x) = if x > self.width { (row + 1, self.rows.get(row + 1).map_or(0, |r| r.indent)) } else { (row, x) };
+        let (row, x) = if x > self.width {
+            (row + 1, self.rows.get(row + 1).map_or(0, |r| r.indent))
+        } else {
+            (row, x)
+        };
         (PAD_TOP + row, x)
     }
 
@@ -1161,11 +1229,16 @@ fn margin(height: usize) -> usize {
 
 /// One row of text, formatted, with the selected part reversed. The title
 /// has a dim placeholder while empty.
-fn row_line(rope: &Rope, markup: &Markup, row: &Row, selection: Option<&Range<usize>>) -> Line<'static> {
-    let text = |range: Range<usize>| rope.slice(range).to_string().replace('\t', &" ".repeat(TAB_WIDTH));
-    let selected = selection
-        .map(|s| s.start.max(row.start)..s.end.min(row.end))
-        .filter(|s| s.start < s.end);
+fn row_line(
+    rope: &Rope,
+    markup: &Markup,
+    row: &Row,
+    selection: Option<&Range<usize>>,
+) -> Line<'static> {
+    let text =
+        |range: Range<usize>| rope.slice(range).to_string().replace('\t', &" ".repeat(TAB_WIDTH));
+    let selected =
+        selection.map(|s| s.start.max(row.start)..s.end.min(row.end)).filter(|s| s.start < s.end);
     let mut spans = vec![Span::raw(" ".repeat(row.indent))];
     for (piece, style) in markup.styles(row.start..row.end) {
         // Split each piece where the selection starts and ends.
@@ -1211,9 +1284,11 @@ mod tests {
         }
 
         fn at(body: &str, cursor: Option<usize>) -> Self {
-            let post = Post { id: 1, body: body.into(), cursor, created_at: jiff::Timestamp::UNIX_EPOCH };
+            let post =
+                Post { id: 1, body: body.into(), cursor, created_at: jiff::Timestamp::UNIX_EPOCH };
             let editor = Editor::new(post, None, Exports::default(), Settings::default());
-            let mut h = Harness { editor, terminal: Terminal::new(TestBackend::new(80, 12)).unwrap() };
+            let mut h =
+                Harness { editor, terminal: Terminal::new(TestBackend::new(80, 12)).unwrap() };
             h.draw();
             h
         }
@@ -1229,7 +1304,11 @@ mod tests {
         }
 
         fn ctrl(&mut self, ch: char) -> Action {
-            let key = KeyEvent::new_with_kind(KeyCode::Char(ch), KeyModifiers::CONTROL, KeyEventKind::Press);
+            let key = KeyEvent::new_with_kind(
+                KeyCode::Char(ch),
+                KeyModifiers::CONTROL,
+                KeyEventKind::Press,
+            );
             let action = self.editor.handle(Event::Key(key));
             self.draw();
             action
@@ -1275,7 +1354,11 @@ mod tests {
 
         fn screen_row(&self, y: u16) -> String {
             let buffer = self.terminal.backend().buffer();
-            (0..buffer.area.width).map(|x| buffer[(x, y)].symbol()).collect::<String>().trim_end().to_string()
+            (0..buffer.area.width)
+                .map(|x| buffer[(x, y)].symbol())
+                .collect::<String>()
+                .trim_end()
+                .to_string()
         }
     }
 
@@ -1291,7 +1374,10 @@ mod tests {
         assert_eq!(h.screen_row(1), format!("{}# Title", " ".repeat(LEFT as usize)));
         assert_eq!(
             h.screen_row(2),
-            format!("{}All work and no play makes Jack a dull boy. All work and no play", " ".repeat(6))
+            format!(
+                "{}All work and no play makes Jack a dull boy. All work and no play",
+                " ".repeat(6)
+            )
         );
         assert_eq!(h.screen_row(3), format!("{}makes Jack a dull boy.", " ".repeat(6)));
         assert_eq!(h.cursor(), (LEFT + 23, 3));
@@ -1300,7 +1386,8 @@ mod tests {
 
     #[test]
     fn up_and_down_keep_the_column() {
-        let mut h = Harness::new("# Title\nThe longest line of them all\nshort\nanother long line here");
+        let mut h =
+            Harness::new("# Title\nThe longest line of them all\nshort\nanother long line here");
         assert_eq!(h.cursor(), (LEFT + 22, 4));
         h.key(KeyCode::Up);
         assert_eq!(h.cursor(), (LEFT + 5, 3)); // end of "short"
@@ -1686,7 +1773,17 @@ mod tests {
     #[test]
     fn history_restores_a_version_and_undo_takes_it_back() {
         let first = version(1, "First pass", "# Title\nOld text");
-        let editor = Editor::new(Post { id: 1, body: "# Title\nNew text".into(), cursor: None, created_at: jiff::Timestamp::UNIX_EPOCH }, Some(first.clone()), Exports::default(), Settings::default());
+        let editor = Editor::new(
+            Post {
+                id: 1,
+                body: "# Title\nNew text".into(),
+                cursor: None,
+                created_at: jiff::Timestamp::UNIX_EPOCH,
+            },
+            Some(first.clone()),
+            Exports::default(),
+            Settings::default(),
+        );
         let mut h = Harness { editor, terminal: Terminal::new(TestBackend::new(80, 12)).unwrap() };
         h.draw();
         assert!(matches!(h.ctrl('r'), Action::ShowHistory));
@@ -1796,9 +1893,16 @@ mod tests {
 
     #[test]
     fn list_items_wrap_under_their_text() {
-        let point = "- A point long enough that it wraps onto a second row, which lines up under its text";
+        let point =
+            "- A point long enough that it wraps onto a second row, which lines up under its text";
         let mut h = Harness::new(&format!("# Title\n{point}"));
-        assert_eq!(h.screen_row(2), format!("{}- A point long enough that it wraps onto a second row, which lines", " ".repeat(LEFT as usize)));
+        assert_eq!(
+            h.screen_row(2),
+            format!(
+                "{}- A point long enough that it wraps onto a second row, which lines",
+                " ".repeat(LEFT as usize)
+            )
+        );
         assert_eq!(h.screen_row(3), format!("{}  up under its text", " ".repeat(LEFT as usize)));
         // The cursor, at the end, is past the indent.
         assert_eq!(h.cursor(), (LEFT + 19, 3));
@@ -1889,7 +1993,8 @@ mod tests {
         assert!(h.editor.menu.is_none());
         // Commands can be clicked; a click outside closes the menu.
         h.ctrl('k');
-        let (y, row) = (0..12).map(|y| (y, h.screen_row(y))).find(|(_, row)| row.contains("History")).unwrap();
+        let (y, row) =
+            (0..12).map(|y| (y, h.screen_row(y))).find(|(_, row)| row.contains("History")).unwrap();
         let x = row.find("History").unwrap() as u16;
         h.mouse(MouseEventKind::Down(MouseButton::Left), x, y);
         assert!(h.editor.menu.is_none());
@@ -1901,7 +2006,10 @@ mod tests {
         h.ctrl('k');
         h.key(KeyCode::Up);
         assert!(h.screen().contains("Quit"));
-        assert!(matches!(h.editor.handle(Event::Key(KeyEvent::from(KeyCode::Enter))), Action::Quit));
+        assert!(matches!(
+            h.editor.handle(Event::Key(KeyEvent::from(KeyCode::Enter))),
+            Action::Quit
+        ));
     }
 
     #[test]
@@ -1929,7 +2037,9 @@ mod tests {
         // from the post.
         let screen = h.all();
         assert!(screen.contains("Export as markdown"), "{screen}");
-        assert!(screen.contains("[x] Front matter") && screen.contains("[ ] Keep the # title line"));
+        assert!(
+            screen.contains("[x] Front matter") && screen.contains("[ ] Keep the # title line")
+        );
         assert!(screen.contains("title: \"My Post\"") && screen.contains("slug: my-post"));
         assert!(screen.contains("description: \"Hello there\""));
         assert!(screen.contains("Tab complete"));
@@ -1982,7 +2092,9 @@ mod tests {
         assert!(kept.ends_with("---\n\n# My Post\n\nHello **there** again\n"), "{kept}");
         // Both are remembered.
         h.ctrl('S');
-        assert!(h.all().contains("[x] Front matter") && h.all().contains("[x] Keep the # title line"));
+        assert!(
+            h.all().contains("[x] Front matter") && h.all().contains("[x] Keep the # title line")
+        );
         // Without front matter, it's the post as it is.
         h.key(KeyCode::Down);
         h.key(KeyCode::Char(' '));

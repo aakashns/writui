@@ -87,9 +87,6 @@ impl<C: Copy> HintBar<C> {
     /// The command under a mouse click, if any.
     pub fn hit(&self, column: u16, row: u16) -> Option<C> {
         let pos = Position::new(column, row);
-        self.hits
-            .iter()
-            .find(|(rect, _)| rect.contains(pos))
-            .map(|(_, cmd)| *cmd)
+        self.hits.iter().find(|(rect, _)| rect.contains(pos)).map(|(_, cmd)| *cmd)
     }
 }

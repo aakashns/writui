@@ -79,7 +79,8 @@ README.md     for people using writui; CONTRIBUTING.md for working on it
 
 1. Branch off `main` for each PR. PRs shouldn't be unreasonably large; a
    PR can cover a whole milestone, or several related items.
-2. Verify with `cargo test`, `cargo clippy --all-targets`, and by driving the
+2. Run `cargo fmt` (CI checks it). Verify with `cargo test`,
+   `cargo clippy --all-targets`, and by driving the
    real app in tmux against a throwaway vault:
    - `tmux new-session -d -s w -x 100 -y 30 "target/debug/writui --db /tmp/x/writui.db"`,
      wait ~1.5s for it to start, then `tmux send-keys` and

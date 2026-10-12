@@ -51,7 +51,14 @@ pub struct Menu<C> {
 
 impl<C: Copy> Menu<C> {
     pub fn new(items: Vec<Item<C>>) -> Self {
-        Menu { items, filter: String::new(), selected: None, offset: 0, area: Rect::default(), hits: Vec::new() }
+        Menu {
+            items,
+            filter: String::new(),
+            selected: None,
+            offset: 0,
+            area: Rect::default(),
+            hits: Vec::new(),
+        }
     }
 
     /// The commands whose names contain the filter (ignoring case).
@@ -66,14 +73,20 @@ impl<C: Copy> Menu<C> {
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
-        let matches: Vec<(&str, &str)> = self.matches().iter().map(|item| (item.label, item.key)).collect();
+        let matches: Vec<(&str, &str)> =
+            self.matches().iter().map(|item| (item.label, item.key)).collect();
         // Borders, the filter and the line under it, then room for every
         // command, filtered or not.
         let area = centered(frame.area(), WIDTH, self.items.len().max(1) as u16 + 4);
         self.area = area;
         frame.render_widget(Clear, area);
         frame.render_widget(Block::bordered(), area);
-        let inner = Rect { x: area.x + 1, y: area.y + 1, width: area.width.saturating_sub(2), height: area.height.saturating_sub(2) };
+        let inner = Rect {
+            x: area.x + 1,
+            y: area.y + 1,
+            width: area.width.saturating_sub(2),
+            height: area.height.saturating_sub(2),
+        };
         if inner.height < 2 || inner.width < 4 {
             self.hits.clear();
             return;
@@ -89,13 +102,20 @@ impl<C: Copy> Menu<C> {
             chars.next();
             shown = chars.as_str();
         }
-        let text = if shown.is_empty() { Span::raw("type to filter").dim() } else { Span::raw(shown) };
+        let text =
+            if shown.is_empty() { Span::raw("type to filter").dim() } else { Span::raw(shown) };
         frame.render_widget(Paragraph::new(Line::from(vec![Span::raw(prompt).dim(), text])), field);
-        frame.set_cursor_position(Position::new(field.x + (prompt.len() + shown.width()) as u16, field.y));
+        frame.set_cursor_position(Position::new(
+            field.x + (prompt.len() + shown.width()) as u16,
+            field.y,
+        ));
 
         // A line under the filter, joined to the border.
         let rule = format!("├{}┤", "─".repeat(inner.width as usize));
-        frame.render_widget(Paragraph::new(rule), Rect { x: area.x, y: inner.y + 1, width: area.width, height: 1 });
+        frame.render_widget(
+            Paragraph::new(rule),
+            Rect { x: area.x, y: inner.y + 1, width: area.width, height: 1 },
+        );
 
         let rows = Rect { y: inner.y + 2, height: inner.height - 2, ..inner };
         self.hits.clear();
@@ -152,7 +172,8 @@ impl<C: Copy> Menu<C> {
                         self.selected = Some(self.selected.map_or(0, |i| (i + 1) % count));
                     }
                     KeyCode::Up | KeyCode::BackTab if count > 0 => {
-                        self.selected = Some(self.selected.map_or(count - 1, |i| (i + count - 1) % count));
+                        self.selected =
+                            Some(self.selected.map_or(count - 1, |i| (i + count - 1) % count));
                     }
                     KeyCode::Char('u') if ctrl => self.set_filter(String::new()),
                     KeyCode::Char(ch) if !ctrl => {
@@ -198,13 +219,15 @@ impl<C: Copy> Menu<C> {
     /// Typing filters the commands and highlights the first that matches,
     /// so Enter runs it.
     fn set_filter(&mut self, filter: String) {
-        let filter: String = filter.chars().filter(|ch| !ch.is_control()).take(MAX_FILTER).collect();
+        let filter: String =
+            filter.chars().filter(|ch| !ch.is_control()).take(MAX_FILTER).collect();
         if filter == self.filter {
             return;
         }
         self.filter = filter;
         self.offset = 0;
-        self.selected = if self.filter.is_empty() || self.matches().is_empty() { None } else { Some(0) };
+        self.selected =
+            if self.filter.is_empty() || self.matches().is_empty() { None } else { Some(0) };
     }
 }
 
@@ -215,7 +238,11 @@ mod tests {
     use super::*;
 
     fn sample() -> Menu<u8> {
-        Menu::new(vec![item("Save version", "Ctrl+S", 1), item("History", "Ctrl+R", 2), item("Undo", "Ctrl+Z", 3)])
+        Menu::new(vec![
+            item("Save version", "Ctrl+S", 1),
+            item("History", "Ctrl+R", 2),
+            item("Undo", "Ctrl+Z", 3),
+        ])
     }
 
     fn press(menu: &mut Menu<u8>, code: KeyCode) -> Option<u8> {

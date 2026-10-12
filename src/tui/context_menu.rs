@@ -68,7 +68,11 @@ impl<C: Copy> ContextMenu<C> {
         let width = self.width();
         let height = self.entries.len() as u16 + 2;
         let x = self.at.x.min(screen.right().saturating_sub(width));
-        let y = if self.at.y + height <= screen.bottom() { self.at.y } else { self.at.y.saturating_sub(height) };
+        let y = if self.at.y + height <= screen.bottom() {
+            self.at.y
+        } else {
+            self.at.y.saturating_sub(height)
+        };
         self.area = Rect::new(x, y, width, height).intersection(screen);
         frame.render_widget(Clear, self.area);
         frame.render_widget(Block::bordered(), self.area);
@@ -174,7 +178,10 @@ mod tests {
 
     fn sample() -> ContextMenu<u8> {
         let entry = |label, cmd, enabled| Entry { label, key: "Ctrl+X", cmd, enabled };
-        ContextMenu::new(vec![entry("Cut", 1, false), entry("Copy", 2, false), entry("Paste", 3, true)], Position::new(10, 5))
+        ContextMenu::new(
+            vec![entry("Cut", 1, false), entry("Copy", 2, false), entry("Paste", 3, true)],
+            Position::new(10, 5),
+        )
     }
 
     fn press(menu: &mut ContextMenu<u8>, code: KeyCode) -> Outcome<u8> {

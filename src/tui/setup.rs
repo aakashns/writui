@@ -113,7 +113,8 @@ impl Setup {
 
     fn field_line(&self, index: usize, label: &str) -> Line<'static> {
         let label = format!("{label:<LABEL_WIDTH$}");
-        let label = if index == self.focus { Span::raw(label).bold() } else { Span::raw(label).dim() };
+        let label =
+            if index == self.focus { Span::raw(label).bold() } else { Span::raw(label).dim() };
         Line::from(vec![label, Span::raw(self.fields[index].masked())])
     }
 

@@ -115,7 +115,12 @@ impl TextArea {
     /// Insert `text` (which may have line breaks) at the cursor.
     pub fn insert(&mut self, text: &str) {
         let room = MAX_CHARS.saturating_sub(self.len());
-        let text: String = text.replace("\r\n", "\n").chars().filter(|c| *c == '\n' || !c.is_control()).take(room).collect();
+        let text: String = text
+            .replace("\r\n", "\n")
+            .chars()
+            .filter(|c| *c == '\n' || !c.is_control())
+            .take(room)
+            .collect();
         let at = self.byte();
         let tail = self.lines[self.row].split_off(at);
         let mut parts = text.split('\n');
@@ -222,13 +227,19 @@ impl TextArea {
         frame.render_widget(Paragraph::new(lines), area);
         if focused && (self.top..self.top + height).contains(&self.row) {
             let (_, x) = self.window(self.row);
-            frame.set_cursor_position(Position::new(area.x + x as u16, area.y + (self.row - self.top) as u16));
+            frame.set_cursor_position(Position::new(
+                area.x + x as u16,
+                area.y + (self.row - self.top) as u16,
+            ));
         }
     }
 }
 
 fn clean(line: &str) -> String {
-    line.chars().filter(|c| !c.is_control() || *c == '\t').map(|c| if c == '\t' { ' ' } else { c }).collect()
+    line.chars()
+        .filter(|c| !c.is_control() || *c == '\t')
+        .map(|c| if c == '\t' { ' ' } else { c })
+        .collect()
 }
 
 fn byte_at(line: &str, col: usize) -> usize {

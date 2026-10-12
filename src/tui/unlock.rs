@@ -9,9 +9,7 @@ use ratatui::widgets::Paragraph;
 
 use super::Action;
 use super::hints::{HintBar, hint};
-use super::widgets::{
-    COLUMN_WIDTH, PasswordField, centered, dev_password_note, overview, title,
-};
+use super::widgets::{COLUMN_WIDTH, PasswordField, centered, dev_password_note, overview, title};
 
 const LABEL: &str = "Password  ";
 

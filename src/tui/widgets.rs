@@ -35,6 +35,7 @@ pub fn overview() -> Vec<Line<'static>> {
 /// writui's logo, drawn large for the password screens: the `>` mark, the
 /// green bar (the caret), and the name in pixel letters, each line split
 /// into those three parts.
+#[rustfmt::skip]
 const BANNER: [[&str; 3]; 6] = [
     ["         ", "  ", "                         ██                         ██"],
     ["▄▄▄      ", "▄▄", "                                 ██"],
@@ -66,12 +67,7 @@ pub fn column(area: Rect, width: u16) -> Rect {
 pub fn centered(area: Rect, width: u16, height: u16) -> Rect {
     let width = width.min(area.width);
     let height = height.min(area.height);
-    Rect::new(
-        area.x + (area.width - width) / 2,
-        area.y + (area.height - height) / 2,
-        width,
-        height,
-    )
+    Rect::new(area.x + (area.width - width) / 2, area.y + (area.height - height) / 2, width, height)
 }
 
 /// Cut `text` to fit in `width` columns, ending with `…` if it was cut.

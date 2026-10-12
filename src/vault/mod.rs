@@ -261,10 +261,8 @@ impl Vault {
 
     /// Move a post to the Trash.
     pub fn delete_post(&self, id: i64) -> Result<()> {
-        self.conn.execute(
-            "UPDATE posts SET deleted_at = ?1 WHERE id = ?2",
-            params![now_millis(), id],
-        )?;
+        self.conn
+            .execute("UPDATE posts SET deleted_at = ?1 WHERE id = ?2", params![now_millis(), id])?;
         Ok(())
     }
 
@@ -290,8 +288,14 @@ impl Vault {
     /// versions, all or nothing.
     fn delete_posts_where(&self, filter: &str, param: i64) -> Result<usize> {
         let tx = self.conn.unchecked_transaction()?;
-        tx.execute(&format!("DELETE FROM saves WHERE post_id IN (SELECT id FROM posts WHERE {filter})"), [param])?;
-        tx.execute(&format!("DELETE FROM exports WHERE post_id IN (SELECT id FROM posts WHERE {filter})"), [param])?;
+        tx.execute(
+            &format!("DELETE FROM saves WHERE post_id IN (SELECT id FROM posts WHERE {filter})"),
+            [param],
+        )?;
+        tx.execute(
+            &format!("DELETE FROM exports WHERE post_id IN (SELECT id FROM posts WHERE {filter})"),
+            [param],
+        )?;
         let count = tx.execute(&format!("DELETE FROM posts WHERE {filter}"), [param])?;
         tx.commit()?;
         Ok(count)
@@ -368,12 +372,14 @@ impl Vault {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
             )
             .optional()?;
-        Ok(row.map(|(path, front_matter, suggested, with_front_matter, keep_title)| ExportSettings {
-            path: PathBuf::from(path),
-            front_matter,
-            suggested,
-            with_front_matter,
-            keep_title,
+        Ok(row.map(|(path, front_matter, suggested, with_front_matter, keep_title)| {
+            ExportSettings {
+                path: PathBuf::from(path),
+                front_matter,
+                suggested,
+                with_front_matter,
+                keep_title,
+            }
         }))
     }
 
@@ -384,7 +390,8 @@ impl Vault {
             "SELECT post_id, path FROM exports JOIN posts ON posts.id = post_id
              WHERE deleted_at IS NULL ORDER BY exported_at DESC",
         )?;
-        let rows = stmt.query_map([], |row| Ok((row.get(0)?, PathBuf::from(row.get::<_, String>(1)?))))?;
+        let rows =
+            stmt.query_map([], |row| Ok((row.get(0)?, PathBuf::from(row.get::<_, String>(1)?))))?;
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
@@ -437,7 +444,9 @@ impl Vault {
              LEFT JOIN exports ON post_id = posts.id
              WHERE deleted_at IS NULL ORDER BY updated_at DESC, posts.id DESC",
         )?;
-        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)))?;
+        let rows = stmt.query_map([], |row| {
+            Ok((row.get(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+        })?;
         let mut ids = Vec::new();
         for row in rows {
             let (id, body, front_matter) = row?;
@@ -458,7 +467,11 @@ impl Vault {
             .filter(|width| LINE_WIDTHS.contains(width))
             .unwrap_or(defaults.line_width);
         let nerd_font = self.value("nerd_font")?.map_or(defaults.nerd_font, |value| value == "on");
-        Ok(Settings { author: self.value("author")?.unwrap_or(defaults.author), line_width, nerd_font })
+        Ok(Settings {
+            author: self.value("author")?.unwrap_or(defaults.author),
+            line_width,
+            nerd_font,
+        })
     }
 
     pub fn set_settings(&self, settings: &Settings) -> Result<()> {
@@ -489,7 +502,10 @@ impl Vault {
     }
 
     fn value(&self, key: &str) -> Result<Option<String>> {
-        Ok(self.conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| row.get(0)).optional()?)
+        Ok(self
+            .conn
+            .query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| row.get(0))
+            .optional()?)
     }
 
     fn set_value(&self, key: &str, value: &str) -> Result<()> {
@@ -836,7 +852,9 @@ mod tests {
             keep_title: false,
         };
         let created = Timestamp::from_second(1_700_000_000).unwrap();
-        let id = vault.import_post("# Hi\n\nOne", &settings, None, "Before importing hi.md", Some(created)).unwrap();
+        let id = vault
+            .import_post("# Hi\n\nOne", &settings, None, "Before importing hi.md", Some(created))
+            .unwrap();
         assert_eq!(vault.post(id).unwrap().created_at, created);
         assert_eq!(vault.post(id).unwrap().body, "# Hi\n\nOne");
         assert_eq!(vault.export_settings(id).unwrap(), Some(settings.clone()));
@@ -844,7 +862,12 @@ mod tests {
         assert!(vault.list_versions(id).unwrap().is_empty());
 
         // Again, into the same post: the old text is kept as a version.
-        assert_eq!(vault.import_post("# Hi\n\nTwo", &settings, Some(id), "Before importing hi.md", None).unwrap(), id);
+        assert_eq!(
+            vault
+                .import_post("# Hi\n\nTwo", &settings, Some(id), "Before importing hi.md", None)
+                .unwrap(),
+            id
+        );
         assert_eq!(vault.post(id).unwrap().body, "# Hi\n\nTwo");
         let versions = vault.list_versions(id).unwrap();
         assert_eq!(versions.len(), 1);

@@ -89,14 +89,27 @@ impl Settings {
             .iter()
             .map(|field| {
                 let (name, value) = match field {
-                    Field::Author if self.values.author.is_empty() => ("Author", Span::raw("none").dim().italic()),
+                    Field::Author if self.values.author.is_empty() => {
+                        ("Author", Span::raw("none").dim().italic())
+                    }
                     Field::Author => ("Author", Span::raw(self.values.author.clone())),
-                    Field::LineWidth => ("Line width", Span::raw(format!("{} characters", self.values.line_width))),
-                    Field::NerdFont => ("Nerd Font", Span::raw(if self.values.nerd_font { "on" } else { "off" })),
+                    Field::LineWidth => {
+                        ("Line width", Span::raw(format!("{} characters", self.values.line_width)))
+                    }
+                    Field::NerdFont => {
+                        ("Nerd Font", Span::raw(if self.values.nerd_font { "on" } else { "off" }))
+                    }
                 };
-                let value = Span::styled(truncate(&value.content, width.saturating_sub(name.len() + 2)), value.style);
+                let value = Span::styled(
+                    truncate(&value.content, width.saturating_sub(name.len() + 2)),
+                    value.style,
+                );
                 let pad = width.saturating_sub(name.len() + value.width());
-                ListItem::new(Line::from(vec![Span::raw(name).bold(), Span::raw(" ".repeat(pad)), value]))
+                ListItem::new(Line::from(vec![
+                    Span::raw(name).bold(),
+                    Span::raw(" ".repeat(pad)),
+                    value,
+                ]))
             })
             .collect();
         self.rows_area = Rect { height: (FIELDS.len() as u16).min(col.height), ..col };
@@ -122,7 +135,15 @@ impl Settings {
             return;
         }
         let change = if self.field() == Field::NerdFont { "switch" } else { "change" };
-        self.hints.render(frame, hint_area, &[hint("Enter", change, Cmd::Change), hint("Esc", "back", Cmd::Back), hint("Ctrl+O", "lock", Cmd::Lock)]);
+        self.hints.render(
+            frame,
+            hint_area,
+            &[
+                hint("Enter", change, Cmd::Change),
+                hint("Esc", "back", Cmd::Back),
+                hint("Ctrl+O", "lock", Cmd::Lock),
+            ],
+        );
     }
 
     pub fn handle(&mut self, event: Event) -> Action {
@@ -200,7 +221,8 @@ impl Settings {
                         Ok(width) if LINE_WIDTHS.contains(&width) => values.line_width = width,
                         _ => {
                             let (min, max) = (LINE_WIDTHS.start(), LINE_WIDTHS.end());
-                            self.notice = Some(format!("The line width is a number from {min} to {max}."));
+                            self.notice =
+                                Some(format!("The line width is a number from {min} to {max}."));
                             return Action::None;
                         }
                     },
@@ -248,7 +270,10 @@ impl Settings {
                     "Line width",
                     vec![
                         Line::from("How wide the text is in the editor, in characters."),
-                        Line::from(format!("From {min} to {max}; the default is {DEFAULT_LINE_WIDTH}.").dim()),
+                        Line::from(
+                            format!("From {min} to {max}; the default is {DEFAULT_LINE_WIDTH}.")
+                                .dim(),
+                        ),
                     ],
                     buttons(),
                     0,
@@ -274,7 +299,10 @@ mod tests {
         let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
         terminal.draw(|frame| settings.render(frame)).unwrap();
         let buffer = terminal.backend().buffer();
-        (0..24).map(|y| (0..80).map(|x| buffer[(x, y)].symbol()).collect::<String>()).collect::<Vec<_>>().join("\n")
+        (0..24)
+            .map(|y| (0..80).map(|x| buffer[(x, y)].symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     fn press(settings: &mut Settings, code: KeyCode) -> Action {
@@ -291,11 +319,16 @@ mod tests {
     fn settings_are_changed_in_a_dialog() {
         let mut settings = Settings::new(Values::default());
         let text = screen(&mut settings);
-        assert!(text.contains("Author") && text.contains("none") && text.contains("68 characters"), "{text}");
+        assert!(
+            text.contains("Author") && text.contains("none") && text.contains("68 characters"),
+            "{text}"
+        );
         // The author.
         press(&mut settings, KeyCode::Enter);
         type_text(&mut settings, "Ada");
-        let Action::SaveSettings(values) = press(&mut settings, KeyCode::Enter) else { panic!("not saved") };
+        let Action::SaveSettings(values) = press(&mut settings, KeyCode::Enter) else {
+            panic!("not saved")
+        };
         assert_eq!(values.author, "Ada");
         assert!(screen(&mut settings).contains("Ada"));
         // The line width: starts with the current one; out of range is refused.
@@ -311,13 +344,20 @@ mod tests {
         press(&mut settings, KeyCode::Backspace);
         press(&mut settings, KeyCode::Backspace);
         type_text(&mut settings, "80");
-        let Action::SaveSettings(values) = press(&mut settings, KeyCode::Enter) else { panic!("not saved") };
+        let Action::SaveSettings(values) = press(&mut settings, KeyCode::Enter) else {
+            panic!("not saved")
+        };
         assert_eq!((values.author.as_str(), values.line_width), ("Ada", 80));
         // Nerd Font: Enter switches it, no dialog.
         press(&mut settings, KeyCode::Down);
         let text = screen(&mut settings);
-        assert!(text.contains("Nerd Font") && text.contains("off") && text.contains("Enter switch"), "{text}");
-        let Action::SaveSettings(values) = press(&mut settings, KeyCode::Enter) else { panic!("not saved") };
+        assert!(
+            text.contains("Nerd Font") && text.contains("off") && text.contains("Enter switch"),
+            "{text}"
+        );
+        let Action::SaveSettings(values) = press(&mut settings, KeyCode::Enter) else {
+            panic!("not saved")
+        };
         assert!(values.nerd_font && settings.dialog.is_none());
         assert!(screen(&mut settings).contains("on"));
         // Esc goes back.

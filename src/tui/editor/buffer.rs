@@ -240,7 +240,10 @@ impl Buffer {
         };
         let mut j = i - 1;
         while j > start {
-            if self.rope.char(j - 1).is_whitespace() && !self.rope.char(j).is_whitespace() && ends_sentence(j) {
+            if self.rope.char(j - 1).is_whitespace()
+                && !self.rope.char(j).is_whitespace()
+                && ends_sentence(j)
+            {
                 return j;
             }
             j -= 1;
@@ -279,7 +282,8 @@ impl Buffer {
     pub fn word_at(&self, pos: usize) -> Range<usize> {
         let line = self.rope.char_to_line(pos);
         let (start, end) = (self.rope.line_to_char(line), self.line_end(line));
-        let Some(probe) = (pos < end).then_some(pos).or(pos.checked_sub(1).filter(|&p| p >= start)) else {
+        let Some(probe) = (pos < end).then_some(pos).or(pos.checked_sub(1).filter(|&p| p >= start))
+        else {
             return pos..pos;
         };
         let class = is_word(self.rope.char(probe));

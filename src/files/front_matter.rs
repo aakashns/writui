@@ -19,7 +19,8 @@ pub fn suggest(title: &str, body: &str, date: Date, today: Date, author: &str) -
     let slug = file_name(title);
     let slug = slug.trim_end_matches(".md");
     let author = author.trim();
-    let author = if author.is_empty() { String::new() } else { format!("author: {}\n", quote(author)) };
+    let author =
+        if author.is_empty() { String::new() } else { format!("author: {}\n", quote(author)) };
     format!(
         "title: {}\n{author}date: {date}\nupdated: {today}\ndescription: {}\nslug: {slug}",
         quote(title),
@@ -72,7 +73,9 @@ pub fn front_matter(suggested: &str, last: Option<&ExportSettings>, same_post: b
     let had = keyed(&last.front_matter);
     let new = fields(suggested)
         .into_iter()
-        .filter(|(key, _)| key.as_ref().is_some_and(|key| !had.contains_key(key) && !before.contains_key(key)))
+        .filter(|(key, _)| {
+            key.as_ref().is_some_and(|key| !had.contains_key(key) && !before.contains_key(key))
+        })
         .map(|(_, text)| text);
     out.splice(after_suggested..after_suggested, new);
     out.join("\n")
@@ -86,7 +89,9 @@ pub fn with_date(front_matter: &str, suggestion: &str) -> String {
         return suggestion.to_string();
     }
     let has = |key: &str| fields(front_matter).iter().any(|(k, _)| k.as_deref() == Some(key));
-    let Some((_, date)) = fields(suggestion).into_iter().find(|(k, _)| k.as_deref() == Some("date")) else {
+    let Some((_, date)) =
+        fields(suggestion).into_iter().find(|(k, _)| k.as_deref() == Some("date"))
+    else {
         return front_matter.to_string();
     };
     if has("date") {
@@ -103,7 +108,11 @@ pub fn with_date(front_matter: &str, suggestion: &str) -> String {
 /// follow the post, and the ones it lacks are suggested on export.
 pub fn suggested_of(suggested: &str, front_matter: &str) -> String {
     let has: Vec<Option<String>> = fields(front_matter).into_iter().map(|(key, _)| key).collect();
-    let kept: Vec<String> = fields(suggested).into_iter().filter(|(key, _)| has.contains(key)).map(|(_, text)| text).collect();
+    let kept: Vec<String> = fields(suggested)
+        .into_iter()
+        .filter(|(key, _)| has.contains(key))
+        .map(|(_, text)| text)
+        .collect();
     kept.join("\n")
 }
 
@@ -119,10 +128,9 @@ fn fields(text: &str) -> Vec<(Option<String>, String)> {
             text.push_str(line.trim_end());
             continue;
         }
-        let key = line
-            .split_once(':')
-            .map(|(key, _)| key)
-            .filter(|key| !key.is_empty() && key.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-'));
+        let key = line.split_once(':').map(|(key, _)| key).filter(|key| {
+            !key.is_empty() && key.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-')
+        });
         fields.push((key.map(str::to_string), line.trim_end().to_string()));
     }
     fields
@@ -185,13 +193,16 @@ fn unquote(raw: &str) -> String {
 /// `---` lines) comes back as it is; TOML (between `+++` lines, as Zola
 /// also takes) is turned into YAML. `None` if the file has none.
 pub fn split(text: &str) -> Option<(String, &str)> {
-    let fence = ["---", "+++"].into_iter().find(|fence| text.lines().next().map(str::trim_end) == Some(fence))?;
+    let fence = ["---", "+++"]
+        .into_iter()
+        .find(|fence| text.lines().next().map(str::trim_end) == Some(fence))?;
     let start = text.find('\n')? + 1;
     let mut at = start;
     for line in text[start..].split_inclusive('\n') {
         if line.trim_end() == fence {
             let inside = text[start..at].trim_end_matches(['\n', '\r']);
-            let front_matter = if fence == "+++" { toml_to_yaml(inside) } else { inside.to_string() };
+            let front_matter =
+                if fence == "+++" { toml_to_yaml(inside) } else { inside.to_string() };
             return Some((front_matter, &text[at + line.len()..]));
         }
         at += line.len();
@@ -214,8 +225,13 @@ fn toml_to_yaml(toml: &str) -> String {
             out.push(if trimmed.is_empty() { String::new() } else { format!("{indent}{trimmed}") });
             continue;
         }
-        if let Some(name) = trimmed.strip_prefix('[').and_then(|r| r.strip_suffix(']')).filter(|n| !n.starts_with('[')) {
-            let path: Vec<String> = name.split('.').map(|part| part.trim().trim_matches('"').to_string()).collect();
+        if let Some(name) = trimmed
+            .strip_prefix('[')
+            .and_then(|r| r.strip_suffix(']'))
+            .filter(|n| !n.starts_with('['))
+        {
+            let path: Vec<String> =
+                name.split('.').map(|part| part.trim().trim_matches('"').to_string()).collect();
             let shared = table.iter().zip(&path).take_while(|(a, b)| a == b).count();
             for (depth, part) in path.iter().enumerate().skip(shared) {
                 out.push(format!("{}{part}:", "  ".repeat(depth)));
@@ -271,7 +287,11 @@ pub fn description(body: &str) -> String {
     for word in words {
         let len = out.chars().count() + usize::from(!out.is_empty()) + word.chars().count();
         if len > DESCRIPTION_CHARS {
-            let cut = if out.is_empty() { word.chars().take(DESCRIPTION_CHARS - 1).collect() } else { out };
+            let cut = if out.is_empty() {
+                word.chars().take(DESCRIPTION_CHARS - 1).collect()
+            } else {
+                out
+            };
             return format!("{}…", cut.trim_end_matches([',', ';', ':', '.', '-']));
         }
         if !out.is_empty() {
@@ -343,16 +363,28 @@ mod tests {
     fn the_author_from_settings_is_suggested() {
         let today = Date::new(2026, 10, 8).unwrap();
         let ada = suggest("Hi", "# Hi", today, today, " Ada ");
-        assert_eq!(ada, "title: \"Hi\"\nauthor: \"Ada\"\ndate: 2026-10-08\nupdated: 2026-10-08\ndescription: \"\"\nslug: hi");
+        assert_eq!(
+            ada,
+            "title: \"Hi\"\nauthor: \"Ada\"\ndate: 2026-10-08\nupdated: 2026-10-08\ndescription: \"\"\nslug: hi"
+        );
         // A new author in Settings is used next time, unless the field was
         // changed by hand.
         let grace = suggest("Hi", "# Hi", today, today, "Grace");
-        assert_eq!(get(&front_matter(&grace, Some(&settings(&ada, &ada)), true), "author").as_deref(), Some("Grace"));
+        assert_eq!(
+            get(&front_matter(&grace, Some(&settings(&ada, &ada)), true), "author").as_deref(),
+            Some("Grace")
+        );
         let typed = ada.replace("Ada", "Ada L.");
-        assert_eq!(get(&front_matter(&grace, Some(&settings(&typed, &ada)), true), "author").as_deref(), Some("Ada L."));
+        assert_eq!(
+            get(&front_matter(&grace, Some(&settings(&typed, &ada)), true), "author").as_deref(),
+            Some("Ada L.")
+        );
         // A post exported before there was an author gets it.
         let plain = suggest("Hi", "# Hi", today, today, "");
-        assert_eq!(get(&front_matter(&grace, Some(&settings(&plain, &plain)), true), "author").as_deref(), Some("Grace"));
+        assert_eq!(
+            get(&front_matter(&grace, Some(&settings(&plain, &plain)), true), "author").as_deref(),
+            Some("Grace")
+        );
     }
 
     #[test]
@@ -361,7 +393,10 @@ mod tests {
         let today = Date::new(2026, 10, 8).unwrap();
         let suggestion = suggest("Hi", "# Hi", made, today, "");
         assert!(suggestion.contains("date: 2025-03-14\nupdated: 2026-10-08"));
-        assert_eq!(with_date("title: Hi\ntags: [a]", &suggestion), "title: Hi\ndate: 2025-03-14\ntags: [a]");
+        assert_eq!(
+            with_date("title: Hi\ntags: [a]", &suggestion),
+            "title: Hi\ndate: 2025-03-14\ntags: [a]"
+        );
         assert_eq!(with_date("tags: [a]", &suggestion), "date: 2025-03-14\ntags: [a]");
         // Its own date stays.
         assert_eq!(with_date("date: 2020-01-01", &suggestion), "date: 2020-01-01");
@@ -375,7 +410,10 @@ mod tests {
         let text = description(&body);
         assert!(text.ends_with("word…"), "{text}");
         assert!(text.chars().count() <= DESCRIPTION_CHARS + 1);
-        assert_eq!(description("# T\n> Quoted, *nicely*.\n\n1. First\n---\n| a | b |"), "Quoted, nicely. First");
+        assert_eq!(
+            description("# T\n> Quoted, *nicely*.\n\n1. First\n---\n| a | b |"),
+            "Quoted, nicely. First"
+        );
         assert_eq!(description("# Only a title"), "");
     }
 
@@ -405,7 +443,10 @@ mod tests {
         );
         // Quoted differently is still unchanged.
         let typed = "title: Old\nslug: 'old'";
-        assert_eq!(front_matter(now, Some(&settings(typed, then)), true), "title: \"New\"\nslug: new");
+        assert_eq!(
+            front_matter(now, Some(&settings(typed, then)), true),
+            "title: \"New\"\nslug: new"
+        );
         // Changed by hand, reordered or removed: kept so, except the
         // title, which is always the post's.
         let typed = "slug: mine\ntitle: \"Mine\"\ndate: 2026-01-01\nupdated: 2026-01-01";
@@ -434,7 +475,10 @@ mod tests {
         );
         // None of them: at the start.
         let file = "tags: [a]";
-        assert_eq!(front_matter(now, Some(&settings(file, &suggested_of(now, file))), true), format!("{now}\ntags: [a]"));
+        assert_eq!(
+            front_matter(now, Some(&settings(file, &suggested_of(now, file))), true),
+            format!("{now}\ntags: [a]")
+        );
     }
 
     #[test]
@@ -449,7 +493,10 @@ mod tests {
     #[test]
     fn front_matter_is_split_off() {
         assert_eq!(split("---\ntitle: Hi\n---\n\nText"), Some(("title: Hi".to_string(), "\nText")));
-        assert_eq!(split("---\r\ntitle: Hi\r\n---\r\nText"), Some(("title: Hi".to_string(), "Text")));
+        assert_eq!(
+            split("---\r\ntitle: Hi\r\n---\r\nText"),
+            Some(("title: Hi".to_string(), "Text"))
+        );
         assert_eq!(split("---\n---\nText"), Some((String::new(), "Text")));
         // Not closed, or not at the very start: not front matter.
         assert_eq!(split("---\ntitle: Hi\nText"), None);

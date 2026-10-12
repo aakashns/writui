@@ -91,7 +91,8 @@ impl History {
     pub fn read(&mut self, version: Version) {
         let rope = Rope::from_str(&version.body);
         let markup = Markup::new(&rope);
-        self.reading = Some(Reading { version, rope, markup, rows: Vec::new(), width: 0, top: 0, height: 0 });
+        self.reading =
+            Some(Reading { version, rope, markup, rows: Vec::new(), width: 0, top: 0, height: 0 });
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
@@ -131,7 +132,13 @@ impl History {
             let items: Vec<ListItem> = self
                 .versions
                 .iter()
-                .map(|version| ListItem::new(version_line(version, &version_time(version.created_at, now, &tz), width)))
+                .map(|version| {
+                    ListItem::new(version_line(
+                        version,
+                        &version_time(version.created_at, now, &tz),
+                        width,
+                    ))
+                })
                 .collect();
             self.rows_area = Rect { height: (items.len() as u16).min(col.height), ..col };
             frame.render_stateful_widget(
@@ -241,7 +248,9 @@ impl History {
     /// Scroll the text being read, or move through the list of versions.
     fn scroll(&mut self, by: isize) -> Outcome {
         match &mut self.reading {
-            Some(reading) => reading.top = reading.top.saturating_add_signed(by).min(reading.max_top()),
+            Some(reading) => {
+                reading.top = reading.top.saturating_add_signed(by).min(reading.max_top())
+            }
             None => {
                 let last = self.versions.len().saturating_sub(1);
                 let current = self.state.selected().unwrap_or(0);
@@ -269,9 +278,15 @@ impl Reading {
         self.height = body.height as usize;
         self.top = self.top.min(self.max_top());
         let left = body.x + body.width.saturating_sub(width as u16) / 2;
-        let area = Rect::new(left, body.y, (width as u16 + 1).min(body.right() - left), body.height);
-        let lines: Vec<Line> =
-            self.rows.iter().skip(self.top).take(self.height).map(|row| row_line(&self.rope, &self.markup, row, None)).collect();
+        let area =
+            Rect::new(left, body.y, (width as u16 + 1).min(body.right() - left), body.height);
+        let lines: Vec<Line> = self
+            .rows
+            .iter()
+            .skip(self.top)
+            .take(self.height)
+            .map(|row| row_line(&self.rope, &self.markup, row, None))
+            .collect();
         frame.render_widget(Paragraph::new(lines), area);
     }
 
@@ -301,7 +316,11 @@ fn version_line(version: &Version, right: &str, width: usize) -> Line<'static> {
 }
 
 fn restore_dialog(version: &Version, changed: bool) -> Dialog<Cmd> {
-    let name = if version.name.is_empty() { "this version".to_string() } else { format!("“{}”", truncate(&version.name, 30)) };
+    let name = if version.name.is_empty() {
+        "this version".to_string()
+    } else {
+        format!("“{}”", truncate(&version.name, 30))
+    };
     let mut lines = vec![Line::from(format!("Replace the post with {name}?"))];
     if changed {
         lines.push(Line::from("Its current text isn't saved as a version.".dim()));

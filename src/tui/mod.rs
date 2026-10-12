@@ -5,8 +5,8 @@ mod dialog;
 mod editor;
 mod file_dialog;
 mod hints;
-mod menu;
 mod list;
+mod menu;
 mod path_field;
 mod settings;
 mod setup;
@@ -19,12 +19,12 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use anyhow::{Context, Result};
+use ratatui::crossterm::cursor::SetCursorStyle;
 use ratatui::crossterm::event::{
     self, DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
     Event, KeyCode, KeyEventKind, KeyEventState, KeyModifiers, KeyboardEnhancementFlags,
     ModifierKeyCode, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
-use ratatui::crossterm::cursor::SetCursorStyle;
 use ratatui::crossterm::execute;
 use ratatui::crossterm::style::Print;
 use ratatui::crossterm::terminal::{SetTitle, supports_keyboard_enhancement};
@@ -43,14 +43,25 @@ pub enum Action {
     NewPost,
     OpenPost(i64),
     /// Move to the Trash, then highlight `select` in the list.
-    DeletePost { id: i64, select: Option<i64> },
+    DeletePost {
+        id: i64,
+        select: Option<i64>,
+    },
     ShowTrash,
-    RestorePost { id: i64, select: Option<i64> },
-    DeletePostForever { id: i64, select: Option<i64> },
+    RestorePost {
+        id: i64,
+        select: Option<i64>,
+    },
+    DeletePostForever {
+        id: i64,
+        select: Option<i64>,
+    },
     /// Go back to the list, highlighting this post.
     BackToList(Option<i64>),
     /// Save a version of the open post.
-    SaveVersion { name: String },
+    SaveVersion {
+        name: String,
+    },
     /// Show the open post's history.
     ShowHistory,
     /// Open a version in the history, to read.
@@ -58,7 +69,10 @@ pub enum Action {
     /// Remember how the open post was just exported.
     RecordExport(ExportSettings),
     /// Import a markdown file as a post.
-    Import { path: PathBuf, into: ImportInto },
+    Import {
+        path: PathBuf,
+        into: ImportInto,
+    },
     /// Find the posts matching a search on the list.
     Search(String),
     ShowSettings,
@@ -215,8 +229,11 @@ impl App {
             terminal.draw(|frame| self.render(frame))?;
             let bar = matches!(self.screen, Screen::Editor(_));
             if bar != self.bar_cursor {
-                let style =
-                    if bar { SetCursorStyle::BlinkingBar } else { SetCursorStyle::DefaultUserShape };
+                let style = if bar {
+                    SetCursorStyle::BlinkingBar
+                } else {
+                    SetCursorStyle::DefaultUserShape
+                };
                 execute!(stdout(), style)?;
                 self.bar_cursor = bar;
             }
@@ -293,8 +310,12 @@ impl App {
     fn resume(&mut self) -> Result<()> {
         let last = self.vault()?.last_screen().unwrap_or_default();
         self.remembered = last.clone();
-        let post = last.as_deref().and_then(|name| name.strip_prefix("post:")).and_then(|id| id.parse::<i64>().ok());
-        let exists = |id| -> Result<bool> { Ok(self.vault()?.list_posts()?.iter().any(|p| p.id == id)) };
+        let post = last
+            .as_deref()
+            .and_then(|name| name.strip_prefix("post:"))
+            .and_then(|id| id.parse::<i64>().ok());
+        let exists =
+            |id| -> Result<bool> { Ok(self.vault()?.list_posts()?.iter().any(|p| p.id == id)) };
         match (last.as_deref(), post) {
             (_, Some(id)) if exists(id)? => self.open_post(id),
             (Some("trash"), _) => self.show_trash(None, None),
@@ -425,7 +446,9 @@ impl App {
             Action::SaveVersion { name } => {
                 let Screen::Editor(editor) = &mut self.screen else { return Ok(()) };
                 let vault = self.vault.as_ref().context("the vault is locked");
-                match vault.and_then(|vault| vault.create_version(editor.post_id(), &name, &editor.text())) {
+                match vault
+                    .and_then(|vault| vault.create_version(editor.post_id(), &name, &editor.text()))
+                {
                     Ok(version) => editor.version_saved(version),
                     Err(err) => editor.set_error(format!("Couldn't save the version: {err:#}")),
                 }
@@ -436,8 +459,12 @@ impl App {
                 let Screen::Editor(editor) = &mut self.screen else { return Ok(()) };
                 let vault = self.vault.as_ref().context("the vault is locked");
                 let result = match action {
-                    Action::LoadVersion(id) => vault.and_then(|v| v.version(id)).map(|v| editor.show_version(v)),
-                    _ => vault.and_then(|v| v.list_versions(editor.post_id())).map(|v| editor.show_history(v)),
+                    Action::LoadVersion(id) => {
+                        vault.and_then(|v| v.version(id)).map(|v| editor.show_version(v))
+                    }
+                    _ => vault
+                        .and_then(|v| v.list_versions(editor.post_id()))
+                        .map(|v| editor.show_history(v)),
                 };
                 if let Err(err) = result {
                     editor.set_error(format!("Couldn't load the history: {err:#}"));
@@ -472,8 +499,11 @@ impl App {
             Action::RecordExport(settings) => {
                 let Screen::Editor(editor) = &mut self.screen else { return Ok(()) };
                 let vault = self.vault.as_ref().context("the vault is locked");
-                if let Err(err) = vault.and_then(|vault| vault.record_export(editor.post_id(), &settings)) {
-                    editor.set_error(format!("Exported, but couldn't remember the export: {err:#}"));
+                if let Err(err) =
+                    vault.and_then(|vault| vault.record_export(editor.post_id(), &settings))
+                {
+                    editor
+                        .set_error(format!("Exported, but couldn't remember the export: {err:#}"));
                 }
             }
         }
@@ -508,7 +538,8 @@ impl App {
     fn import(&mut self, path: &Path, into: ImportInto) -> Result<(), String> {
         let file = files::read(path)?;
         let vault = self.vault.as_ref().ok_or("The vault is locked.")?;
-        let failed = |err: anyhow::Error| format!("Couldn't import {}: {err:#}", files::display(path));
+        let failed =
+            |err: anyhow::Error| format!("Couldn't import {}: {err:#}", files::display(path));
         let into = match into {
             ImportInto::Check => {
                 let paths = vault.export_paths().map_err(failed)?;
@@ -526,9 +557,11 @@ impl App {
         };
         let today = jiff::Zoned::now().date();
         // A file without a date of its own is dated when it was made.
-        let made = file.created.map_or(today, |time| time.to_zoned(jiff::tz::TimeZone::system()).date());
+        let made =
+            file.created.map_or(today, |time| time.to_zoned(jiff::tz::TimeZone::system()).date());
         let author = vault.settings().map_err(failed)?.author;
-        let suggestion = files::front_matter::suggest(&file.title, &file.body, made, today, &author);
+        let suggestion =
+            files::front_matter::suggest(&file.title, &file.body, made, today, &author);
         let front_matter = files::front_matter::with_date(&file.front_matter, &suggestion);
         let settings = ExportSettings {
             path: path.to_path_buf(),
@@ -539,7 +572,9 @@ impl App {
         };
         let name = path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         let version_name: String = format!("Before importing {name}").chars().take(80).collect();
-        let id = vault.import_post(&file.body, &settings, into, &version_name, file.created).map_err(failed)?;
+        let id = vault
+            .import_post(&file.body, &settings, into, &version_name, file.created)
+            .map_err(failed)?;
         self.open_post(id).map_err(failed)?;
         if let Screen::Editor(editor) = &mut self.screen {
             let notice = match file.converted {
@@ -564,7 +599,8 @@ impl App {
     fn show_list(&mut self, select: Option<i64>, notice: Option<String>) -> Result<()> {
         let vault = self.vault()?;
         let mode = list::Mode::Posts { deleted_count: vault.count_deleted()? };
-        let folder = files::display_folder(&files::last_folder(vault.latest_export_settings()?.as_ref()));
+        let folder =
+            files::display_folder(&files::last_folder(vault.latest_export_settings()?.as_ref()));
         let sort = list::Sort::from_name(&vault.list_sort()?.unwrap_or_default());
         let nerd_font = vault.settings()?.nerd_font;
         let list = list::List::new(mode, vault.list_posts()?, select)
@@ -636,10 +672,13 @@ impl App {
         let vault = self.vault()?;
         let post = vault.post(id)?;
         let last_version = vault.latest_version(id)?;
-        let exports =
-            editor::Exports { this_post: vault.export_settings(id)?, latest: vault.latest_export_settings()? };
+        let exports = editor::Exports {
+            this_post: vault.export_settings(id)?,
+            latest: vault.latest_export_settings()?,
+        };
         let settings = vault.settings()?;
-        self.screen = Screen::Editor(Box::new(editor::Editor::new(post, last_version, exports, settings)));
+        self.screen =
+            Screen::Editor(Box::new(editor::Editor::new(post, last_version, exports, settings)));
         Ok(())
     }
 }
@@ -674,7 +713,8 @@ mod tests {
         let mut app = App::new(dir.path().join("writui.db"), false);
         app.perform(Action::CreateVault(Zeroizing::new("pw".into()))).unwrap();
         let file = dir.path().join("hello.md");
-        std::fs::write(&file, "+++\ntitle = \"Hello\"\ndate = 2026-01-01\n+++\n\nFirst text.\n").unwrap();
+        std::fs::write(&file, "+++\ntitle = \"Hello\"\ndate = 2026-01-01\n+++\n\nFirst text.\n")
+            .unwrap();
 
         app.apply(Action::Import { path: file.clone(), into: ImportInto::Check }).unwrap();
         let Screen::Editor(editor) = &app.screen else { panic!("not opened") };
@@ -715,15 +755,22 @@ mod tests {
         app.apply(Action::BackToList(None)).unwrap();
         app.apply(Action::Import { path: plain.clone(), into: ImportInto::Check }).unwrap();
         let Screen::Editor(editor) = &app.screen else { panic!("not opened") };
-        let settings = app.vault.as_ref().unwrap().export_settings(editor.post_id()).unwrap().unwrap();
+        let settings =
+            app.vault.as_ref().unwrap().export_settings(editor.post_id()).unwrap().unwrap();
         let metadata = std::fs::metadata(&plain).unwrap();
-        let made = jiff::Timestamp::try_from(metadata.created().or_else(|_| metadata.modified()).unwrap()).unwrap();
+        let made =
+            jiff::Timestamp::try_from(metadata.created().or_else(|_| metadata.modified()).unwrap())
+                .unwrap();
         let made = made.to_zoned(jiff::tz::TimeZone::system()).date();
-        assert_eq!(files::front_matter::get(&settings.front_matter, "date"), Some(made.to_string()));
+        assert_eq!(
+            files::front_matter::get(&settings.front_matter, "date"),
+            Some(made.to_string())
+        );
         assert!(!settings.with_front_matter);
         // A file that can't be read leaves the list showing why.
         app.apply(Action::BackToList(None)).unwrap();
-        app.apply(Action::Import { path: dir.path().join("gone.md"), into: ImportInto::Check }).unwrap();
+        app.apply(Action::Import { path: dir.path().join("gone.md"), into: ImportInto::Check })
+            .unwrap();
         assert!(matches!(&app.screen, Screen::List(_)));
     }
 
@@ -771,12 +818,16 @@ mod tests {
         let Screen::Editor(editor) = &app.screen else { panic!("not opened") };
         let id = editor.post_id();
         // Ctrl+O: the typing is stored, the vault closed.
-        let action = app.handle(key(KeyCode::Char('o'), KeyModifiers::CONTROL, KeyEventKind::Press));
+        let action =
+            app.handle(key(KeyCode::Char('o'), KeyModifiers::CONTROL, KeyEventKind::Press));
         app.apply(action).unwrap();
         assert!(matches!(app.screen, Screen::Unlock(_)) && app.vault.is_none());
         assert_eq!(app.title(), "writui");
         // Locked, Ctrl+O does nothing; the password opens the same post.
-        assert!(matches!(app.handle(key(KeyCode::Char('o'), KeyModifiers::CONTROL, KeyEventKind::Press)), Action::None));
+        assert!(matches!(
+            app.handle(key(KeyCode::Char('o'), KeyModifiers::CONTROL, KeyEventKind::Press)),
+            Action::None
+        ));
         app.perform(Action::Unlock(Zeroizing::new("pw".into()))).unwrap();
         let Screen::Editor(editor) = &app.screen else { panic!("not reopened") };
         assert_eq!((editor.post_id(), editor.text().as_str()), (id, "# x"));
@@ -784,7 +835,8 @@ mod tests {
 
     #[test]
     fn caps_lock_capitalises() {
-        let mut event = KeyEvent::new_with_kind(KeyCode::Char('a'), KeyModifiers::NONE, KeyEventKind::Press);
+        let mut event =
+            KeyEvent::new_with_kind(KeyCode::Char('a'), KeyModifiers::NONE, KeyEventKind::Press);
         event.state = KeyEventState::CAPS_LOCK;
         let Event::Key(key) = normalize(Event::Key(event)) else { panic!() };
         assert_eq!(key.code, KeyCode::Char('A'));
