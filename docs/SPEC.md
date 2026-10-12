@@ -170,6 +170,12 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   column. Windows narrower than that, or too short to fit it, get the plain
   "writui" title instead.
 
+  > can you try making "writui" less wide? also, i think some space is
+  > needed between the logo and the password box. think of the aesthetics
+
+  The letters are narrow (the name is 42 columns, not 54), and a blank line
+  under the logo leaves two rows before what follows.
+
   > put a box around the password
 
   > and esc to clear password, and if clear esc to quit
@@ -177,6 +183,12 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - Password fields are boxes with the label on the top edge ("Create your
   vault" puts its two side by side, so the banner still fits 30 rows). Esc
   clears what's typed; with nothing typed, Esc quits.
+
+  > and to the right of the password box add a clickable "Unlock" button
+
+- The unlock screen has an "Unlock" button right of the password box, as
+  tall as it, dimmed until something's typed. A window too narrow for it
+  leaves it out (Enter still unlocks).
 
   > and finally, on the password screen, let's add an "Overview" describing
   > how the app works in no more than 5-6 points, each no longer than one
@@ -186,10 +198,15 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   "Overview" (creator-approved copy):
   - All your writing lives in one file, encrypted with this password.
   - Forget the password and the writing is gone: there's no recovery.
-  - Write in markdown. Every post starts with a # title.
+  - Write your posts in markdown. Every post starts with a # title.
   - Posts save as you type; Ctrl+S also keeps a version to go back to.
   - While writing, Ctrl+K shows every command and its shortcut.
   - Ctrl+O locks writui; unlocking takes you back where you were.
+
+  > you know, with the overview in palce, we dont need the initla para
+
+  So "Create your vault" no longer has its own paragraph about the
+  password being unrecoverable: the Overview's first two points say it.
 - Change password — planned.
 
 ## The screens
@@ -245,9 +262,14 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   > can you add j/k support for down and up on the list page (while i'm
   > not typing in the filter box)?
 
-  > no need to mention them in the bottom menu Ctrl+N and Ctrl+D still work but aren't shown. Esc asks "Quit
-  writui?" (Quit is the selected button, `y`); Ctrl+Q and Ctrl+C still quit
-  straight away, unshown.
+  > no need to mention them in the bottom menu Ctrl+N and Ctrl+D still work but aren't shown. Esc quits; Ctrl+Q
+  and Ctrl+C also quit, unshown.
+
+  > also remove the quit confirmation on th elist screen on pressing esc, i
+  > think it's not necessary
+
+  (Esc used to ask "Quit writui?" first. Everything is saved as you type,
+  so there's nothing to lose.)
 
   > add a line gap above type to filter. and below type to filter, i want
   > "Sort by": "Updated", "Created", "Title". for filter use the maginifier
@@ -282,7 +304,7 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   matches, Delete deletes it. Esc empties the field, then leaves it (to
   the first post). The empty field is just a row ↑/↓ pass through; a
   click on a post leaves the field too. On the posts, Esc empties the
-  search before it asks to quit.
+  search before it quits.
 
   > let's put "Sort by: Updated " on the right of the "type to filter"
   > (within the main viewport), and make it a dropdown that i can click and

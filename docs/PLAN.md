@@ -21,7 +21,9 @@ The creator's batch of list / editor ideas shipped in `0.12.0`, and the
 `writui info` and Select All in `0.14.0`, Tab cycling the sort and
 Ctrl/Cmd+arrow jumps in `0.15.0`, and in `0.16.0` the logo as a big banner
 on the password screens, boxed password fields, Esc to clear or quit, and
-the whole repo run through `cargo fmt` (checked in CI). Next:
+the whole repo run through `cargo fmt` (checked in CI). `0.17.0` narrows
+the logo, adds an Unlock button, trims the setup screen, and makes Esc on
+the list quit without asking. Next:
 
 1. **Try online** (writui.com/try), below: the creator wants it next, and
    it must work on a phone. Probably two or three PRs, in the order listed.

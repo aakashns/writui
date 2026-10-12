@@ -114,7 +114,7 @@ the password each time it starts.
 - **Posts** are listed with the most recently changed first. Open one with
   Enter or a click, start a new one with `n` (or Enter: "New" is
   highlighted when the list opens). The list's shortcuts are single keys,
-  shown next to "New" and "Import" and at the bottom. Esc asks before quitting. writui opens
+  shown next to "New" and "Import" and at the bottom. Esc quits. writui opens
   where you left it: on the post you were writing, cursor and all.
 - **Search:** press `/` (or click "Type to filter (/)") and type. Posts with
   every word you type, anywhere in their text or front matter, are listed,

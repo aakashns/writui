@@ -130,9 +130,7 @@ enum Cmd {
     UpdateImported,
     ImportAsNew,
     Delete,
-    /// Esc on the list: asks first.
     Quit,
-    ConfirmQuit,
     Back,
     ConfirmDelete,
     CancelDialog,
@@ -838,21 +836,7 @@ impl List {
 
     fn run(&mut self, cmd: Cmd) -> Action {
         match cmd {
-            Cmd::Quit => {
-                let dialog = Dialog::new(
-                    "Quit",
-                    vec![Line::from("Quit writui?"), Line::from("Your writing is saved.".dim())],
-                    vec![
-                        Button { label: "Quit", key: "y", cmd: Cmd::ConfirmQuit, danger: false },
-                        Button { label: "Cancel", key: "n", cmd: Cmd::CancelDialog, danger: false },
-                    ],
-                    0,
-                    1,
-                );
-                self.dialog = Some((0, dialog));
-                Action::None
-            }
-            Cmd::ConfirmQuit => Action::Quit,
+            Cmd::Quit => Action::Quit,
             Cmd::Lock => Action::Lock,
             Cmd::New if !self.trash_view() => Action::NewPost,
             Cmd::Settings if !self.trash_view() => Action::ShowSettings,
@@ -1189,7 +1173,7 @@ mod tests {
     }
 
     #[test]
-    fn single_keys_and_esc_asks_before_quitting() {
+    fn single_keys_and_esc_quits() {
         let posts = vec![post(1, "One"), post(2, "Two")];
         let mut list = List::new(Mode::Posts { deleted_count: 0 }, posts, None);
         let text = screen(&mut list);
@@ -1215,13 +1199,9 @@ mod tests {
         press(&mut list, KeyCode::Char('d'), KeyModifiers::NONE);
         assert!(screen(&mut list).contains("Move “One” to the Trash?"));
         press(&mut list, KeyCode::Esc, KeyModifiers::NONE);
-        // Esc: asks; n keeps going, y quits.
-        assert!(matches!(press(&mut list, KeyCode::Esc, KeyModifiers::NONE), Action::None));
-        assert!(screen(&mut list).contains("Quit writui?"));
-        assert!(matches!(press(&mut list, KeyCode::Char('n'), KeyModifiers::NONE), Action::None));
         assert!(list.dialog.is_none());
-        press(&mut list, KeyCode::Esc, KeyModifiers::NONE);
-        assert!(matches!(press(&mut list, KeyCode::Char('y'), KeyModifiers::NONE), Action::Quit));
+        // Esc quits straight away: the writing is already saved.
+        assert!(matches!(press(&mut list, KeyCode::Esc, KeyModifiers::NONE), Action::Quit));
     }
 
     #[test]

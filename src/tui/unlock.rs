@@ -2,10 +2,10 @@
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{Event, KeyCode, MouseButton, MouseEventKind};
-use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::Stylize;
+use ratatui::layout::{Constraint, Layout, Position, Rect};
+use ratatui::style::{Style, Stylize};
 use ratatui::text::Line;
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, Paragraph};
 
 use super::Action;
 use super::hints::{HintBar, hint};
@@ -27,6 +27,8 @@ pub struct Unlock {
     locked: bool,
     error: Option<&'static str>,
     busy: bool,
+    /// Where the Unlock button was drawn, for clicks.
+    button: Rect,
     hints: HintBar<Cmd>,
 }
 
@@ -84,6 +86,27 @@ impl Unlock {
             frame.set_cursor_position(cursor);
         }
 
+        // The Unlock button, right of the password box and as tall as it,
+        // left out if the window is too narrow for all of it. Dimmed while
+        // there's no password for it to try.
+        let button = Rect::new(field_area.right() + 2, field_area.y, 12, height);
+        self.button = if area.contains(Position::new(button.right() - 1, button.bottom() - 1)) {
+            button
+        } else {
+            Rect::default()
+        };
+        if !self.button.is_empty() {
+            let style = if self.field.is_empty() || self.busy {
+                Style::new().dim()
+            } else {
+                Style::new().bold()
+            };
+            let block = Block::bordered().border_style(style);
+            let label = Paragraph::new(Line::from("Unlock").style(style)).centered();
+            frame.render_widget(label, block.inner(button));
+            frame.render_widget(block, button);
+        }
+
         // Esc clears the password, or quits if there's nothing to clear.
         let mut hints = vec![hint("Enter", "unlock", Cmd::Unlock)];
         if self.field.is_empty() {
@@ -114,6 +137,9 @@ impl Unlock {
                 Action::None
             }
             Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
+                if self.button.contains(Position::new(mouse.column, mouse.row)) {
+                    return self.run(Cmd::Unlock);
+                }
                 match self.hints.hit(mouse.column, mouse.row) {
                     Some(cmd) => self.run(cmd),
                     None => Action::None,

@@ -28,7 +28,7 @@ pub fn overview() -> Vec<Line<'static>> {
     const POINTS: [&str; 6] = [
         "All your writing lives in one file, encrypted with this password.",
         "Forget the password and the writing is gone: there's no recovery.",
-        "Write in markdown. Every post starts with a # title.",
+        "Write your posts in markdown. Every post starts with a # title.",
         "Posts save as you type; Ctrl+S also keeps a version to go back to.",
         "While writing, Ctrl+K shows every command and its shortcut.",
         "Ctrl+O locks writui; unlocking takes you back where you were.",
@@ -43,24 +43,27 @@ pub fn overview() -> Vec<Line<'static>> {
 /// into those three parts.
 #[rustfmt::skip]
 const BANNER: [[&str; 3]; 6] = [
-    ["         ", "  ", "                         ██                         ██"],
-    ["▄▄▄      ", "▄▄", "                                 ██"],
-    [" ▀██▄    ", "██", "    ██    ██ ██ ▄████ █████    ███████  ██    ██ █████"],
-    ["   ▀██▄  ", "██", "    ██ ▄▄ ██ ███▀        ██      ██     ██    ██    ██"],
-    ["  ▄██▀   ", "██", "    ██▄██▄██ ██          ██      ██     ██    ██    ██"],
-    ["▄██▀     ", "██", "    ▀█▀  ▀█▀ ██       ████████   ▀█████ ▀██▄▄▄██ ████████"],
+    ["         ", "  ", "                      ██                   ██"],
+    ["▄▄▄      ", "▄▄", "                            ██"],
+    [" ▀██▄    ", "██", "    ██   ██  ██ ▄██  ▀██   █████  ██  ██  ▀██"],
+    ["   ▀██▄  ", "██", "    ██ ▄ ██  ███▀     ██    ██    ██  ██   ██"],
+    ["  ▄██▀   ", "██", "    ██▄█▄██  ██       ██    ██    ██  ██   ██"],
+    ["▄██▀     ", "██", "    ▀█▀ ▀█▀  ██      ▄██▄   ▀███  ▀████▀  ▄██▄"],
 ];
 
-/// The password screens' title: the banner, or just "writui" when `area`
-/// is too small to fit the banner above `other_lines` more lines.
+/// The password screens' title: the banner and a blank line under it, or
+/// just "writui" when `area` is too small to fit those above `other_lines`
+/// more lines.
 pub fn title(area: Rect, other_lines: usize) -> Vec<Line<'static>> {
-    if area.width < COLUMN_WIDTH || (area.height as usize) < BANNER.len() + other_lines {
+    if area.width < COLUMN_WIDTH || (area.height as usize) < BANNER.len() + 1 + other_lines {
         return vec![Line::from("writui".bold())];
     }
-    BANNER
+    let mut lines: Vec<Line> = BANNER
         .iter()
         .map(|[mark, bar, name]| Line::from(vec![Span::raw(*mark), bar.green(), Span::raw(*name)]))
-        .collect()
+        .collect();
+    lines.push(Line::default());
+    lines
 }
 
 /// A column of at most `width`, horizontally centred in `area`.
@@ -180,8 +183,21 @@ mod tests {
     #[test]
     fn the_banner_fits_the_column() {
         let lines = title(Rect::new(0, 0, 100, 30), 10);
-        assert_eq!(lines.len(), BANNER.len());
+        assert_eq!(lines.len(), BANNER.len() + 1);
         assert!(lines.iter().all(|line| line.width() <= COLUMN_WIDTH as usize));
+    }
+
+    #[test]
+    fn the_dots_of_the_is_sit_over_their_stems() {
+        let columns = |line: &str, piece: &str| -> Vec<usize> {
+            let chars: Vec<char> = line.chars().collect();
+            let piece: Vec<char> = piece.chars().collect();
+            (0..chars.len()).filter(|&i| chars[i..].starts_with(&piece)).collect()
+        };
+        let dots = columns(BANNER[0][2], "██");
+        let stems: Vec<usize> =
+            columns(BANNER[2][2], "▀██").into_iter().filter(|&i| i > 10).map(|i| i + 1).collect();
+        assert_eq!(dots, stems);
     }
 
     #[test]
