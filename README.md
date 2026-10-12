@@ -112,13 +112,18 @@ vault: the encrypted file that holds all your posts. After that, it asks for
 the password each time it starts.
 
 - **Posts** are listed with the most recently changed first. Open one with
-  Enter or a click, start a new one with Ctrl+N.
+  Enter or a click, start a new one with `n`. The list's shortcuts are
+  single keys, shown at the bottom. Esc asks before quitting. writui opens
+  where you left it: on the post you were writing, cursor and all.
+- **Search:** press `/` (or click "Type to filter…") and type. Posts with
+  every word you type, anywhere in their text or front matter, are listed;
+  Enter opens the first. ↓ goes down to them, Esc clears the search.
 - **Zen writing:** the editor shows only your words. Hold Ctrl to see the
   post's word count and when you started it. (This needs a terminal that can
   report Ctrl on its own, like Alacritty, Ghostty, kitty, WezTerm or a recent
   iTerm2; in others, and inside tmux, they're always shown.)
-- **The menu** (Ctrl+K) lists everything you can do while writing, with its
-  shortcut. Type to filter it, pick with the arrow keys and Enter, or click.
+- **The menu** (Ctrl+K, or Cmd+K on a Mac) lists everything you can do
+  while writing, with its shortcut. Type to filter it, pick with the arrow keys and Enter, or click.
 - **Writing:** type away. Your post is saved automatically as you go: a
   second after you stop typing, every few seconds while you keep typing,
   and when you go back to the list (Esc) or quit (Ctrl+Q). There's no need
@@ -136,7 +141,8 @@ the password each time it starts.
   paragraph, or hold Shift while moving (Ctrl+A selects everything).
   Typing or Backspace replaces what's selected. Ctrl+C copies, Ctrl+X cuts
   and Ctrl+V pastes, using the system clipboard (your terminal's own paste,
-  like Cmd+V, works too). Esc drops the selection. Copying a whole post and pasting it into an empty
+  like Cmd+V, works too). Right-click for a menu with Cut, Copy and Paste.
+  Esc drops the selection. Copying a whole post and pasting it into an empty
   one gives the same post, not a doubled `# `.
 - **Formatting** follows standard markdown (CommonMark, plus GitHub's
   `~~strikethrough~~`, task lists and tables), so text is formatted only
@@ -157,11 +163,51 @@ the password each time it starts.
   for site generators like Zola, Hugo and Jekyll, which you can edit or turn
   off. Tab completes the path, and the next export of the post goes to the
   same file, asking before it replaces it.
-- **Bringing writing in:** "Import markdown" on the list (Ctrl+O) makes a
-  post of a `.md` file, keeping its front matter. Export it again and it
-  goes back to that file, so you can edit a published post here.
-- **Deleting** (Ctrl+D) moves a post to the Trash, where you can restore it
+  The first export of a post starts in your Documents folder (or wherever
+  you last exported or imported).
+- **Bringing writing in:** "Import" on the list (`i`) makes a post of a
+  `.md` or `.txt` file, keeping its front matter and dated when the file
+  was made. Export it again and it goes back to that file, so you can edit
+  a published post here.
+- **Deleting** (`d`) moves a post to the Trash, where you can restore it
   for 30 days.
+- **Settings** (at the end of the list, or `s`): your name, added as the
+  `author` in exported front matter, and how wide the text is while
+  writing (68 characters unless you change it).
+
+### Cmd keys on a Mac
+
+In the editor, Cmd works like Ctrl (Cmd+Z undoes, Cmd+X cuts, Cmd+A
+selects all, Cmd+K opens the menu) wherever your terminal passes Cmd on to
+programs. Cmd+V is your terminal's paste, which writui understands.
+
+Cmd+C is different: terminals keep it to copy *their own* selection, and
+writui draws its own selection, so there's nothing for the terminal to
+copy. Ctrl+C always works. To make Cmd+C copy in writui too, tell your
+terminal to pass it on:
+
+- **Alacritty**, in `~/.config/alacritty/alacritty.toml`:
+
+  ```toml
+  [[keyboard.bindings]]
+  key = "C"
+  mods = "Command"
+  action = "ReceiveChar"
+  ```
+
+- **Ghostty**, in its config (it still copies the terminal's own selection
+  when there is one):
+
+  ```
+  keybind = performable:super+c=copy_to_clipboard
+  ```
+
+- **iTerm2** (not tried yet): Settings → Keys → Key Bindings, add Cmd+C
+  with the action "Send Escape Sequence" and `[99;9u`.
+
+Cmd+K needs nothing in Alacritty (it sends Ctrl+L, which also opens the
+menu). In Ghostty and iTerm2 it clears the screen unless you pass it on
+the same way (`keybind = super+k=unbind` in Ghostty).
 
 ### Where your writing is kept
 

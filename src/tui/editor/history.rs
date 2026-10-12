@@ -56,6 +56,8 @@ pub struct History {
     changed: bool,
     dialog: Option<Dialog<Cmd>>,
     hints: HintBar<Cmd>,
+    /// How wide a version's text is, as in the editor.
+    line_width: usize,
 }
 
 /// A version's full text, laid out like the editor does.
@@ -70,7 +72,7 @@ struct Reading {
 }
 
 impl History {
-    pub fn new(title: String, versions: Vec<Version>, changed: bool) -> Self {
+    pub fn new(title: String, versions: Vec<Version>, changed: bool, line_width: usize) -> Self {
         let state = ListState::default().with_selected((!versions.is_empty()).then_some(0));
         History {
             title,
@@ -81,6 +83,7 @@ impl History {
             changed,
             dialog: None,
             hints: HintBar::default(),
+            line_width,
         }
     }
 
@@ -107,7 +110,7 @@ impl History {
 
         let hints = if let Some(reading) = &mut self.reading {
             let name = version_name(&reading.version.name);
-            let width = (COLUMN_WIDTH as usize).min(body.width.saturating_sub(1) as usize).max(1);
+            let width = self.line_width.min(body.width.saturating_sub(1) as usize).max(1);
             let col = column(header, width as u16);
             frame.render_widget(Paragraph::new(Line::from(name.bold())), col);
             let when = format!("Saved {}", version_time(reading.version.created_at, now, &tz));

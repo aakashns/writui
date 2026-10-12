@@ -1,6 +1,6 @@
 //! The command menu (Ctrl+K in the editor): a box in the middle of the
 //! screen listing every command with its shortcut, under a field that
-//! filters them. ↑/↓ move the highlight (nothing is highlighted at first),
+//! filters them. It keeps its size while filtering, so it doesn't jump. ↑/↓ move the highlight (nothing is highlighted at first),
 //! Enter runs the highlighted command, Esc closes, and commands can be
 //! clicked.
 
@@ -67,9 +67,9 @@ impl<C: Copy> Menu<C> {
 
     pub fn render(&mut self, frame: &mut Frame) {
         let matches: Vec<(&str, &str)> = self.matches().iter().map(|item| (item.label, item.key)).collect();
-        let count = matches.len().max(1);
-        // Borders, the filter and the line under it, then the commands.
-        let area = centered(frame.area(), WIDTH, count as u16 + 4);
+        // Borders, the filter and the line under it, then room for every
+        // command, filtered or not.
+        let area = centered(frame.area(), WIDTH, self.items.len().max(1) as u16 + 4);
         self.area = area;
         frame.render_widget(Clear, area);
         frame.render_widget(Block::bordered(), area);
@@ -140,11 +140,13 @@ impl<C: Copy> Menu<C> {
         let count = self.matches().len();
         match event {
             Event::Key(key) => {
-                let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
+                // Cmd counts as Ctrl, where the terminal passes it on.
+                let ctrl = key.modifiers.intersects(KeyModifiers::CONTROL | KeyModifiers::SUPER);
                 match key.code {
                     KeyCode::Esc => return Outcome::Close,
-                    // Ctrl+K again closes it.
-                    KeyCode::Char('k') if ctrl => return Outcome::Close,
+                    // Ctrl+K (or Ctrl+L, which Alacritty sends for Cmd+K)
+                    // again closes it.
+                    KeyCode::Char('k' | 'l') if ctrl => return Outcome::Close,
                     KeyCode::Enter => return self.selected().map_or(Outcome::None, Outcome::Run),
                     KeyCode::Down | KeyCode::Tab if count > 0 => {
                         self.selected = Some(self.selected.map_or(0, |i| (i + 1) % count));
@@ -266,6 +268,20 @@ mod tests {
         press(&mut menu, KeyCode::Backspace);
         // An empty filter highlights nothing again.
         assert_eq!(menu.selected(), None);
+    }
+
+    #[test]
+    fn filtering_keeps_the_size() {
+        use ratatui::Terminal;
+        use ratatui::backend::TestBackend;
+        let mut terminal = Terminal::new(TestBackend::new(60, 20)).unwrap();
+        let mut menu = sample();
+        terminal.draw(|frame| menu.render(frame)).unwrap();
+        let before = menu.area;
+        type_text(&mut menu, "his");
+        terminal.draw(|frame| menu.render(frame)).unwrap();
+        assert_eq!(menu.area, before);
+        assert_eq!(before.height, 3 + 4);
     }
 
     #[test]

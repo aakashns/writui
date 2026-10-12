@@ -103,6 +103,25 @@ pub struct ExportSettings {
     pub keep_title: bool,
 }
 
+/// What can be set on the Settings screen.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Settings {
+    /// Suggested as `author` in the front matter of exports (none if empty).
+    pub author: String,
+    /// How wide the text is in the editor, in characters.
+    pub line_width: u16,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Settings { author: String::new(), line_width: DEFAULT_LINE_WIDTH }
+    }
+}
+
+/// The line width settings can have.
+pub const LINE_WIDTHS: std::ops::RangeInclusive<u16> = 40..=120;
+pub const DEFAULT_LINE_WIDTH: u16 = 68;
+
 #[derive(Debug, Clone)]
 pub struct Post {
     pub id: i64,
@@ -365,16 +384,17 @@ impl Vault {
         Ok(rows.collect::<rusqlite::Result<_>>()?)
     }
 
-    /// Make a post of an imported file's text, or update post `into` with
-    /// it (keeping its current text as a version named `version_name`,
-    /// unless that's the same), and remember the file as the post's own.
-    /// All or nothing. Returns the post's id.
+    /// Make a post of an imported file's text (started at `created`, if
+    /// known), or update post `into` with it (keeping its current text as a
+    /// version named `version_name`, unless that's the same), and remember
+    /// the file as the post's own. All or nothing. Returns the post's id.
     pub fn import_post(
         &self,
         body: &str,
         settings: &ExportSettings,
         into: Option<i64>,
         version_name: &str,
+        created: Option<Timestamp>,
     ) -> Result<i64> {
         let tx = self.conn.unchecked_transaction()?;
         let id = match into {
@@ -389,12 +409,80 @@ impl Vault {
             None => {
                 let id = self.create_post()?;
                 self.update_post_body(id, body)?;
+                if let Some(created) = created {
+                    self.conn.execute(
+                        "UPDATE posts SET created_at = ?1 WHERE id = ?2",
+                        params![created.as_millisecond(), id],
+                    )?;
+                }
                 id
             }
         };
         self.record_export(id, settings)?;
         tx.commit()?;
         Ok(id)
+    }
+
+    /// The posts (not counting the Trash) with every word of `query` in
+    /// their text or front matter, ignoring case, most recently updated
+    /// first.
+    pub fn search(&self, query: &str) -> Result<Vec<i64>> {
+        let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        let mut stmt = self.conn.prepare(
+            "SELECT posts.id, body, coalesce(front_matter, '') FROM posts
+             LEFT JOIN exports ON post_id = posts.id
+             WHERE deleted_at IS NULL ORDER BY updated_at DESC, posts.id DESC",
+        )?;
+        let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)))?;
+        let mut ids = Vec::new();
+        for row in rows {
+            let (id, body, front_matter) = row?;
+            let text = format!("{body}\n{front_matter}").to_lowercase();
+            if words.iter().all(|word| text.contains(word.as_str())) {
+                ids.push(id);
+            }
+        }
+        Ok(ids)
+    }
+
+    /// The settings, as last set (or the defaults).
+    pub fn settings(&self) -> Result<Settings> {
+        let defaults = Settings::default();
+        let line_width = self
+            .value("line_width")?
+            .and_then(|value| value.parse().ok())
+            .filter(|width| LINE_WIDTHS.contains(width))
+            .unwrap_or(defaults.line_width);
+        Ok(Settings { author: self.value("author")?.unwrap_or(defaults.author), line_width })
+    }
+
+    pub fn set_settings(&self, settings: &Settings) -> Result<()> {
+        let tx = self.conn.unchecked_transaction()?;
+        self.set_value("author", &settings.author)?;
+        self.set_value("line_width", &settings.line_width.to_string())?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// The screen writui was last left on, as `set_last_screen` put it.
+    pub fn last_screen(&self) -> Result<Option<String>> {
+        self.value("last_screen")
+    }
+
+    pub fn set_last_screen(&self, screen: &str) -> Result<()> {
+        self.set_value("last_screen", screen)
+    }
+
+    fn value(&self, key: &str) -> Result<Option<String>> {
+        Ok(self.conn.query_row("SELECT value FROM settings WHERE key = ?1", [key], |row| row.get(0)).optional()?)
+    }
+
+    fn set_value(&self, key: &str, value: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT (key) DO UPDATE SET value = ?2",
+            params![key, value],
+        )?;
+        Ok(())
     }
 
     /// Remember how a post was just exported.
@@ -732,26 +820,73 @@ mod tests {
             with_front_matter: true,
             keep_title: false,
         };
-        let id = vault.import_post("# Hi\n\nOne", &settings, None, "Before importing hi.md").unwrap();
+        let created = Timestamp::from_second(1_700_000_000).unwrap();
+        let id = vault.import_post("# Hi\n\nOne", &settings, None, "Before importing hi.md", Some(created)).unwrap();
+        assert_eq!(vault.post(id).unwrap().created_at, created);
         assert_eq!(vault.post(id).unwrap().body, "# Hi\n\nOne");
         assert_eq!(vault.export_settings(id).unwrap(), Some(settings.clone()));
         assert_eq!(vault.export_paths().unwrap(), [(id, PathBuf::from("/blog/hi.md"))]);
         assert!(vault.list_versions(id).unwrap().is_empty());
 
         // Again, into the same post: the old text is kept as a version.
-        assert_eq!(vault.import_post("# Hi\n\nTwo", &settings, Some(id), "Before importing hi.md").unwrap(), id);
+        assert_eq!(vault.import_post("# Hi\n\nTwo", &settings, Some(id), "Before importing hi.md", None).unwrap(), id);
         assert_eq!(vault.post(id).unwrap().body, "# Hi\n\nTwo");
         let versions = vault.list_versions(id).unwrap();
         assert_eq!(versions.len(), 1);
         assert_eq!(versions[0].name, "Before importing hi.md");
         assert_eq!(vault.version(versions[0].id).unwrap().body, "# Hi\n\nOne");
         // Nothing changed: no version.
-        vault.import_post("# Hi\n\nTwo", &settings, Some(id), "x").unwrap();
+        vault.import_post("# Hi\n\nTwo", &settings, Some(id), "x", None).unwrap();
         assert_eq!(vault.list_versions(id).unwrap().len(), 1);
 
         // Posts in the Trash don't count as the file's.
         vault.delete_post(id).unwrap();
         assert!(vault.export_paths().unwrap().is_empty());
+    }
+
+    #[test]
+    fn search_finds_every_word_in_text_or_front_matter() {
+        let (_dir, path) = temp_vault();
+        let vault = Vault::create(&path, "pw").unwrap();
+        let first = vault.create_post().unwrap();
+        let second = vault.create_post().unwrap();
+        let gone = vault.create_post().unwrap();
+        vault.update_post_body(first, "# Morning pages\n\nCoffee and Rust.").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(2));
+        vault.update_post_body(second, "# Launch\n\nRust is fast.").unwrap();
+        vault.update_post_body(gone, "# Rust, deleted").unwrap();
+        vault.delete_post(gone).unwrap();
+        let settings = ExportSettings {
+            path: PathBuf::from("/blog/m.md"),
+            front_matter: "tags: [diary]".into(),
+            suggested: String::new(),
+            with_front_matter: true,
+            keep_title: false,
+        };
+        vault.record_export(first, &settings).unwrap();
+        assert_eq!(vault.search("rust").unwrap(), [second, first]);
+        assert_eq!(vault.search("  RUST   coffee ").unwrap(), [first]);
+        assert_eq!(vault.search("diary").unwrap(), [first]);
+        assert_eq!(vault.search("launch").unwrap(), [second]);
+        assert!(vault.search("tea").unwrap().is_empty());
+    }
+
+    #[test]
+    fn settings_and_the_last_screen_are_kept() {
+        let (_dir, path) = temp_vault();
+        let vault = Vault::create(&path, "pw").unwrap();
+        assert_eq!(vault.settings().unwrap(), Settings::default());
+        assert_eq!(vault.last_screen().unwrap(), None);
+        let settings = Settings { author: "Ada".into(), line_width: 80 };
+        vault.set_settings(&settings).unwrap();
+        vault.set_last_screen("post:3").unwrap();
+        drop(vault);
+        let vault = Vault::open(&path, "pw").unwrap();
+        assert_eq!(vault.settings().unwrap(), settings);
+        assert_eq!(vault.last_screen().unwrap().as_deref(), Some("post:3"));
+        // A width out of range is the default.
+        vault.set_value("line_width", "7").unwrap();
+        assert_eq!(vault.settings().unwrap().line_width, DEFAULT_LINE_WIDTH);
     }
 
     #[test]

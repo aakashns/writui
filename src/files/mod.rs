@@ -30,8 +30,7 @@ pub fn file_name(title: &str) -> String {
 
 /// Where an export goes unless changed: the post's own file (where it was
 /// last exported to, or imported from); failing that, the post's file name
-/// in the folder of the latest export, or else in the folder writui was
-/// started from.
+/// in the folder of the latest export, or else in Documents.
 pub fn default_path(title: &str, this_post: Option<&ExportSettings>, latest: Option<&ExportSettings>) -> String {
     if let Some(last) = this_post {
         return display(&last.path);
@@ -39,13 +38,22 @@ pub fn default_path(title: &str, this_post: Option<&ExportSettings>, latest: Opt
     display(&last_folder(latest).join(file_name(title)))
 }
 
-/// The folder of the latest export or import, or else the one writui was
-/// started from.
+/// The folder of the latest export or import, or else Documents (or the
+/// home folder, where there's no Documents).
 pub fn last_folder(latest: Option<&ExportSettings>) -> PathBuf {
     match latest.and_then(|latest| latest.path.parent()) {
         Some(dir) => dir.to_path_buf(),
-        None => std::env::current_dir().unwrap_or_default(),
+        None => documents(),
     }
+}
+
+/// The Documents folder, if there is one; otherwise the home folder.
+fn documents() -> PathBuf {
+    dirs::document_dir()
+        .filter(|dir| dir.is_dir())
+        .or_else(dirs::home_dir)
+        .or_else(|| std::env::current_dir().ok())
+        .unwrap_or_default()
 }
 
 /// A path as shown to the person, with their home folder as `~`.
@@ -185,13 +193,15 @@ pub struct Imported {
     pub converted: bool,
     /// It had front matter, and the `# Title` line too.
     pub had_title_line: bool,
+    /// When the file was made (or else last changed), if the system says.
+    pub created: Option<jiff::Timestamp>,
 }
 
 /// The file a typed import path means (see `absolute`).
 pub fn resolve_import(input: &str) -> Result<PathBuf, String> {
     let input = input.trim();
     if input.is_empty() {
-        return Err("Type the path of a markdown file.".into());
+        return Err("Type the path of a markdown or text file.".into());
     }
     let path = absolute(input)?;
     if path.is_dir() {
@@ -207,8 +217,9 @@ pub fn resolve_import(input: &str) -> Result<PathBuf, String> {
 /// or else its first line if that's a `# Title`, or else its file name.
 pub fn read(path: &Path) -> Result<Imported, String> {
     let shown = display(path);
-    let size = std::fs::metadata(path).map_err(|e| format!("Couldn't read {shown}: {e}"))?.len();
-    if size > MAX_IMPORT_BYTES {
+    let metadata = std::fs::metadata(path).map_err(|e| format!("Couldn't read {shown}: {e}"))?;
+    let created = metadata.created().or_else(|_| metadata.modified()).ok().and_then(|time| jiff::Timestamp::try_from(time).ok());
+    if metadata.len() > MAX_IMPORT_BYTES {
         return Err(format!("{shown} is too big to be a post."));
     }
     let bytes = std::fs::read(path).map_err(|e| format!("Couldn't read {shown}: {e}"))?;
@@ -245,6 +256,7 @@ pub fn read(path: &Path) -> Result<Imported, String> {
         converted: toml && front_matter.as_deref().is_some_and(|f| !f.is_empty()),
         had_title_line: title_line && front_matter.is_some(),
         front_matter: front_matter.unwrap_or_default(),
+        created,
     })
 }
 
@@ -376,6 +388,10 @@ mod tests {
         let file = import("+++.md", "+++\ntitle = \"Toml\"\n+++\nText");
         assert_eq!((file.body.as_str(), file.front_matter.as_str(), file.converted), ("# Toml\n\nText", "title: \"Toml\"", true));
         assert_eq!(import("empty.md", "").body, "# Empty");
+        // Text files too.
+        let file = import("notes.txt", "Plain text");
+        assert_eq!(file.body, "# Notes\n\nPlain text");
+        assert!(file.created.is_some());
     }
 
     #[test]
