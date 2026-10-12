@@ -28,7 +28,7 @@ pub fn overview() -> Vec<Line<'static>> {
     const POINTS: [&str; 6] = [
         "All your writing lives in one file, encrypted with this password.",
         "Forget the password and the writing is gone: there's no recovery.",
-        "Write in markdown. Every post starts with a # title.",
+        "Write your posts in markdown. Every post starts with a # title.",
         "Posts save as you type; Ctrl+S also keeps a version to go back to.",
         "While writing, Ctrl+K shows every command and its shortcut.",
         "Ctrl+O locks writui; unlocking takes you back where you were.",
