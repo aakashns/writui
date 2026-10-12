@@ -5,7 +5,6 @@ mod autosave;
 mod browser;
 mod buffer;
 mod clipboard;
-mod context_menu;
 mod history;
 mod markdown;
 mod undo;
@@ -37,7 +36,7 @@ use crate::vault::{ExportSettings, Post, Settings, Version, TITLE_PREFIX, title_
 use autosave::Autosave;
 use buffer::Buffer;
 use clipboard::Clipboard;
-use context_menu::{ContextMenu, Entry};
+use super::context_menu::{ContextMenu, Entry};
 use history::{History, Outcome};
 use markdown::Markup;
 use undo::{Kind, Undo};

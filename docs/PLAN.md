@@ -16,13 +16,10 @@ The site is on Cloudflare Workers: writui.com serves it (and
 `install.sh`), and www redirects. Still to do by hand: turn off GitHub
 Pages for the repo (it's still enabled, with the writui.com domain).
 
-The creator's batch of list / editor ideas (`0.12.0`, in review): "New"
-and "Import" (text files too), single-key shortcuts and a search field on
-the list, Esc asks to quit, a Settings screen (author, line width), Cmd
-shortcuts and Ctrl+L for the menu, a steady menu, a right-click menu,
-imports dated by the file, exports defaulting to Documents, opening on
-the screen writui was left on, sorting, and lock (Ctrl+O). The site's
-branch builds needed a `previews` block in `site/wrangler.jsonc`. After it merges:
+The creator's batch of list / editor ideas shipped in `0.12.0`. A
+follow-up (`0.13.0`, in review): "Sort by" as a dropdown on the search
+row, either way round; "New" highlighted on opening; "(n)" / "(i)" on
+their rows; "/ filter"; Settings' "Esc back". After it merges:
 
 1. **Try online** (writui.com/try), below: the creator wants it next, and
    it must work on a phone. Probably two or three PRs, in the order listed.
@@ -172,6 +169,8 @@ The creator's batch of ideas, after M3.
 - [x] Search field highlights the first match while typing; sort by
       updated / created / title
 - [x] Lock (Ctrl+O), back to the same screen
+- [x] "Sort by" dropdown on the search row, ascending or descending;
+      "New" highlighted on opening; shortcuts on "New" / "Import"
 
 ## Later
 
@@ -182,3 +181,5 @@ The creator's batch of ideas, after M3.
 - [ ] Preview follows the cursor
 - [ ] Command palette
 - [ ] CLI subcommands: list posts, show a post, export a post, …
+- [ ] Multiple vaults (much later): the creator asked for it "later
+      later", so after everything above

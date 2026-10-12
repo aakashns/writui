@@ -168,8 +168,11 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - Flat list of posts, most recently updated first unless sorted otherwise.
   Each row shows the title and when it was last updated.
 - A "New" action, always visible, "Import" right below it (with a
-  different icon: "+ New", "» Import"), a blank line, then a search field
-  ("🔎 Type to filter…") and a "Sort by  Updated  Created  Title" row.
+  different icon: "+ New (n)", "» Import (i)", the shortcuts dim), a blank
+  line, then a search field ("🔎 Type to filter…", always underlined) with
+  "Sort by: Updated ↓" on its right, on the same row. "New" is highlighted
+  when the list opens (unless it's coming back to a post, which stays
+  highlighted).
 
   > change "New Post" to just "New"
 
@@ -193,9 +196,16 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   > search of the posts (including front matter), enter opens the first
   > post
 
-  The list's shortcuts are single keys: `n` new, `i` import, `/` search,
+  The list's shortcuts are single keys: `n` new, `i` import, `/` filter,
   `d` (or Delete) delete, `s` settings, Tab sort (and in the Trash, `d`
-  deletes forever). Ctrl+N and Ctrl+D still work but aren't shown. Esc asks "Quit
+  deletes forever). `n` and `i` are shown on their rows, not in the hint
+  bar. `j` / `k` move like ↓ / ↑ (unshown), passing over the search field
+  so the next one isn't typed into it.
+
+  > can you add j/k support for down and up on the list page (while i'm
+  > not typing in the filter box)?
+
+  > no need to mention them in the bottom menu Ctrl+N and Ctrl+D still work but aren't shown. Esc asks "Quit
   writui?" (Quit is the selected button, `y`); Ctrl+Q and Ctrl+C still quit
   straight away, unshown.
 
@@ -228,11 +238,24 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   click on a post leaves the field too. On the posts, Esc empties the
   search before it asks to quit.
 
-  Sorting: most recently updated first, most recently created first, or
-  by title (A–Z, ignoring case). Tab (Shift+Tab back) goes through them,
-  in the field too, or click one; the current one is bold and underlined.
-  ↑/↓ skip the row. The choice is remembered (in the vault). The Trash is
-  always most recently deleted first.
+  > let's put "Sort by: Updated " on the right of the "type to filter"
+  > (within the main viewport), and make it a dropdown that i can click and
+  > select from (have two rows for each e.g. Updated up arrow & updated
+  > down arrow for desc and asc)
+
+  > also, when i open the app, "New" should be selected by default. and
+  > just show "New (n)" next to new instead of in th emenu. same with (i)
+  > for import. and change "/" in the bottom menu to say filter instead of
+  > search. and always show an underline for type to filter
+
+  Sorting: by when posts were updated or created, or by title (ignoring
+  case), either way round. ↓ is newest first (or Z to A), ↑ oldest first
+  (or A to Z). Clicking "Sort by" or pressing Tab (in the field too) drops
+  down a menu under it, right-aligned, with six rows, each with a dim note
+  of what the arrow means: Updated ↓ / ↑, Created ↓ / ↑, Title ↑ / ↓. The
+  current one is highlighted; ↑/↓ and Enter, or a click, picks one; Esc
+  or a click outside closes it. The choice is remembered (in the vault).
+  The Trash is always most recently deleted first.
 
   Settings isn't a row on the list; it's `s`, shown in the hint bar.
 
@@ -599,10 +622,13 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 > let's add a third "Settings" screen now, keep some minimal settings there
 > (like defualt Author name)
 
+> and on the settings page Esc should just say "back"
+
 **Details**
 
 - A Settings screen, reached with `s` on the list (it's on the hint bar). Each row is a setting and its value; Enter or a
-  click changes it in a dialog; Esc goes back to the list. Changes are
+  click changes it in a dialog; Esc goes back to the list (its hint
+  just says "back"). Changes are
   stored right away.
 - For now:
   - **Author**: suggested as `author` in the front matter of exports
