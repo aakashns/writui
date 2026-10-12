@@ -125,3 +125,12 @@ isn't in CI; the README's Windows section says how to run the checks there.
 Rust: what it does, install, use, where the writing is kept. Keep it current
 when behaviour changes (e.g. how saving works). Anything about building or
 working on writui goes in `CONTRIBUTING.md`.
+
+> and an agent.md note to update the site appropraitely whenever new
+> features are added
+
+Whenever a PR adds a feature (or changes one the site mentions), update the
+site in the same PR: the landing page's points (`site/content/_index.md`),
+and the demo (`site/demo.tape`, re-recorded as its first lines say) if it no
+longer shows the app as it is. The creator's own blog posts are theirs:
+don't edit them.

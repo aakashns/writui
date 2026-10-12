@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-/// A terminal writing app. Markdown, encrypted, no nonsense.
+/// A terminal writing app. No nonsense. Markdown. Local. Encrypted.
 #[derive(Parser)]
 #[command(version)]
 struct Cli {

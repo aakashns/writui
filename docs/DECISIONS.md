@@ -496,3 +496,80 @@ adds it, rather than changing migration 5, which dev vaults may have run).
 The front matter's `title` is always the post's title, even if edited by
 hand in the dialog (creator's call), so the two can't drift apart.
 `site/post.sh` is gone: exports now carry the front matter Zola needs.
+
+## Settings and remembered state in the vault
+
+Migration 7 adds a `settings` table: `key` → `value` text. It holds the
+Settings screen's values (`author`, `line_width`) and small things writui
+remembers, like `last_screen` (`list`, `trash`, `settings` or
+`post:<id>`). A key-value table rather than a column per setting, so new
+settings don't need migrations; values are parsed and checked on the way
+out (a line width out of range is the default).
+
+The last screen is written whenever the screen changes, not only on
+quitting, so a terminal closed under writui still reopens there.
+
+## Search without an index
+
+The list's search reads every post (not in the Trash) and its remembered
+front matter from the vault on each keystroke, and keeps those that
+contain every typed word, lowercased in Rust (SQLite's `lower` and `LIKE`
+only fold ASCII). For a personal vault of hundreds of posts that's a few
+milliseconds, and there's no index to keep in step or to leak: everything
+stays in the encrypted file. Revisit with SQLCipher's FTS5 if it ever gets
+slow. A search answer is ignored if the field changed since it was asked.
+
+## Cmd keys, and Ctrl+L for the menu
+
+On macOS the editor treats Cmd+letter as Ctrl+letter (where the terminal
+passes Cmd on, as kitty-protocol terminals do for keys they don't bind).
+Before this, Cmd+X and Cmd+Z typed an "x" or "z" in Alacritty.
+Alacritty 0.17's built-in bindings keep Cmd+C (its own copy) and Cmd+V
+(paste, which writui already takes), and send `\x0c` (Ctrl+L) for Cmd+K.
+So Ctrl+L opens the menu too, making Cmd+K work in Alacritty out of the
+box; that rules Ctrl+L out for a lock shortcut, which the creator put off.
+Cmd+C needs the terminal to pass it on (README); writui can't make the
+terminal's own Cmd+C copy writui's selection, since writui draws it.
+
+## Import dates
+
+A post made by importing a file takes the file's creation time (birth
+time, from `metadata.created()`), or else its last modified time, as its
+`created_at`. Updating a post from its file leaves the date alone.
+
+## Lock
+
+Ctrl+O locks (the creator's pick, after Ctrl+L went to the menu), so
+"Open link" lost Ctrl+O: it's Ctrl+click and the menu now. Locking closes
+the vault rather than hiding the screen, so the key and the text aren't
+kept in memory while locked; unlocking reopens the remembered screen the
+same way starting writui does. The cost: a post's undo history doesn't
+survive a lock.
+
+## The search field's highlight
+
+While a search is typed, the highlight sits on the first match and moves
+with ↑/↓, but typing still goes into the field (like the command menu).
+So the list keeps "typing" apart from "which row is highlighted". The
+empty field is a row the arrows pass through, so ↓ from Import to the
+posts still works with the arrows alone.
+
+## Nerd Font icons
+
+Asked for: a plain magnifier from a Nerd Font when there is one, the
+emoji otherwise. Not possible: no terminal reports its font, and a
+missing glyph still advances the cursor by its width, so it can't be
+measured either. A setting could choose, if it's ever wanted.
+
+## Try online: in the browser, no server
+
+writui.com/try runs writui in the browser via Ratzilla (ratatui's web
+backend), as static files on the site. The alternative, running the real
+binary on a server and streaming it to a web terminal, would be exactly the
+real app but needs hosting and abuse protection, so no. SQLCipher with
+vendored OpenSSL doesn't build for the browser easily, and a demo has nothing
+private to protect, so the demo keeps posts in the browser without
+encryption. Phones are a must (the creator's call), so input goes through a
+hidden text field (phone keyboards don't report real keys, and autocorrect
+and swipe typing replace whole words), with an extra-keys row for Esc, Ctrl,
+Tab and the arrows.

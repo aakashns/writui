@@ -32,6 +32,9 @@ Type@5ms "Notes on the new garden"
 Enter
 Enter
 Type@5ms "The tomatoes came in early this year."
+# Back to the list first: writui reopens on the screen it was left on.
+Escape
+Sleep 300ms
 Ctrl+Q
 Sleep 1s
 Type "clear && target/debug/writui --db /tmp/writui-demo/writui.db"
@@ -43,7 +46,7 @@ Sleep 1s
 Show
 
 Sleep 1.2s
-Ctrl+N
+Type "n"
 Sleep 600ms
 Type "Writing in the terminal"
 Enter
@@ -66,4 +69,10 @@ Sleep 1s
 Type@120ms "exp"
 Sleep 1.2s
 Escape
+Sleep 1.5s
+Escape
+Sleep 1s
+Type "/"
+Sleep 400ms
+Type@120ms "tomatoes"
 Sleep 2.5s

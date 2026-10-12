@@ -11,14 +11,17 @@ use crate::vault::ExportSettings;
 /// How long a suggested description is, at most, in characters.
 const DESCRIPTION_CHARS: usize = 160;
 
-/// The front matter writui suggests for a post: its title, today as the
-/// date it was published and updated, the start of its text as the
-/// description, and its file name as the slug.
-pub fn suggest(title: &str, body: &str, today: Date) -> String {
+/// The front matter writui suggests for a post: its title, the author (set
+/// in Settings, if it is), `date` as when it was published (today, or an
+/// imported file's date), today as when it was updated, the start of its
+/// text as the description, and its file name as the slug.
+pub fn suggest(title: &str, body: &str, date: Date, today: Date, author: &str) -> String {
     let slug = file_name(title);
     let slug = slug.trim_end_matches(".md");
+    let author = author.trim();
+    let author = if author.is_empty() { String::new() } else { format!("author: {}\n", quote(author)) };
     format!(
-        "title: {}\ndate: {today}\nupdated: {today}\ndescription: {}\nslug: {slug}",
+        "title: {}\n{author}date: {date}\nupdated: {today}\ndescription: {}\nslug: {slug}",
         quote(title),
         quote(&description(body)),
     )
@@ -30,9 +33,10 @@ pub fn suggest(title: &str, body: &str, today: Date) -> String {
 ///
 /// The fields of the last export are kept, in their order, with the ones
 /// writui fills in brought up to date: `title` is the post's, `updated` is
-/// today, and the description and slug follow the post again unless they
-/// were changed by hand. For the same post, `date` stays; for another,
-/// it's today, and the description and slug are this post's. Fields writui fills in
+/// today, and the description, slug and author follow the post (and
+/// Settings) again unless they were changed by hand. For the same post,
+/// `date` stays; for another, it's today, and the description, slug and
+/// author are this post's. Fields writui fills in
 /// that weren't suggested last time (e.g. the file was imported without
 /// them) are added after the others it fills in; ones taken out by hand
 /// stay out.
@@ -55,7 +59,7 @@ pub fn front_matter(suggested: &str, last: Option<&ExportSettings>, same_post: b
         let keep = match key.as_deref() {
             Some("title" | "updated") => false,
             Some("date") => same_post,
-            Some(key @ ("description" | "slug")) => {
+            Some(key @ ("description" | "slug" | "author")) => {
                 same_post && before.get(key).map(|text| value(text)) != Some(value(&text))
             }
             _ => true,
@@ -72,6 +76,26 @@ pub fn front_matter(suggested: &str, last: Option<&ExportSettings>, same_post: b
         .map(|(_, text)| text);
     out.splice(after_suggested..after_suggested, new);
     out.join("\n")
+}
+
+/// An imported file's front matter, given a `date` (from `suggestion`) if
+/// it has none: after the `title`, or else first. A file with no front
+/// matter at all gets the whole suggestion, used if it's turned on.
+pub fn with_date(front_matter: &str, suggestion: &str) -> String {
+    if front_matter.trim().is_empty() {
+        return suggestion.to_string();
+    }
+    let has = |key: &str| fields(front_matter).iter().any(|(k, _)| k.as_deref() == Some(key));
+    let Some((_, date)) = fields(suggestion).into_iter().find(|(k, _)| k.as_deref() == Some("date")) else {
+        return front_matter.to_string();
+    };
+    if has("date") {
+        return front_matter.to_string();
+    }
+    let mut out: Vec<(Option<String>, String)> = fields(front_matter);
+    let at = out.iter().position(|(k, _)| k.as_deref() == Some("title")).map_or(0, |i| i + 1);
+    out.insert(at, (Some("date".into()), date));
+    out.into_iter().map(|(_, text)| text).collect::<Vec<_>>().join("\n")
 }
 
 /// The fields of `suggested` that `front_matter` has, as if those were
@@ -309,10 +333,40 @@ mod tests {
         let today = Date::new(2026, 10, 8).unwrap();
         let body = "# Say \"hi\"\n\nSome **bold** and [a link](https://x.y), `code`.\n\n```\nskipped\n```\n- A list item";
         assert_eq!(
-            suggest("Say \"hi\"", body, today),
+            suggest("Say \"hi\"", body, today, today, ""),
             "title: \"Say \\\"hi\\\"\"\ndate: 2026-10-08\nupdated: 2026-10-08\n\
              description: \"Some bold and a link, code. A list item\"\nslug: say-hi"
         );
+    }
+
+    #[test]
+    fn the_author_from_settings_is_suggested() {
+        let today = Date::new(2026, 10, 8).unwrap();
+        let ada = suggest("Hi", "# Hi", today, today, " Ada ");
+        assert_eq!(ada, "title: \"Hi\"\nauthor: \"Ada\"\ndate: 2026-10-08\nupdated: 2026-10-08\ndescription: \"\"\nslug: hi");
+        // A new author in Settings is used next time, unless the field was
+        // changed by hand.
+        let grace = suggest("Hi", "# Hi", today, today, "Grace");
+        assert_eq!(get(&front_matter(&grace, Some(&settings(&ada, &ada)), true), "author").as_deref(), Some("Grace"));
+        let typed = ada.replace("Ada", "Ada L.");
+        assert_eq!(get(&front_matter(&grace, Some(&settings(&typed, &ada)), true), "author").as_deref(), Some("Ada L."));
+        // A post exported before there was an author gets it.
+        let plain = suggest("Hi", "# Hi", today, today, "");
+        assert_eq!(get(&front_matter(&grace, Some(&settings(&plain, &plain)), true), "author").as_deref(), Some("Grace"));
+    }
+
+    #[test]
+    fn imported_files_get_their_own_date() {
+        let made = Date::new(2025, 3, 14).unwrap();
+        let today = Date::new(2026, 10, 8).unwrap();
+        let suggestion = suggest("Hi", "# Hi", made, today, "");
+        assert!(suggestion.contains("date: 2025-03-14\nupdated: 2026-10-08"));
+        assert_eq!(with_date("title: Hi\ntags: [a]", &suggestion), "title: Hi\ndate: 2025-03-14\ntags: [a]");
+        assert_eq!(with_date("tags: [a]", &suggestion), "date: 2025-03-14\ntags: [a]");
+        // Its own date stays.
+        assert_eq!(with_date("date: 2020-01-01", &suggestion), "date: 2020-01-01");
+        // No front matter: the whole suggestion, with the file's date.
+        assert_eq!(with_date("", &suggestion), suggestion);
     }
 
     #[test]

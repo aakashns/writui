@@ -12,18 +12,22 @@ file is the source of truth for what's next.
 
 ## Next up
 
-The site (`site/`, Zola) moves from GitHub Pages to Cloudflare Workers
-(merged): `site/build.sh` and `site/wrangler.jsonc`, built and deployed by
-Cloudflare's Git integration. Still to do by hand: connect the repo in
-Cloudflare (root directory `site`), add the www → writui.com Redirect
-Rule, check https://writui.com/install.sh, then turn off GitHub Pages.
+The site is on Cloudflare Workers: writui.com serves it (and
+`install.sh`), and www redirects. Still to do by hand: turn off GitHub
+Pages for the repo (it's still enabled, with the writui.com domain).
 
-The export / import PR adds front matter to exports (remembered per post),
-Tab completion for paths, and "Import markdown" on the list, so published
-posts can be edited in writui and exported back. After it merges
-(`0.11.0`):
+The creator's batch of list / editor ideas (`0.12.0`, in review): "New"
+and "Import" (text files too), single-key shortcuts and a search field on
+the list, Esc asks to quit, a Settings screen (author, line width), Cmd
+shortcuts and Ctrl+L for the menu, a steady menu, a right-click menu,
+imports dated by the file, exports defaulting to Documents, opening on
+the screen writui was left on, sorting, and lock (Ctrl+O). The site's
+branch builds needed a `previews` block in `site/wrangler.jsonc`. After it merges:
 
-1. M6 (LLM chat sidebar) and on in order.
+1. **Try online** (writui.com/try), below: the creator wants it next, and
+   it must work on a phone. Probably two or three PRs, in the order listed.
+2. M6 (LLM chat sidebar) and on in order. The Settings screen exists now;
+   add the rest of its settings as they come up.
 
 ## M0 — Writing core
 
@@ -71,7 +75,7 @@ selection to copy.)
 
 - [x] Headings, bold, italic, strikethrough, inline code, code blocks
 - [x] Links, quotes, lists, horizontal rules, tables; markdown symbols faded
-- [x] Links open in the browser (Ctrl+O, Ctrl+click)
+- [x] Links open in the browser (Ctrl+click, or the menu)
 - [x] List items and quotes wrap with a hanging indent
 - [x] Stays fast on long posts
 - [ ] Syntax highlighting in code blocks, per language (later)
@@ -82,8 +86,10 @@ selection to copy.)
 - [x] Export as markdown file
 - [x] `site/` (Zola): landing page, blog, changelog
 - [x] First changelog / blog post, written in writui and exported into `site/content/`
-- [ ] Front matter on export, remembered per post; Tab completes paths
-- [ ] Import a markdown file as a post (front matter kept; exports go back to it)
+- [x] Front matter on export, remembered per post; Tab completes paths
+- [x] Import a markdown file as a post (front matter kept; exports go back to it)
+- [x] Import text files too; imported posts are dated by the file; exports
+      start in Documents
 
 ## M4 — Open source release
 
@@ -94,7 +100,7 @@ The repo went public early (during M0), so most of this is already done.
 - [x] Release builds (macOS and Linux, each x86_64 and arm64), published
       automatically when a merge bumps the version
 - [x] Windows: build from source (README), with how to run the tests there
-- [ ] Site deployed (Cloudflare Workers, at writui.com)
+- [x] Site deployed (Cloudflare Workers, at writui.com)
 - [x] Make the repo public
 - [x] One-line install script (`curl … | bash`)
 - [x] `writui upgrade` and `writui --version`
@@ -102,10 +108,26 @@ The repo went public early (during M0), so most of this is already done.
       (dropped in `0.10.0`: the next unlock migrates, without a second password)
 - [x] Migration backups deleted once the migrated vault passes integrity checks
 
+## Try online
+
+writui in the browser at writui.com/try, phones included (see the spec's
+"Try online").
+
+- [ ] Separate the screens from the terminal and the vault, so they can run
+      on another backend (the real app behaves the same)
+- [ ] Web build with Ratzilla: in-browser storage, no encryption / files /
+      upgrade, other keys for shortcuts the browser keeps; CI builds it
+- [ ] Phones: hidden text field for the on-screen keyboard (autocorrect,
+      swipe typing), extra-keys row (Esc, Ctrl, Tab, arrows), tap = click,
+      touch scrolling
+- [ ] Every screen works at phone width (about 40–50 columns)
+- [ ] Published at writui.com/try, tested on a real iPhone and Android
+      phone, then linked from the landing page
+
 ## M6 — LLM chat sidebar
 
-- [ ] Settings screen, stored in the vault: line width, what Tab types, and
-      the rest listed in the spec
+- [x] Settings screen, stored in the vault: author (for front matter), line width
+- [ ] More settings: what Tab types, and the rest listed in the spec
 - [ ] API keys for OpenAI + Anthropic in settings (or prompt on first open)
 - [ ] Sidebar that fits next to the editor (or takes over on narrow terminals)
 - [ ] Context sent automatically: post, selection, cursor position
@@ -119,7 +141,8 @@ The repo went public early (during M0), so most of this is already done.
 
 ## M8 — Search
 
-- [ ] Search across full post bodies on the list screen (index stays inside the encrypted vault)
+- [x] Search across full post bodies (and front matter) on the list screen,
+      inside the encrypted vault (no index: posts are scanned as you type)
 
 ## M9 — Web preview
 
@@ -134,6 +157,21 @@ The repo went public early (during M0), so most of this is already done.
 - [ ] Custom presets stored in the vault: import CSS file, duplicate + edit a built-in
 - [ ] Switch preset from the editor
 - [ ] Copy post / selection as formatted text
+
+## List and editor polish
+
+The creator's batch of ideas, after M3.
+
+- [x] "New" / "Import" with their own icons; single-key shortcuts on the
+      list; Esc asks before quitting
+- [x] On macOS, Cmd+letter works like Ctrl+letter in the editor; Ctrl+L
+      (Alacritty's Cmd+K) opens the menu too
+- [x] The menu doesn't change size while filtering
+- [x] Right-click menu: cut, copy, paste
+- [x] Open on the screen writui was left on
+- [x] Search field highlights the first match while typing; sort by
+      updated / created / title
+- [x] Lock (Ctrl+O), back to the same screen
 
 ## Later
 

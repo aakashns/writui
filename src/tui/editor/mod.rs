@@ -5,6 +5,7 @@ mod autosave;
 mod browser;
 mod buffer;
 mod clipboard;
+mod context_menu;
 mod history;
 mod markdown;
 mod undo;
@@ -30,12 +31,13 @@ use super::file_dialog::{FileDialog, FormCmd, Outcome as FormOutcome};
 use super::hints::{HintBar, hint};
 use super::list::display_title;
 use super::menu::{self, Menu, item};
-use super::widgets::{COLUMN_WIDTH, truncate};
+use super::widgets::truncate;
 use crate::files::{self, front_matter};
-use crate::vault::{ExportSettings, Post, Version, TITLE_PREFIX, title_from_first_line};
+use crate::vault::{ExportSettings, Post, Settings, Version, TITLE_PREFIX, title_from_first_line};
 use autosave::Autosave;
 use buffer::Buffer;
 use clipboard::Clipboard;
+use context_menu::{ContextMenu, Entry};
 use history::{History, Outcome};
 use markdown::Markup;
 use undo::{Kind, Undo};
@@ -82,6 +84,7 @@ enum Cmd {
     /// A hint of the export dialog.
     Form(FormCmd),
     ConfirmReplace,
+    Lock,
     Quit,
 }
 
@@ -160,6 +163,12 @@ pub struct Editor {
     exports: Exports,
     /// The command menu (Ctrl+K).
     menu: Option<Menu<Cmd>>,
+    /// The right-click menu.
+    context: Option<ContextMenu<Cmd>>,
+    /// How wide the text is, at most (from Settings).
+    line_width: usize,
+    /// The author's name, for the front matter of exports (from Settings).
+    author: String,
     /// The post's history, shown instead of the post while open.
     history: Option<History>,
     hints: HintBar<Cmd>,
@@ -173,7 +182,7 @@ pub struct Editor {
 
 impl Editor {
     /// Opens with the cursor where it was left (or at the end of the post).
-    pub fn new(post: Post, last_version: Option<Version>, exports: Exports) -> Self {
+    pub fn new(post: Post, last_version: Option<Version>, exports: Exports, settings: Settings) -> Self {
         let created = post.created_at.to_zoned(TimeZone::system()).strftime("%b %-d, %Y, %-I:%M %p").to_string();
         Editor {
             last_version,
@@ -187,7 +196,7 @@ impl Editor {
             rows: Vec::new(),
             markup: Markup::default(),
             stale: true,
-            width: COLUMN_WIDTH as usize,
+            width: settings.line_width as usize,
             text_area: Rect::default(),
             top: 0,
             follow: true,
@@ -203,6 +212,9 @@ impl Editor {
             replacing: None,
             exports,
             menu: None,
+            context: None,
+            line_width: settings.line_width as usize,
+            author: settings.author,
             history: None,
             hints: HintBar::default(),
             show_chrome: true,
@@ -261,7 +273,7 @@ impl Editor {
 
     /// Show the post's history (newest version first).
     pub fn show_history(&mut self, versions: Vec<Version>) {
-        self.history = Some(History::new(self.raw_title(), versions, self.changed_since_version()));
+        self.history = Some(History::new(self.raw_title(), versions, self.changed_since_version(), self.line_width));
     }
 
     /// Open a version (with its text) in the history, to read.
@@ -302,7 +314,7 @@ impl Editor {
                 .areas(frame.area());
         let body = if self.zen { frame.area() } else { above };
 
-        let width = (COLUMN_WIDTH as usize).min(body.width.saturating_sub(1) as usize).max(1);
+        let width = self.line_width.min(body.width.saturating_sub(1) as usize).max(1);
         if width != self.width {
             self.width = width;
             self.stale = true;
@@ -343,7 +355,11 @@ impl Editor {
 
         // In zen, the status and hint rows are drawn over the text, only
         // while there's something to show there.
-        let chrome = self.show_chrome || self.dialog.is_some() || self.exporting.is_some() || self.menu.is_some();
+        let chrome = self.show_chrome
+            || self.dialog.is_some()
+            || self.exporting.is_some()
+            || self.menu.is_some()
+            || self.context.is_some();
         let message = self.error.is_some() || self.notice.is_some();
         let status_covered = self.zen && message;
         let hints_covered = self.zen && chrome;
@@ -388,6 +404,11 @@ impl Editor {
             self.hints.render(frame, bar, &hints);
             return;
         }
+        if let Some(context) = &mut self.context {
+            context.render(frame);
+            self.hints.render(frame, bar, &[hint("Esc", "close", Cmd::CloseMenu)]);
+            return;
+        }
         if let Some(menu) = &mut self.menu {
             menu.render(frame);
             let mut hints = Vec::new();
@@ -425,7 +446,7 @@ impl Editor {
             item("History", "Ctrl+R", Cmd::History),
             item("Copy as markdown", "Ctrl+Shift+C", Cmd::CopyMarkdown),
             item("Export as markdown", "Ctrl+Shift+S", Cmd::Export),
-            item("Open link", "Ctrl+O", Cmd::OpenLink),
+            item("Open link", "Ctrl+click", Cmd::OpenLink),
             item("Undo", "Ctrl+Z", Cmd::Undo),
             item("Redo", "Ctrl+Y", Cmd::Redo),
             item("Copy", "Ctrl+C", Cmd::Copy),
@@ -433,6 +454,7 @@ impl Editor {
             item("Paste", "Ctrl+V", Cmd::Paste),
             item("Select all", "Ctrl+A", Cmd::SelectAll),
             item("Back to posts", "Esc", Cmd::Back),
+            item("Lock", "Ctrl+O", Cmd::Lock),
             item("Quit", "Ctrl+Q", Cmd::Quit),
         ]
     }
@@ -452,6 +474,22 @@ impl Editor {
                     Action::None
                 }
                 Outcome::Quit => Action::Quit,
+            };
+        }
+        if let Some(context) = &mut self.context {
+            if let Event::Mouse(mouse) = event
+                && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                && let Some(cmd) = self.hints.hit(mouse.column, mouse.row)
+            {
+                return self.run(cmd);
+            }
+            return match context.handle(event) {
+                menu::Outcome::None => Action::None,
+                menu::Outcome::Close => self.run(Cmd::CloseMenu),
+                menu::Outcome::Run(cmd) => {
+                    self.context = None;
+                    self.run(cmd)
+                }
             };
         }
         if let Some(menu) = &mut self.menu {
@@ -503,7 +541,6 @@ impl Editor {
     }
 
     fn key(&mut self, key: KeyEvent) -> Action {
-        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let alt = key.modifiers.contains(KeyModifiers::ALT);
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         // Cmd, on macOS (elsewhere the key is the system's).
@@ -513,6 +550,9 @@ impl Editor {
         if key.modifiers.contains(KeyModifiers::SUPER) && !cmd {
             return Action::None;
         }
+        // Cmd+letter is the same shortcut as Ctrl+letter (Cmd+C copies,
+        // Cmd+Z undoes, …), where the terminal passes Cmd on; it never types.
+        let ctrl = key.modifiers.contains(KeyModifiers::CONTROL) || (cmd && matches!(key.code, KeyCode::Char(_)));
         let moving = match key.code {
             KeyCode::Left
             | KeyCode::Right
@@ -565,8 +605,8 @@ impl Editor {
             KeyCode::Char('c') if ctrl => return self.run(Cmd::Copy),
             KeyCode::Char('x') if ctrl => return self.run(Cmd::Cut),
             KeyCode::Char('v') if ctrl => return self.run(Cmd::Paste),
-            KeyCode::Char('o') if ctrl => return self.run(Cmd::OpenLink),
-            KeyCode::Char('k') if ctrl => return self.run(Cmd::Menu),
+            // Ctrl+L too: Alacritty sends it for Cmd+K.
+            KeyCode::Char('k' | 'l') if ctrl => return self.run(Cmd::Menu),
             KeyCode::Char('a') if ctrl => return self.run(Cmd::SelectAll),
             KeyCode::Char(ch) if !ctrl && !alt => {
                 let kind = Kind::Type { space: ch.is_whitespace() };
@@ -627,6 +667,7 @@ impl Editor {
                 }
                 self.click(mouse.column, mouse.row);
             }
+            MouseEventKind::Down(MouseButton::Right) => self.open_context_menu(mouse.column, mouse.row),
             MouseEventKind::Drag(MouseButton::Left) if self.dragging => self.drag(mouse.column, mouse.row),
             MouseEventKind::Up(MouseButton::Left) => self.dragging = false,
             _ => {}
@@ -713,7 +754,10 @@ impl Editor {
             },
             Cmd::SelectAll => self.step(Buffer::select_all),
             Cmd::Menu => self.menu = Some(Menu::new(Editor::menu_items())),
-            Cmd::CloseMenu => self.menu = None,
+            Cmd::CloseMenu => {
+                self.menu = None;
+                self.context = None;
+            }
             Cmd::RunMenu => {
                 if let Some(cmd) = self.menu.take().and_then(|menu| menu.selected()) {
                     return self.run(cmd);
@@ -736,9 +780,34 @@ impl Editor {
                     return self.export(&path);
                 }
             }
+            Cmd::Lock => return Action::Lock,
             Cmd::Quit => return Action::Quit,
         }
         Action::None
+    }
+
+    /// Open the right-click menu where the text was clicked. A click
+    /// outside the selection moves the cursor there first, as a left click
+    /// would.
+    fn open_context_menu(&mut self, column: u16, row: u16) {
+        if !self.in_text(row) {
+            return;
+        }
+        let pos = self.pos_at(column, row);
+        if !self.buffer.selection().is_some_and(|range| range.contains(&pos)) {
+            self.buffer.clear_selection();
+            self.buffer.set_cursor(pos);
+            self.goal = None;
+        }
+        let selected = self.buffer.selection().is_some();
+        let can_paste = !self.clipboard.paste().is_empty();
+        let entry = |label, key, cmd, enabled| Entry { label, key, cmd, enabled };
+        let entries = vec![
+            entry("Cut", "Ctrl+X", Cmd::Cut, selected),
+            entry("Copy", "Ctrl+C", Cmd::Copy, selected),
+            entry("Paste", "Ctrl+V", Cmd::Paste, can_paste),
+        ];
+        self.context = Some(ContextMenu::new(entries, Position::new(column, row + 1)));
     }
 
     /// The post's title as typed (empty if it has none).
@@ -751,7 +820,7 @@ impl Editor {
     fn open_export(&mut self) {
         let title = self.raw_title();
         let today = jiff::Zoned::now().date();
-        let suggested = front_matter::suggest(&title, &self.buffer.text(), today);
+        let suggested = front_matter::suggest(&title, &self.buffer.text(), today, today, &self.author);
         let (last, same_post) = match &self.exports.this_post {
             Some(this_post) => (Some(this_post), true),
             None => (self.exports.latest.as_ref(), false),
@@ -1112,7 +1181,7 @@ mod tests {
 
         fn at(body: &str, cursor: Option<usize>) -> Self {
             let post = Post { id: 1, body: body.into(), cursor, created_at: jiff::Timestamp::UNIX_EPOCH };
-            let editor = Editor::new(post, None, Exports::default());
+            let editor = Editor::new(post, None, Exports::default(), Settings::default());
             let mut h = Harness { editor, terminal: Terminal::new(TestBackend::new(80, 12)).unwrap() };
             h.draw();
             h
@@ -1409,6 +1478,67 @@ mod tests {
     }
 
     #[test]
+    fn cmd_letters_are_shortcuts_and_never_type() {
+        let mut h = Harness::new("# Title\nHello world");
+        h.with(KeyCode::Char('a'), KeyModifiers::SUPER);
+        h.with(KeyCode::Char('x'), KeyModifiers::SUPER);
+        if cfg!(target_os = "macos") {
+            assert_eq!(h.editor.text(), "# ");
+            h.with(KeyCode::Char('z'), KeyModifiers::SUPER);
+            assert_eq!(h.editor.text(), "# Title\nHello world");
+            h.with(KeyCode::Char('k'), KeyModifiers::SUPER);
+            assert!(h.editor.menu.is_some());
+        } else {
+            assert_eq!(h.editor.text(), "# Title\nHello world");
+        }
+    }
+
+    #[test]
+    fn ctrl_l_opens_and_closes_the_menu_too() {
+        // Alacritty sends Ctrl+L for Cmd+K.
+        let mut h = Harness::new("# Title");
+        h.ctrl('l');
+        assert!(h.editor.menu.is_some());
+        h.ctrl('l');
+        assert!(h.editor.menu.is_none());
+        assert_eq!(h.editor.text(), "# Title");
+    }
+
+    #[test]
+    fn right_click_cuts_copies_and_pastes() {
+        let mut h = Harness::new("# Title\nHello world");
+        // Nothing selected, nothing copied: all faded, and doing nothing.
+        h.mouse(MouseEventKind::Down(MouseButton::Right), LEFT + 8, 2);
+        assert!(h.editor.context.is_some());
+        let menu = h.screen();
+        assert!(menu.contains("Cut") && menu.contains("Copy") && menu.contains("Paste"), "{menu}");
+        assert_eq!(h.editor.cursor(), 8 + 8); // moved where it was clicked
+        h.mouse(MouseEventKind::Down(MouseButton::Left), LEFT + 10, 6);
+        assert!(h.editor.context.is_some());
+        h.key(KeyCode::Esc);
+        assert!(h.editor.context.is_none());
+        // Right-clicking the selection keeps it: copy it.
+        h.mouse(MouseEventKind::Down(MouseButton::Left), LEFT + 1, 2);
+        h.mouse(MouseEventKind::Down(MouseButton::Left), LEFT + 1, 2);
+        assert_eq!(selected(&h).as_deref(), Some("Hello"));
+        h.mouse(MouseEventKind::Down(MouseButton::Right), LEFT + 2, 2);
+        assert_eq!(selected(&h).as_deref(), Some("Hello"));
+        h.mouse(MouseEventKind::Down(MouseButton::Left), LEFT + 4, 5);
+        assert!(h.screen().contains("Copied."));
+        assert!(h.editor.context.is_none());
+        // Now Paste can be done, at the end of the text.
+        h.mouse(MouseEventKind::Down(MouseButton::Right), LEFT + 20, 2);
+        assert_eq!(selected(&h), None);
+        h.mouse(MouseEventKind::Down(MouseButton::Left), LEFT + 22, 6);
+        assert_eq!(h.editor.text(), "# Title\nHello worldHello");
+        // A click outside closes it without doing anything.
+        h.mouse(MouseEventKind::Down(MouseButton::Right), LEFT + 1, 2);
+        h.mouse(MouseEventKind::Down(MouseButton::Left), 70, 9);
+        assert!(h.editor.context.is_none());
+        assert_eq!(h.editor.text(), "# Title\nHello worldHello");
+    }
+
+    #[test]
     fn esc_deselects_before_leaving() {
         let mut h = Harness::new("# Title");
         h.ctrl('a');
@@ -1469,7 +1599,7 @@ mod tests {
     #[test]
     fn history_restores_a_version_and_undo_takes_it_back() {
         let first = version(1, "First pass", "# Title\nOld text");
-        let editor = Editor::new(Post { id: 1, body: "# Title\nNew text".into(), cursor: None, created_at: jiff::Timestamp::UNIX_EPOCH }, Some(first.clone()), Exports::default());
+        let editor = Editor::new(Post { id: 1, body: "# Title\nNew text".into(), cursor: None, created_at: jiff::Timestamp::UNIX_EPOCH }, Some(first.clone()), Exports::default(), Settings::default());
         let mut h = Harness { editor, terminal: Terminal::new(TestBackend::new(80, 12)).unwrap() };
         h.draw();
         assert!(matches!(h.ctrl('r'), Action::ShowHistory));
@@ -1548,14 +1678,16 @@ mod tests {
     }
 
     #[test]
-    fn links_open_with_ctrl_o_or_ctrl_click() {
+    fn links_open_from_the_menu_or_with_ctrl_click() {
         let mut h = Harness::new("# Title\nSee [the docs](https://example.com) and file:///x");
-        // Not on a link: Ctrl+O says how.
-        h.ctrl('o');
+        // Not on a link: "Open link" says how.
+        h.editor.run(Cmd::OpenLink);
+        h.draw();
         assert!(h.screen_row(10).contains("Put the cursor on a link"));
-        // On a link, Ctrl+O opens it.
+        // On a link, it opens it.
         h.mouse(MouseEventKind::Down(MouseButton::Left), LEFT + 6, 2);
-        h.ctrl('o');
+        h.editor.run(Cmd::OpenLink);
+        h.draw();
         assert!(h.screen_row(10).contains("Opened https://example.com"));
         // Ctrl+click on the link opens it without moving the cursor.
         h.key(KeyCode::Home);
@@ -1618,7 +1750,7 @@ mod tests {
         // As wide as the text, which starts at LEFT.
         assert!(bar.starts_with(&format!("{}Ctrl+K menu", " ".repeat(LEFT as usize))), "{bar}");
         assert!(bar.contains("3 words · "), "{bar}");
-        assert_eq!(bar.chars().count(), (LEFT + COLUMN_WIDTH) as usize);
+        assert_eq!(bar.chars().count(), (LEFT + crate::vault::DEFAULT_LINE_WIDTH) as usize);
         // Clicking the hint opens the menu.
         h.mouse(MouseEventKind::Down(MouseButton::Left), LEFT + 1, 11);
         assert!(h.screen().contains("type to filter"));

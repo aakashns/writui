@@ -3,7 +3,7 @@
 # `zola --root site serve`. See CONTRIBUTING.md.
 base_url = "https://writui.com"
 title = "writui"
-description = "A writing app for the terminal. Markdown, encrypted, no nonsense."
+description = "A writing app for the terminal. No nonsense. Markdown. Local. Encrypted."
 compile_sass = false
 build_search_index = false
 # Only the blog has a feed (blog/atom.xml), set in content/blog/_index.md.

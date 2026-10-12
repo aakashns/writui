@@ -2,6 +2,8 @@
 
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::layout::Rect;
+use ratatui::style::Stylize;
+use ratatui::text::Line;
 use unicode_width::UnicodeWidthChar;
 use zeroize::Zeroizing;
 
@@ -12,6 +14,22 @@ pub const COLUMN_WIDTH: u16 = 68;
 /// password for `.dev-data/` vaults is never forgotten.
 pub fn dev_password_note() -> Option<&'static str> {
     cfg!(debug_assertions).then_some("Dev build · dev vault password: writui-dev")
+}
+
+/// How writui works, in a few lines, on the password screens: for new
+/// people, and as a reminder.
+pub fn overview() -> Vec<Line<'static>> {
+    const POINTS: [&str; 6] = [
+        "All your writing lives in one file, encrypted with this password.",
+        "Forget the password and the writing is gone: there's no recovery.",
+        "Write in markdown. Every post starts with a # title.",
+        "Posts save as you type; Ctrl+S also keeps a version to go back to.",
+        "While writing, Ctrl+K shows every command and its shortcut.",
+        "Ctrl+O locks writui; unlocking takes you back where you were.",
+    ];
+    let mut lines = vec![Line::from("Overview".bold())];
+    lines.extend(POINTS.iter().map(|point| Line::from(format!("· {point}").dim())));
+    lines
 }
 
 /// A column of at most `width`, horizontally centred in `area`.
@@ -104,6 +122,13 @@ impl PasswordField {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_overview_is_short() {
+        let lines = overview();
+        assert!(lines.len() <= 7);
+        assert!(lines.iter().all(|line| line.width() <= COLUMN_WIDTH as usize));
+    }
 
     #[test]
     fn truncate_fits_width() {

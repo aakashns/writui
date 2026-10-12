@@ -20,6 +20,11 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 **Details**
 
+  > change the "Markdown, encrypted, no nonsense." to "No nonsense.
+  > Markdown. Local. Encrypted." everywhere
+
+- The tagline is "No nonsense. Markdown. Local. Encrypted." (README, the
+  site and its social card, `writui --help`, the GitHub repo description).
 - Terminal agnostic. The creator mostly uses Alacritty, sometimes Ghostty and
   iTerm2. Nothing may depend on one terminal's special features.
 - Everything works with the mouse; everything also has a keyboard shortcut.
@@ -72,6 +77,11 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   menu, not on the bar. Dialogs keep their short Enter / Esc hints. The
   list and other screens are unchanged.
 
+  > the menu on post page should not shift up and down while filtering
+
+  The menu keeps the height of the full list while filtering, so the box
+  stays put; matches are listed from the top.
+
   > can we change the terminal title to the article title? and on the post
   > list page, can we set the terminal title to writui?
 
@@ -82,6 +92,25 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - Shortcuts use Ctrl (not Cmd — most terminals swallow Cmd). The one
   exception: Cmd+Left/Right also go to the start/end of the line on macOS,
   where the terminal passes Cmd on (Alacritty does).
+
+  > support cmd+c and cmd+v for cut/copy/paste (mac defaults)
+
+  > for mac, cmd+k should also work apart from ctrl+k for menu
+
+  > but why won't Cmd+C/V work normally when it works in nano? Let's skip
+  > the locking for now. Let both Ctrl+L (Cmd+K) and Ctrl+K open the menu.
+
+  On macOS, Cmd+letter in the editor is the same shortcut as Ctrl+letter
+  (Cmd+X cuts, Cmd+Z undoes, Cmd+A selects all, …) wherever the terminal
+  passes Cmd on, and never types the letter. Terminals keep some Cmd keys
+  for themselves: Cmd+V is the terminal's paste, which writui takes as a
+  paste, so it just works. Cmd+C is the terminal's copy of *its own*
+  selection; in nano that's what you see, because nano leaves the mouse
+  to the terminal, but writui draws its own selection (to know what's
+  selected), so the terminal has nothing to copy. The README shows the
+  one line of terminal config that passes Cmd+C on to writui. Alacritty
+  sends Ctrl+L for Cmd+K, so Ctrl+L opens (and closes) the menu too, and
+  Cmd+K works there without any config.
 
 ## Look and feel
 
@@ -111,9 +140,22 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   `~/Library/Application Support/writui/writui.db` (platform equivalent
   elsewhere).
 - Auto-lock after a period of inactivity — planned, not urgent.
+
+  > and finally, on the password screen, let's add an "Overview" describing
+  > how the app works in no more than 5-6 points, each no longer than one
+  > line. this is for new users and returning ones, run the copy by me once
+
+- Both password screens (creating the vault, and unlocking) end with an
+  "Overview" (creator-approved copy):
+  - All your writing lives in one file, encrypted with this password.
+  - Forget the password and the writing is gone: there's no recovery.
+  - Write in markdown. Every post starts with a # title.
+  - Posts save as you type; Ctrl+S also keeps a version to go back to.
+  - While writing, Ctrl+K shows every command and its shortcut.
+  - Ctrl+O locks writui; unlocking takes you back where you were.
 - Change password — planned.
 
-## Two screens
+## The screens
 
 > At the moment I'm thinking a two screen flow, where first screen shows list
 > of existing posts, which I can pick to edit, or the option to create a new
@@ -123,10 +165,96 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 **Details**
 
-- Flat list of posts, most recently updated first. Each row shows the title
-  and when it was last updated.
-- A "New post" action, always visible, and "Import markdown" right below
-  it (Ctrl+O).
+- Flat list of posts, most recently updated first unless sorted otherwise.
+  Each row shows the title and when it was last updated.
+- A "New" action, always visible, "Import" right below it (with a
+  different icon: "+ New", "» Import"), a blank line, then a search field
+  ("🔎 Type to filter…") and a "Sort by  Updated  Created  Title" row.
+
+  > change "New Post" to just "New"
+
+  > change "Import markdown" to just "Import" (also support import .txt
+  > file, apart from md)
+
+  > use a different icon for the "Import" option
+
+  > i dont' like the down icon for import, it can be confusing. what other
+  > optoins would you suggest?
+
+  (Creator's pick: "»", over "←", "↳" and "+ Import…".)
+
+  > on the list page, i don't want to use ctrl for the shortcuts, direct
+  > keypress is fine
+
+  > we don't need ctrl+q on the main screen to quit, Esc should work (with
+  > confirmation)
+
+  > Let's add a type to filter after new & import, which does a full text
+  > search of the posts (including front matter), enter opens the first
+  > post
+
+  The list's shortcuts are single keys: `n` new, `i` import, `/` search,
+  `d` (or Delete) delete, `s` settings, Tab sort (and in the Trash, `d`
+  deletes forever). Ctrl+N and Ctrl+D still work but aren't shown. Esc asks "Quit
+  writui?" (Quit is the selected button, `y`); Ctrl+Q and Ctrl+C still quit
+  straight away, unshown.
+
+  > add a line gap above type to filter. and below type to filter, i want
+  > "Sort by": "Updated", "Created", "Title". for filter use the maginifier
+  > icon: 🔎
+
+  > remove settings from the list, it's odd. change "open the first" to just
+  > "open" and when i am typing, keep the first result selected by default,
+  > basically focus shifts to first result as soon as i type the first
+  > chracer, but i am still typing in the sarch box, you understand?
+
+  > btw, can you make it such that if there a nerd font, then we use the
+  > non-colored magnifying glass character, and if not we use the emoji,
+  > only if it is possible
+
+  (It isn't: terminals don't say which font they use, and a missing glyph
+  still takes its space, so writui can't tell. The emoji it is; a setting
+  could choose later.)
+
+  Searching (creator's call: a field you move into, so letters can stay
+  shortcuts): `/`, ↓ from Import, or a click puts typing into the field.
+  Every word typed has to appear somewhere in the post's text or its front
+  matter, ignoring case; the matching posts are listed in the list's order,
+  and the Trash row hides while searching. As soon as something's typed,
+  the first match is highlighted while typing still goes into the field:
+  Enter opens the highlighted post, ↑/↓ move the highlight among the
+  matches, Delete deletes it. Esc empties the field, then leaves it (to
+  the first post). The empty field is just a row ↑/↓ pass through; a
+  click on a post leaves the field too. On the posts, Esc empties the
+  search before it asks to quit.
+
+  Sorting: most recently updated first, most recently created first, or
+  by title (A–Z, ignoring case). Tab (Shift+Tab back) goes through them,
+  in the field too, or click one; the current one is bold and underlined.
+  ↑/↓ skip the row. The choice is remembered (in the vault). The Trash is
+  always most recently deleted first.
+
+  Settings isn't a row on the list; it's `s`, shown in the hint bar.
+
+  > let's implment the lock using ctrl+o
+
+- **Lock** (Ctrl+O, or Cmd+O; anywhere once unlocked; shown on the list's
+  and Settings' hint bars and in the editor's menu): stores the post being
+  written, remembers the screen, and closes the vault, so its key is gone
+  from memory. The unlock screen says "Locked. Unlock to pick up where you
+  were."; the password opens the same screen again (a post with the cursor
+  where it was; its undo history doesn't survive). Anything half-done in a
+  dialog is dropped. If the post can't be stored, it doesn't lock and the
+  editor says why.
+
+  > remember the screen i was previously on at exit, and open back to same
+  > screen
+
+- writui opens on the screen it was left on (and so does unlocking after a
+  lock): the post that was open (with
+  the cursor where it was), the list, the Trash or Settings. A post that's
+  been deleted since means the list. The screen is remembered in the vault
+  every time it changes, so a closed terminal counts too.
 - Search on the main screen, matching against the full post body (not just
   titles).
 - Delete a post (with confirmation). Deleted posts go to the Trash.
@@ -177,7 +305,7 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 **Details**
 
 - The text sits in a centred column, 68 characters wide by default,
-  configurable in settings.
+  configurable in Settings.
 - Soft wrap: lines wrap on screen at the column width, but the stored
   markdown keeps paragraphs as single lines (so it pastes cleanly anywhere).
 - Narrower terminals wrap at the terminal's width instead.
@@ -212,6 +340,16 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - Copy / cut / paste with the system clipboard: Ctrl+C / Ctrl+X / Ctrl+V.
   If there's no system clipboard (e.g. no display), they still work inside
   writui. Pasting from the terminal (Cmd+V) also works.
+
+  > add a context menu for when i right click on a selection to cut, copy,
+  > paste (disabled if clipboard is empty)
+
+- Right-clicking the text opens a small menu there: Cut, Copy, Paste, with
+  their shortcuts. Cut and Copy are faded (and do nothing) without a
+  selection, Paste when the clipboard is empty. Right-clicking inside the
+  selection keeps it; elsewhere, the cursor moves there first. ↑/↓ and the
+  mouse highlight, Enter or a click runs one, Esc or a click outside
+  closes it.
 
 ## Autosave and versions
 
@@ -291,7 +429,9 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   plain.
 - Formatting follows CommonMark (plus GitHub's strikethrough, task lists and
   tables), so half-typed markdown stays plain until it's complete.
-- Links open in the browser: Ctrl+O with the cursor on one, or Ctrl+click.
+- Links open in the browser: Ctrl+click, or "Open link" in the menu with
+  the cursor on one (it was Ctrl+O until `0.12.0`, when Ctrl+O became
+  lock).
   Markdown links and web addresses written out in the text both count. Only
   `http(s)` and `mailto` links open.
 - List items and quotes wrap with a hanging indent: later rows line up under
@@ -360,7 +500,7 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   dialog has both:
   - **The file.** The first time, it suggests the post's title as a file
     name (`morning-pages.md`) in the folder of the last export (or import),
-    or else the folder writui was started from. After that, it's where the
+    or else Documents. After that, it's where the
     post was last exported to (or imported from). Typing a folder puts that
     file name in it, and `~` is the home folder. Tab completes paths as in a
     shell: as far as the matches agree, listing them under the field; Tab
@@ -383,8 +523,15 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
     checkboxes of the latest export (creator's call).
   - It asks before replacing a file (Cancel is the default, and goes back
     to the dialog). The file ends with a newline.
-- **Import markdown** (on the list, below "New post", or Ctrl+O): makes a
-  post of a `.md` file. The path has the same Tab completion, starting in
+  > export files to the right place by default (Documents?)
+
+  > keep track of where a file was imported from, so we can export back to
+  > that locaation by default
+
+  (That second one was already so since `0.11.0`: the file a post was
+  imported from is its own, and the first export goes back to it.)
+- **Import** (on the list, below "New", or `i`): makes a post of a `.md`
+  file, or any text file (`.txt` too). The path has the same Tab completion, starting in
   the folder of the last export or import.
   - The title is the front matter's `title`, or else the file's first line
     if it's `# Title`, or else the file name ("morning-pages.md" → "Morning
@@ -401,6 +548,21 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
     before is saved as a version, "Before importing <file>") or make a new
     post (creator's call).
   - Files that aren't text, or bigger than 10 MB, are refused.
+
+  > while importing a file, use the file's creation date (instead of
+  > current time)
+
+  - A new post made by importing was started when the file was made (or
+    else last changed, where the system doesn't know), not when it was
+    imported. Updating a post from its file keeps the post's own date.
+
+    > btw, for an imported file, use the created at date fromm the file
+    > metadata
+
+  - A file without a `date` in its front matter gets that same day as its
+    `date` (after `title`), not the day it's first exported. A file with
+    no front matter at all keeps none, but turning it on in the export
+    dialog starts with that date.
 - **Copy as formatted text**: the whole post (or the selection) as rich
   text, so pasting into Substack, Gmail, Medium, Google Docs etc. keeps
   headings, bold, links, lists.
@@ -434,9 +596,22 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 ## Settings
 
+> let's add a third "Settings" screen now, keep some minimal settings there
+> (like defualt Author name)
+
 **Details**
 
-- Line width, what Tab types, default preview preset, API keys, default
+- A Settings screen, reached with `s` on the list (it's on the hint bar). Each row is a setting and its value; Enter or a
+  click changes it in a dialog; Esc goes back to the list. Changes are
+  stored right away.
+- For now:
+  - **Author**: suggested as `author` in the front matter of exports
+    (after `title`), unless it's empty. Like the description and slug, it
+    follows Settings on later exports unless it was changed by hand in the
+    front matter.
+  - **Line width**: how wide the text is in the editor (and the history),
+    from 40 to 120 characters; 68 by default.
+- Later: what Tab types, default preview preset, API keys, default
   model, auto-lock timeout — all stored in the vault.
 - The vault file location has to be known *before* unlocking, so it lives
   outside the vault in a small plain config file (and can also be passed on
@@ -458,8 +633,15 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - The site lives in `site/` in this repo, and is published at
   **writui.com** (Cloudflare Workers).
 - It looks like the app: light Inter text on a dark background, one narrow
-  column. Pages: a landing page (what writui is, a short recording of it,
-  install) and the blog. "Changelog" in the menu links to the GitHub
+  column. Pages: a landing page (what writui is, install, a short
+  recording of it, then what it does) and the blog.
+
+  > and on the site, let's move installation above the demo tape and add a
+  > copy button
+
+  The install command has a "Copy" button in its corner (shown only where
+  the browser allows copying; it says "Copied" for a moment). The landing
+  page is kept up to date with each new feature (see CLAUDE.md). "Changelog" in the menu links to the GitHub
   releases page.
 - Posts live in the encrypted vault, but the blog lives in the public repo —
   so blog posts get into `site/content/blog/` via "export as markdown",
@@ -467,6 +649,34 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   importing them and exporting them back.
 - A "writui site" preview preset matching the site's CSS, so blog posts can be
   previewed exactly as they'll look.
+
+### Try online
+
+> any chance in hell we can have a "try online" version of writui via wasm
+> without that we can embed on the site at writui.com/try ? like is that even
+> possible
+
+> i definitely want it to work ona phone, what's the blocker?
+
+> okay, make it the next item of work
+
+**Details**
+
+- **writui.com/try** runs writui in the visitor's browser, with no server:
+  the same screens, built for the web (Ratzilla, ratatui's web backend), as
+  static files on the site.
+- It's a demo: no encryption or password, posts kept in that browser only
+  (or forgotten with the tab), no files, no `writui upgrade`. Import / export
+  become upload / download, or are hidden.
+- Shortcuts the browser keeps for itself (Ctrl+W, Ctrl+T, Ctrl+N, …) get
+  other keys in the demo.
+- It must work on a phone: tapping opens the on-screen keyboard (a hidden
+  text field that typing goes through, so autocorrect and swipe typing
+  work), a row of extra keys above it (Esc, Ctrl, Tab, arrows), taps act as
+  clicks, touch scrolls, and every screen works at phone width (about 40–50
+  columns).
+- The real app's behaviour doesn't change for this; CI checks that the web
+  build still builds.
 
 ## Open source
 
