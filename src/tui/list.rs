@@ -17,10 +17,10 @@ use std::path::PathBuf;
 use super::context_menu::{ContextMenu, Entry};
 use super::dialog::{Button, Dialog};
 use super::file_dialog::{FileDialog, FormCmd, Outcome as FormOutcome};
-use super::menu::Outcome as MenuOutcome;
-use super::{Action, ImportInto};
 use super::hints::{HintBar, hint};
+use super::menu::Outcome as MenuOutcome;
 use super::widgets::{COLUMN_WIDTH, column, truncate};
+use super::{Action, ImportInto};
 use crate::vault::{DELETED_RETENTION_DAYS, PostSummary};
 
 /// The longest search that can be typed.
@@ -99,7 +99,9 @@ impl Sort {
 
 pub enum Mode {
     /// The normal list, with a "Trash" row if anything is there.
-    Posts { deleted_count: usize },
+    Posts {
+        deleted_count: usize,
+    },
     Trash,
 }
 
@@ -252,7 +254,9 @@ impl List {
             // As the vault lists them.
             SortBy::Updated => {}
             SortBy::Created => order.sort_by_key(|&i| std::cmp::Reverse(self.posts[i].created_at)),
-            SortBy::Title => order.sort_by_cached_key(|&i| display_title(&self.posts[i].title).to_lowercase()),
+            SortBy::Title => {
+                order.sort_by_cached_key(|&i| display_title(&self.posts[i].title).to_lowercase())
+            }
         }
         // Dates sort newest first, titles A to Z; the other way round flips it.
         if self.sort.descending == (self.sort.by == SortBy::Title) {
@@ -297,7 +301,8 @@ impl List {
         if filter != self.filter {
             return;
         }
-        let matches = ids.iter().filter_map(|id| self.posts.iter().position(|p| p.id == *id)).collect();
+        let matches =
+            ids.iter().filter_map(|id| self.posts.iter().position(|p| p.id == *id)).collect();
         self.matches = Some(matches);
         self.rebuild_rows();
         if self.typing {
@@ -318,7 +323,8 @@ impl List {
 
     /// Change the search; the app looks for the matches.
     fn set_filter(&mut self, filter: String) -> Action {
-        let filter: String = filter.chars().filter(|ch| !ch.is_control()).take(MAX_FILTER).collect();
+        let filter: String =
+            filter.chars().filter(|ch| !ch.is_control()).take(MAX_FILTER).collect();
         if filter == self.filter {
             return Action::None;
         }
@@ -409,7 +415,15 @@ impl List {
     /// highlighted.
     fn open_sort_menu(&mut self) {
         let Some(area) = self.sort_area else { return };
-        let entries = Sort::ALL.iter().map(|&sort| Entry { label: sort.label(), key: "", cmd: Cmd::Sort(sort), enabled: true }).collect();
+        let entries = Sort::ALL
+            .iter()
+            .map(|&sort| Entry {
+                label: sort.label(),
+                key: "",
+                cmd: Cmd::Sort(sort),
+                enabled: true,
+            })
+            .collect();
         let current = Sort::ALL.iter().position(|&sort| sort == self.sort).unwrap_or(0);
         let menu = ContextMenu::new(entries, Position::default()).with_selected(current);
         // Right-aligned with "Sort", just below it.
@@ -446,7 +460,8 @@ impl List {
 
         if self.trash_view() {
             frame.render_widget(Paragraph::new("Trash".bold()), column(header, COLUMN_WIDTH));
-            let note = format!("Posts here are deleted forever after {DELETED_RETENTION_DAYS} days.");
+            let note =
+                format!("Posts here are deleted forever after {DELETED_RETENTION_DAYS} days.");
             frame.render_widget(Paragraph::new(note.dim()), column(subheader, COLUMN_WIDTH));
         } else {
             frame.render_widget(Paragraph::new("writui".bold()), column(header, COLUMN_WIDTH));
@@ -470,15 +485,28 @@ impl List {
                 Row::Import => ListItem::new(Line::from(vec!["» Import".bold(), " (i)".dim()])),
                 Row::Gap => ListItem::new(Line::default()),
                 Row::Search => {
-                    let shown = scrolled(&self.filter, field_width.saturating_sub(self.search_icon.width()));
+                    let shown = scrolled(
+                        &self.filter,
+                        field_width.saturating_sub(self.search_icon.width()),
+                    );
                     let text = if shown.is_empty() { "Type to filter (/)" } else { shown };
                     let pad = field_width.saturating_sub(self.search_icon.width() + text.width());
                     // Underlined, so it reads as a field; dim, all of it (so
                     // the underline's one colour), until typing goes into it.
-                    let style = if in_search { Style::new().underlined() } else { Style::new().underlined().dim() };
-                    let field = [Span::raw(self.search_icon), Span::raw(text), Span::raw(" ".repeat(pad))].map(|span| span.style(style));
+                    let style = if in_search {
+                        Style::new().underlined()
+                    } else {
+                        Style::new().underlined().dim()
+                    };
+                    let field =
+                        [Span::raw(self.search_icon), Span::raw(text), Span::raw(" ".repeat(pad))]
+                            .map(|span| span.style(style));
                     let gap = width.saturating_sub(field_width + sort_width);
-                    let sort = [Span::raw(" ".repeat(gap)), Span::raw(SORT_PREFIX).dim(), Span::raw(self.sort.label()).bold()];
+                    let sort = [
+                        Span::raw(" ".repeat(gap)),
+                        Span::raw(SORT_PREFIX).dim(),
+                        Span::raw(self.sort.label()).bold(),
+                    ];
                     ListItem::new(Line::from(field.into_iter().chain(sort).collect::<Vec<_>>()))
                 }
                 Row::Trash => {
@@ -518,7 +546,11 @@ impl List {
         // The search field shows the cursor, not the highlight.
         let on_field = self.selected_row() == Some(Row::Search);
         let highlight = if on_field { Style::new() } else { Style::new().reversed() };
-        frame.render_stateful_widget(ListWidget::new(items).highlight_style(highlight), list_area, &mut self.state);
+        frame.render_stateful_widget(
+            ListWidget::new(items).highlight_style(highlight),
+            list_area,
+            &mut self.state,
+        );
         // Where rows ended up, now the list has scrolled.
         let row_rect = |index: usize| -> Option<Rect> {
             let y = list_area.y + index.checked_sub(self.state.offset())? as u16;
@@ -535,7 +567,8 @@ impl List {
             && let Some(rect) = self.search_row().and_then(row_rect)
         {
             let icon = self.search_icon.width();
-            let x = rect.x + (icon + scrolled(&self.filter, field_width.saturating_sub(icon)).width()) as u16;
+            let x = rect.x
+                + (icon + scrolled(&self.filter, field_width.saturating_sub(icon)).width()) as u16;
             frame.set_cursor_position(Position::new(x.min(col.right().saturating_sub(1)), rect.y));
         }
 
@@ -547,7 +580,11 @@ impl List {
         if let Some(form) = &mut self.importing {
             form.render(frame);
             if self.dialog.is_none() {
-                let hints: Vec<_> = form.hints().into_iter().map(|h| hint(h.key, h.label, Cmd::Form(h.cmd))).collect();
+                let hints: Vec<_> = form
+                    .hints()
+                    .into_iter()
+                    .map(|h| hint(h.key, h.label, Cmd::Form(h.cmd)))
+                    .collect();
                 self.hints.render(frame, hint_area, &hints);
                 return;
             }
@@ -560,7 +597,8 @@ impl List {
         }
         if let Some(menu) = &mut self.sort_menu {
             menu.render(frame);
-            let hints = [hint("Enter", "sort", Cmd::PickSort), hint("Esc", "close", Cmd::CloseSortMenu)];
+            let hints =
+                [hint("Enter", "sort", Cmd::PickSort), hint("Esc", "close", Cmd::CloseSortMenu)];
             self.hints.render(frame, hint_area, &hints);
             return;
         }
@@ -587,7 +625,8 @@ impl List {
             hints
         } else {
             // n and i are shown on "New" and "Import".
-            let mut hints = vec![hint("Enter", "open", Cmd::Open), hint("/", "filter", Cmd::Search)];
+            let mut hints =
+                vec![hint("Enter", "open", Cmd::Open), hint("/", "filter", Cmd::Search)];
             if has_post {
                 hints.push(hint("d", "delete", Cmd::Delete));
             }
@@ -727,7 +766,9 @@ impl List {
                     KeyCode::Esc if self.searching() => Some(self.run(Cmd::ClearSearch)),
                     KeyCode::Esc => Some(self.run(Cmd::Back)),
                     KeyCode::Char('u') if ctrl => Some(self.set_filter(String::new())),
-                    KeyCode::Char(ch) if !ctrl => Some(self.set_filter(format!("{}{ch}", self.filter))),
+                    KeyCode::Char(ch) if !ctrl => {
+                        Some(self.set_filter(format!("{}{ch}", self.filter)))
+                    }
                     KeyCode::Backspace => {
                         let mut filter = self.filter.clone();
                         filter.pop();
@@ -754,10 +795,15 @@ impl List {
         } else {
             (0..self.rows.len()).filter(|&i| self.rows[i].selectable()).collect()
         };
-        let Some(at) = stops.iter().position(|&i| i == current).or(if stops.is_empty() { None } else { Some(0) }) else {
+        let Some(at) = stops.iter().position(|&i| i == current).or(if stops.is_empty() {
+            None
+        } else {
+            Some(0)
+        }) else {
             return Action::None;
         };
-        let next = stops[(at as isize).saturating_add(delta).clamp(0, stops.len() as isize - 1) as usize];
+        let next =
+            stops[(at as isize).saturating_add(delta).clamp(0, stops.len() as isize - 1) as usize];
         self.state.select(Some(next));
         if !(self.typing && self.searching()) {
             self.typing = self.rows[next] == Row::Search;
@@ -778,9 +824,16 @@ impl List {
     /// The post to highlight after post `index` disappears from the list:
     /// the one listed after it, or else before it.
     fn neighbour_of(&self, index: usize) -> Option<i64> {
-        let listed: Vec<usize> = self.rows.iter().filter_map(|r| if let Row::Post(i) = r { Some(*i) } else { None }).collect();
+        let listed: Vec<usize> = self
+            .rows
+            .iter()
+            .filter_map(|r| if let Row::Post(i) = r { Some(*i) } else { None })
+            .collect();
         let at = listed.iter().position(|&i| i == index)?;
-        listed.get(at + 1).or_else(|| at.checked_sub(1).and_then(|a| listed.get(a))).map(|&i| self.posts[i].id)
+        listed
+            .get(at + 1)
+            .or_else(|| at.checked_sub(1).and_then(|a| listed.get(a)))
+            .map(|&i| self.posts[i].id)
     }
 
     fn run(&mut self, cmd: Cmd) -> Action {
@@ -834,7 +887,9 @@ impl List {
                 self.sort_menu = None;
                 Action::None
             }
-            Cmd::New | Cmd::Settings | Cmd::Search | Cmd::SortMenu | Cmd::CycleSort(_) => Action::None,
+            Cmd::New | Cmd::Settings | Cmd::Search | Cmd::SortMenu | Cmd::CycleSort(_) => {
+                Action::None
+            }
             Cmd::Import if !self.trash_view() => {
                 self.importing = Some(Box::new(FileDialog::new(
                     "Import",
@@ -857,7 +912,11 @@ impl List {
                 self.dialog = None;
                 match self.reimport.take() {
                     Some((path, id)) => {
-                        let into = if matches!(cmd, Cmd::UpdateImported) { ImportInto::Post(id) } else { ImportInto::New };
+                        let into = if matches!(cmd, Cmd::UpdateImported) {
+                            ImportInto::Post(id)
+                        } else {
+                            ImportInto::New
+                        };
                         Action::Import { path, into }
                     }
                     None => Action::None,
@@ -941,7 +1000,12 @@ impl List {
                     Line::from("This can't be undone.".dim()),
                 ],
                 vec![
-                    Button { label: "Delete forever", key: "y", cmd: Cmd::ConfirmDelete, danger: true },
+                    Button {
+                        label: "Delete forever",
+                        key: "y",
+                        cmd: Cmd::ConfirmDelete,
+                        danger: true,
+                    },
                     Button { label: "Cancel", key: "n", cmd: Cmd::CancelDialog, danger: false },
                 ],
                 1,
@@ -952,7 +1016,9 @@ impl List {
                 "Delete post",
                 vec![
                     Line::from(format!("Move “{title}” to the Trash?")),
-                    Line::from(format!("You can restore it for {DELETED_RETENTION_DAYS} days.").dim()),
+                    Line::from(
+                        format!("You can restore it for {DELETED_RETENTION_DAYS} days.").dim(),
+                    ),
                 ],
                 vec![
                     Button { label: "Delete", key: "y", cmd: Cmd::ConfirmDelete, danger: true },
@@ -1060,7 +1126,10 @@ mod tests {
         let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
         terminal.draw(|frame| list.render(frame)).unwrap();
         let buffer = terminal.backend().buffer();
-        (0..24).map(|y| (0..80).map(|x| buffer[(x, y)].symbol()).collect::<String>()).collect::<Vec<_>>().join("\n")
+        (0..24)
+            .map(|y| (0..80).map(|x| buffer[(x, y)].symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 
     fn press(list: &mut List, code: KeyCode, modifiers: KeyModifiers) -> Action {
@@ -1073,7 +1142,8 @@ mod tests {
         let file = dir.path().join("post.md");
         std::fs::write(&file, "# Post").unwrap();
         let folder = format!("{}/", dir.path().display());
-        let mut list = List::new(Mode::Posts { deleted_count: 0 }, Vec::new(), None).with_import_folder(folder.clone());
+        let mut list = List::new(Mode::Posts { deleted_count: 0 }, Vec::new(), None)
+            .with_import_folder(folder.clone());
         let text = screen(&mut list);
         assert!(text.contains("+ New (n)") && text.contains("» Import (i)"), "{text}");
         assert!(!text.contains("i import"));
@@ -1087,7 +1157,9 @@ mod tests {
         assert!(matches!(press(&mut list, KeyCode::Enter, KeyModifiers::NONE), Action::None));
         assert!(screen(&mut list).contains("That's a folder"));
         press(&mut list, KeyCode::Tab, KeyModifiers::NONE);
-        let Action::Import { path, into: ImportInto::Check } = press(&mut list, KeyCode::Enter, KeyModifiers::NONE) else {
+        let Action::Import { path, into: ImportInto::Check } =
+            press(&mut list, KeyCode::Enter, KeyModifiers::NONE)
+        else {
             panic!("not imported")
         };
         assert_eq!(path, file);
@@ -1095,7 +1167,10 @@ mod tests {
         list.ask_reimport(file, 7, "Post");
         let text = screen(&mut list);
         assert!(text.contains("Imported before") && text.contains("Update it"));
-        assert!(matches!(press(&mut list, KeyCode::Char('u'), KeyModifiers::NONE), Action::Import { into: ImportInto::Post(7), .. }));
+        assert!(matches!(
+            press(&mut list, KeyCode::Char('u'), KeyModifiers::NONE),
+            Action::Import { into: ImportInto::Post(7), .. }
+        ));
         // Esc closes the dialog; i opens it again.
         press(&mut list, KeyCode::Esc, KeyModifiers::NONE);
         assert!(list.importing.is_none());
@@ -1104,7 +1179,13 @@ mod tests {
     }
 
     fn post(id: i64, title: &str) -> PostSummary {
-        PostSummary { id, title: title.into(), created_at: at(&format!("2026-01-0{id}T00:00:00Z")), updated_at: Timestamp::now(), deleted_at: None }
+        PostSummary {
+            id,
+            title: title.into(),
+            created_at: at(&format!("2026-01-0{id}T00:00:00Z")),
+            updated_at: Timestamp::now(),
+            deleted_at: None,
+        }
     }
 
     #[test]
@@ -1123,8 +1204,14 @@ mod tests {
         press(&mut list, KeyCode::Char('j'), KeyModifiers::NONE);
         press(&mut list, KeyCode::Char('k'), KeyModifiers::NONE);
         assert_eq!(list.selected_post(), Some(0));
-        assert!(matches!(press(&mut list, KeyCode::Char('n'), KeyModifiers::NONE), Action::NewPost));
-        assert!(matches!(press(&mut list, KeyCode::Char('s'), KeyModifiers::NONE), Action::ShowSettings));
+        assert!(matches!(
+            press(&mut list, KeyCode::Char('n'), KeyModifiers::NONE),
+            Action::NewPost
+        ));
+        assert!(matches!(
+            press(&mut list, KeyCode::Char('s'), KeyModifiers::NONE),
+            Action::ShowSettings
+        ));
         press(&mut list, KeyCode::Char('d'), KeyModifiers::NONE);
         assert!(screen(&mut list).contains("Move “One” to the Trash?"));
         press(&mut list, KeyCode::Esc, KeyModifiers::NONE);
@@ -1142,14 +1229,26 @@ mod tests {
         let posts = vec![post(1, "One"), post(2, "Two"), post(3, "Three")];
         let mut list = List::new(Mode::Posts { deleted_count: 2 }, posts, None);
         let text = screen(&mut list);
-        assert!(text.contains("🔎") && text.contains("Type to filter (/)") && text.contains("Sort: Updated ↓"), "{text}");
+        assert!(
+            text.contains("🔎")
+                && text.contains("Type to filter (/)")
+                && text.contains("Sort: Updated ↓"),
+            "{text}"
+        );
         assert!(!text.contains("Settings\n") && !text.contains("  Settings  "), "{text}");
         // / goes into the field; letters are typed there, not shortcuts.
         press(&mut list, KeyCode::Char('/'), KeyModifiers::NONE);
-        assert!(matches!(press(&mut list, KeyCode::Char('j'), KeyModifiers::NONE), Action::Search(f) if f == "j"));
+        assert!(
+            matches!(press(&mut list, KeyCode::Char('j'), KeyModifiers::NONE), Action::Search(f) if f == "j")
+        );
         press(&mut list, KeyCode::Backspace, KeyModifiers::NONE);
-        assert!(matches!(press(&mut list, KeyCode::Char('n'), KeyModifiers::NONE), Action::Search(f) if f == "n"));
-        let Action::Search(filter) = press(&mut list, KeyCode::Char('e'), KeyModifiers::NONE) else { panic!() };
+        assert!(
+            matches!(press(&mut list, KeyCode::Char('n'), KeyModifiers::NONE), Action::Search(f) if f == "n")
+        );
+        let Action::Search(filter) = press(&mut list, KeyCode::Char('e'), KeyModifiers::NONE)
+        else {
+            panic!()
+        };
         assert_eq!(filter, "ne");
         // When the vault answers: only the matches, the first highlighted,
         // and typing still goes into the field.
@@ -1166,7 +1265,10 @@ mod tests {
         // A stale answer is ignored.
         list.show_matches("n", &[1, 2, 3]);
         assert!(!screen(&mut list).contains("Two"));
-        assert!(matches!(press(&mut list, KeyCode::Enter, KeyModifiers::NONE), Action::OpenPost(3)));
+        assert!(matches!(
+            press(&mut list, KeyCode::Enter, KeyModifiers::NONE),
+            Action::OpenPost(3)
+        ));
         // Typing more highlights the first match again.
         press(&mut list, KeyCode::Char('x'), KeyModifiers::NONE);
         list.show_matches("nex", &[]);
@@ -1179,7 +1281,10 @@ mod tests {
         press(&mut list, KeyCode::Esc, KeyModifiers::NONE);
         assert!(!list.in_search());
         assert_eq!(list.selected_post(), Some(0));
-        assert!(matches!(press(&mut list, KeyCode::Char('n'), KeyModifiers::NONE), Action::NewPost));
+        assert!(matches!(
+            press(&mut list, KeyCode::Char('n'), KeyModifiers::NONE),
+            Action::NewPost
+        ));
         // ↑/↓ pass through the empty field.
         press(&mut list, KeyCode::Up, KeyModifiers::NONE);
         assert!(list.in_search());
@@ -1192,7 +1297,12 @@ mod tests {
 
     fn click(list: &mut List, column: u16, row: u16) -> Action {
         let kind = MouseEventKind::Down(MouseButton::Left);
-        list.handle(Event::Mouse(ratatui::crossterm::event::MouseEvent { kind, column, row, modifiers: KeyModifiers::NONE }))
+        list.handle(Event::Mouse(ratatui::crossterm::event::MouseEvent {
+            kind,
+            column,
+            row,
+            modifiers: KeyModifiers::NONE,
+        }))
     }
 
     #[test]
@@ -1203,7 +1313,16 @@ mod tests {
             post.updated_at = at(&format!("2026-02-0{}T00:00:00Z", 3 - i));
         }
         let titles = |list: &mut List| -> Vec<String> {
-            list.rows.iter().filter_map(|r| if let Row::Post(i) = r { Some(display_title(&list.posts[*i].title).to_string()) } else { None }).collect()
+            list.rows
+                .iter()
+                .filter_map(|r| {
+                    if let Row::Post(i) = r {
+                        Some(display_title(&list.posts[*i].title).to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect()
         };
         let by = |by, descending| Sort { by, descending };
         let mut list = List::new(Mode::Posts { deleted_count: 0 }, posts.clone(), None);
@@ -1214,15 +1333,25 @@ mod tests {
         assert!(row.trim_end().ends_with("Sort: Updated ↓"), "{row}");
         // Tab sorts the next way, Shift+Tab the one before, round and
         // round; the app remembers it.
-        assert!(matches!(press(&mut list, KeyCode::Tab, KeyModifiers::NONE), Action::SortBy(s) if s == by(SortBy::Updated, false)));
+        assert!(
+            matches!(press(&mut list, KeyCode::Tab, KeyModifiers::NONE), Action::SortBy(s) if s == by(SortBy::Updated, false))
+        );
         assert!(list.sort_menu.is_none());
         assert_eq!(titles(&mut list), ["Untitled", "Alpha", "beta"]);
-        assert!(matches!(press(&mut list, KeyCode::BackTab, KeyModifiers::SHIFT), Action::SortBy(s) if s == Sort::DEFAULT));
-        assert!(matches!(press(&mut list, KeyCode::BackTab, KeyModifiers::SHIFT), Action::SortBy(s) if s == by(SortBy::Title, true)));
-        assert!(matches!(press(&mut list, KeyCode::Tab, KeyModifiers::NONE), Action::SortBy(s) if s == Sort::DEFAULT));
+        assert!(
+            matches!(press(&mut list, KeyCode::BackTab, KeyModifiers::SHIFT), Action::SortBy(s) if s == Sort::DEFAULT)
+        );
+        assert!(
+            matches!(press(&mut list, KeyCode::BackTab, KeyModifiers::SHIFT), Action::SortBy(s) if s == by(SortBy::Title, true))
+        );
+        assert!(
+            matches!(press(&mut list, KeyCode::Tab, KeyModifiers::NONE), Action::SortBy(s) if s == Sort::DEFAULT)
+        );
         // In the search field too.
         press(&mut list, KeyCode::Char('/'), KeyModifiers::NONE);
-        assert!(matches!(press(&mut list, KeyCode::Tab, KeyModifiers::NONE), Action::SortBy(s) if s == by(SortBy::Updated, false)));
+        assert!(
+            matches!(press(&mut list, KeyCode::Tab, KeyModifiers::NONE), Action::SortBy(s) if s == by(SortBy::Updated, false))
+        );
         assert!(list.filter.is_empty());
         press(&mut list, KeyCode::BackTab, KeyModifiers::SHIFT);
         press(&mut list, KeyCode::Esc, KeyModifiers::NONE);
@@ -1232,10 +1361,17 @@ mod tests {
         let area = list.sort_area.unwrap();
         assert!(matches!(click(&mut list, area.x, area.y), Action::None));
         let text = screen(&mut list);
-        assert!(text.contains("Updated ↑") && text.contains("Title ↓") && !text.contains("oldest first"), "{text}");
+        assert!(
+            text.contains("Updated ↑")
+                && text.contains("Title ↓")
+                && !text.contains("oldest first"),
+            "{text}"
+        );
         assert!(text.contains("Enter sort") && text.contains("Esc close"), "{text}");
         press(&mut list, KeyCode::Down, KeyModifiers::NONE);
-        assert!(matches!(press(&mut list, KeyCode::Enter, KeyModifiers::NONE), Action::SortBy(s) if s == by(SortBy::Updated, false)));
+        assert!(
+            matches!(press(&mut list, KeyCode::Enter, KeyModifiers::NONE), Action::SortBy(s) if s == by(SortBy::Updated, false))
+        );
         assert!(list.sort_menu.is_none());
         assert_eq!(titles(&mut list), ["Untitled", "Alpha", "beta"]);
         // Esc just closes it.
@@ -1249,7 +1385,9 @@ mod tests {
         assert!(matches!(click(&mut list, area.x, area.y), Action::None));
         let text = screen(&mut list);
         let line = text.lines().position(|line| line.contains("Title ↓")).unwrap() as u16;
-        assert!(matches!(click(&mut list, area.right() - 2, line), Action::SortBy(s) if s == by(SortBy::Title, true)));
+        assert!(
+            matches!(click(&mut list, area.right() - 2, line), Action::SortBy(s) if s == by(SortBy::Title, true))
+        );
         assert_eq!(titles(&mut list), ["Untitled", "beta", "Alpha"]);
         assert!(screen(&mut list).contains("Sort: Title ↓"));
         list.set_sort(by(SortBy::Title, false));
@@ -1260,7 +1398,8 @@ mod tests {
         assert_eq!(titles(&mut list), ["Untitled", "beta", "Alpha"]);
         // Opening sorted: "New" is highlighted, or the post asked for.
         let title = by(SortBy::Title, false);
-        let list = List::new(Mode::Posts { deleted_count: 0 }, posts.clone(), None).with_sort(title);
+        let list =
+            List::new(Mode::Posts { deleted_count: 0 }, posts.clone(), None).with_sort(title);
         assert_eq!(list.selected_row(), Some(Row::New));
         let list = List::new(Mode::Posts { deleted_count: 0 }, posts, Some(1)).with_sort(title);
         assert_eq!(list.selected_post(), Some(2));

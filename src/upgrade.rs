@@ -31,7 +31,9 @@ struct Release {
 
 pub fn run(yes: bool) -> Result<()> {
     if cfg!(debug_assertions) {
-        bail!("upgrade is turned off in debug builds, since it would replace the binary in target/");
+        bail!(
+            "upgrade is turned off in debug builds, since it would replace the binary in target/"
+        );
     }
     let Some(binary) = binary_name() else {
         bail!(
@@ -39,9 +41,8 @@ pub fn run(yes: bool) -> Result<()> {
              https://github.com/{REPO}#install"
         );
     };
-    let exe = env::current_exe()
-        .and_then(fs::canonicalize)
-        .context("finding the running writui")?;
+    let exe =
+        env::current_exe().and_then(fs::canonicalize).context("finding the running writui")?;
 
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .timeout_connect(Some(Duration::from_secs(15)))
@@ -122,7 +123,9 @@ fn download(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>> {
     agent
         .get(url)
         .call()
-        .and_then(|mut response| response.body_mut().with_config().limit(MAX_DOWNLOAD).read_to_vec())
+        .and_then(|mut response| {
+            response.body_mut().with_config().limit(MAX_DOWNLOAD).read_to_vec()
+        })
         .with_context(|| format!("downloading {url}"))
 }
 

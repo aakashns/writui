@@ -1,14 +1,20 @@
 //! Small shared pieces: layout helpers and the password field.
 
+use ratatui::Frame;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use ratatui::layout::Rect;
-use ratatui::style::Stylize;
-use ratatui::text::Line;
+use ratatui::layout::{Position, Rect};
+use ratatui::style::{Style, Stylize};
+use ratatui::text::{Line, Span};
+use ratatui::widgets::{Block, Paragraph};
 use unicode_width::UnicodeWidthChar;
 use zeroize::Zeroizing;
 
 /// The comfortable reading/writing width, in columns.
 pub const COLUMN_WIDTH: u16 = 68;
+
+/// A boxed password field: wide enough for a long password, and two fit
+/// side by side in the column.
+pub const PASSWORD_BOX: (u16, u16) = (33, 3);
 
 /// Shown on the setup and unlock screens of debug builds, so the shared
 /// password for `.dev-data/` vaults is never forgotten.
@@ -32,6 +38,31 @@ pub fn overview() -> Vec<Line<'static>> {
     lines
 }
 
+/// writui's logo, drawn large for the password screens: the `>` mark, the
+/// green bar (the caret), and the name in pixel letters, each line split
+/// into those three parts.
+#[rustfmt::skip]
+const BANNER: [[&str; 3]; 6] = [
+    ["         ", "  ", "                         ██                         ██"],
+    ["▄▄▄      ", "▄▄", "                                 ██"],
+    [" ▀██▄    ", "██", "    ██    ██ ██ ▄████ █████    ███████  ██    ██ █████"],
+    ["   ▀██▄  ", "██", "    ██ ▄▄ ██ ███▀        ██      ██     ██    ██    ██"],
+    ["  ▄██▀   ", "██", "    ██▄██▄██ ██          ██      ██     ██    ██    ██"],
+    ["▄██▀     ", "██", "    ▀█▀  ▀█▀ ██       ████████   ▀█████ ▀██▄▄▄██ ████████"],
+];
+
+/// The password screens' title: the banner, or just "writui" when `area`
+/// is too small to fit the banner above `other_lines` more lines.
+pub fn title(area: Rect, other_lines: usize) -> Vec<Line<'static>> {
+    if area.width < COLUMN_WIDTH || (area.height as usize) < BANNER.len() + other_lines {
+        return vec![Line::from("writui".bold())];
+    }
+    BANNER
+        .iter()
+        .map(|[mark, bar, name]| Line::from(vec![Span::raw(*mark), bar.green(), Span::raw(*name)]))
+        .collect()
+}
+
 /// A column of at most `width`, horizontally centred in `area`.
 pub fn column(area: Rect, width: u16) -> Rect {
     let width = width.min(area.width);
@@ -42,12 +73,7 @@ pub fn column(area: Rect, width: u16) -> Rect {
 pub fn centered(area: Rect, width: u16, height: u16) -> Rect {
     let width = width.min(area.width);
     let height = height.min(area.height);
-    Rect::new(
-        area.x + (area.width - width) / 2,
-        area.y + (area.height - height) / 2,
-        width,
-        height,
-    )
+    Rect::new(area.x + (area.width - width) / 2, area.y + (area.height - height) / 2, width, height)
 }
 
 /// Cut `text` to fit in `width` columns, ending with `…` if it was cut.
@@ -114,8 +140,29 @@ impl PasswordField {
         self.value.is_empty()
     }
 
-    pub fn masked(&self) -> String {
-        "•".repeat(self.len())
+    /// Draw the field in a box with `label` on its top edge, dimmed unless
+    /// `focused`. A password too long for the box shows its end. Returns
+    /// where the cursor goes.
+    pub fn render_boxed(
+        &self,
+        frame: &mut Frame,
+        area: Rect,
+        label: &str,
+        focused: bool,
+    ) -> Position {
+        let style = if focused { Style::new() } else { Style::new().dim() };
+        let label = if focused { label.bold() } else { label.dim() };
+        let block = Block::bordered().border_style(style).title(Line::from(vec![
+            " ".into(),
+            label,
+            " ".into(),
+        ]));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
+        let inner = Rect { x: inner.x + 1, width: inner.width.saturating_sub(2), ..inner };
+        let shown = self.len().min(inner.width.saturating_sub(1) as usize);
+        frame.render_widget(Paragraph::new("•".repeat(shown)), inner);
+        Position::new(inner.x + shown as u16, inner.y)
     }
 }
 
@@ -128,6 +175,19 @@ mod tests {
         let lines = overview();
         assert!(lines.len() <= 7);
         assert!(lines.iter().all(|line| line.width() <= COLUMN_WIDTH as usize));
+    }
+
+    #[test]
+    fn the_banner_fits_the_column() {
+        let lines = title(Rect::new(0, 0, 100, 30), 10);
+        assert_eq!(lines.len(), BANNER.len());
+        assert!(lines.iter().all(|line| line.width() <= COLUMN_WIDTH as usize));
+    }
+
+    #[test]
+    fn small_windows_get_the_plain_title() {
+        assert_eq!(title(Rect::new(0, 0, 60, 30), 10).len(), 1);
+        assert_eq!(title(Rect::new(0, 0, 100, 12), 10).len(), 1);
     }
 
     #[test]

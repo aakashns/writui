@@ -46,11 +46,12 @@ cargo install --locked --path .
 ## Before opening a pull request
 
 ```sh
+cargo fmt
 cargo test
 cargo clippy --all-targets -- -D warnings
 ```
 
-CI runs both on Linux and macOS for every pull request (not Windows: run
+CI checks the formatting and runs the other two on Linux and macOS for every pull request (not Windows: run
 them there yourself if a change could affect it, e.g. paths or the
 terminal). Also try
 the change in the real app, in a couple of different terminals if it

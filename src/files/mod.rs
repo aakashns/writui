@@ -31,7 +31,11 @@ pub fn file_name(title: &str) -> String {
 /// Where an export goes unless changed: the post's own file (where it was
 /// last exported to, or imported from); failing that, the post's file name
 /// in the folder of the latest export, or else in Documents.
-pub fn default_path(title: &str, this_post: Option<&ExportSettings>, latest: Option<&ExportSettings>) -> String {
+pub fn default_path(
+    title: &str,
+    this_post: Option<&ExportSettings>,
+    latest: Option<&ExportSettings>,
+) -> String {
     if let Some(last) = this_post {
         return display(&last.path);
     }
@@ -82,7 +86,8 @@ fn absolute(input: &str) -> Result<PathBuf, String> {
         _ => PathBuf::from(input),
     };
     if path.is_relative() {
-        let current = std::env::current_dir().map_err(|e| format!("Couldn't find the current folder: {e}"))?;
+        let current = std::env::current_dir()
+            .map_err(|e| format!("Couldn't find the current folder: {e}"))?;
         return Ok(current.join(path));
     }
     Ok(path)
@@ -116,7 +121,9 @@ pub fn completions(input: &str) -> Vec<String> {
         Some(i) => input.split_at(i + 1),
         None => ("", input),
     };
-    let Ok(dir) = absolute(if dir_part.is_empty() { "." } else { dir_part }) else { return Vec::new() };
+    let Ok(dir) = absolute(if dir_part.is_empty() { "." } else { dir_part }) else {
+        return Vec::new();
+    };
     let Ok(entries) = std::fs::read_dir(&dir) else { return Vec::new() };
     let mut names: Vec<String> = entries
         .flatten()
@@ -158,7 +165,12 @@ pub fn contents(body: &str, front_matter: Option<&str>, keep_title: bool) -> Str
     let mut text = match front_matter.map(str::trim).filter(|text| !text.is_empty()) {
         Some(front_matter) => {
             let skip = usize::from(!keep_title);
-            let rest = body.lines().skip(skip).skip_while(|line| line.trim().is_empty()).collect::<Vec<_>>().join("\n");
+            let rest = body
+                .lines()
+                .skip(skip)
+                .skip_while(|line| line.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n");
             if rest.is_empty() {
                 format!("---\n{front_matter}\n---\n")
             } else {
@@ -218,7 +230,11 @@ pub fn resolve_import(input: &str) -> Result<PathBuf, String> {
 pub fn read(path: &Path) -> Result<Imported, String> {
     let shown = display(path);
     let metadata = std::fs::metadata(path).map_err(|e| format!("Couldn't read {shown}: {e}"))?;
-    let created = metadata.created().or_else(|_| metadata.modified()).ok().and_then(|time| jiff::Timestamp::try_from(time).ok());
+    let created = metadata
+        .created()
+        .or_else(|_| metadata.modified())
+        .ok()
+        .and_then(|time| jiff::Timestamp::try_from(time).ok());
     if metadata.len() > MAX_IMPORT_BYTES {
         return Err(format!("{shown} is too big to be a post."));
     }
@@ -236,9 +252,16 @@ pub fn read(path: &Path) -> Result<Imported, String> {
     let rest = rest.trim_start_matches(['\n', ' ', '\t']).trim_end();
     // A `# Title` first line is the title, unless the front matter has
     // another: then it's a heading in the text.
-    let heading = rest.lines().next().and_then(|line| line.strip_prefix(TITLE_PREFIX)).map(str::trim);
-    let from_front_matter = front_matter.as_deref().and_then(|f| front_matter::get(f, "title")).filter(|t| !t.is_empty());
-    let title = from_front_matter.clone().or(heading.map(str::to_string)).unwrap_or_else(|| title_from_file_name(path));
+    let heading =
+        rest.lines().next().and_then(|line| line.strip_prefix(TITLE_PREFIX)).map(str::trim);
+    let from_front_matter = front_matter
+        .as_deref()
+        .and_then(|f| front_matter::get(f, "title"))
+        .filter(|t| !t.is_empty());
+    let title = from_front_matter
+        .clone()
+        .or(heading.map(str::to_string))
+        .unwrap_or_else(|| title_from_file_name(path));
     let title_line = heading.is_some_and(|heading| from_front_matter.is_none() || heading == title);
     let rest = match heading {
         Some(_) if title_line => {
@@ -247,7 +270,11 @@ pub fn read(path: &Path) -> Result<Imported, String> {
         _ => rest,
     };
     let title: String = title.chars().map(|c| if c.is_control() { ' ' } else { c }).collect();
-    let body = if rest.is_empty() { format!("{TITLE_PREFIX}{title}") } else { format!("{TITLE_PREFIX}{title}\n\n{rest}") };
+    let body = if rest.is_empty() {
+        format!("{TITLE_PREFIX}{title}")
+    } else {
+        format!("{TITLE_PREFIX}{title}\n\n{rest}")
+    };
     Ok(Imported {
         path: path.to_path_buf(),
         title,
@@ -317,10 +344,16 @@ mod tests {
     #[test]
     fn front_matter_takes_the_place_of_the_title() {
         let fm = "title: \"Title\"";
-        assert_eq!(contents("# Title\n\n\nText\n\nMore", Some(fm), false), "---\ntitle: \"Title\"\n---\n\nText\n\nMore\n");
+        assert_eq!(
+            contents("# Title\n\n\nText\n\nMore", Some(fm), false),
+            "---\ntitle: \"Title\"\n---\n\nText\n\nMore\n"
+        );
         assert_eq!(contents("# Title", Some(fm), false), "---\ntitle: \"Title\"\n---\n");
         // Or kept, after it.
-        assert_eq!(contents("# Title\n\nText", Some(fm), true), "---\ntitle: \"Title\"\n---\n\n# Title\n\nText\n");
+        assert_eq!(
+            contents("# Title\n\nText", Some(fm), true),
+            "---\ntitle: \"Title\"\n---\n\n# Title\n\nText\n"
+        );
         // Empty front matter is none at all.
         assert_eq!(contents("# Title\nText", Some(" \n"), false), "# Title\nText\n");
     }
@@ -352,7 +385,10 @@ mod tests {
         std::fs::create_dir(dir.path().join("Pictures")).unwrap();
         std::fs::write(dir.path().join("post.md"), "").unwrap();
         std::fs::write(dir.path().join(".hidden"), "").unwrap();
-        assert_eq!(completions(&format!("{base}/po")), [format!("{base}/post.md"), format!("{base}/posts/")]);
+        assert_eq!(
+            completions(&format!("{base}/po")),
+            [format!("{base}/post.md"), format!("{base}/posts/")]
+        );
         assert_eq!(common_prefix(&completions(&format!("{base}/po"))), format!("{base}/post"));
         assert_eq!(completions(&format!("{base}/Pi")), [format!("{base}/Pictures/")]);
         // Ignoring case only when nothing matches exactly.
@@ -386,7 +422,10 @@ mod tests {
         let file = import("morning-pages.md", "Just text");
         assert_eq!(file.body, "# Morning pages\n\nJust text");
         let file = import("+++.md", "+++\ntitle = \"Toml\"\n+++\nText");
-        assert_eq!((file.body.as_str(), file.front_matter.as_str(), file.converted), ("# Toml\n\nText", "title: \"Toml\"", true));
+        assert_eq!(
+            (file.body.as_str(), file.front_matter.as_str(), file.converted),
+            ("# Toml\n\nText", "title: \"Toml\"", true)
+        );
         assert_eq!(import("empty.md", "").body, "# Empty");
         // Text files too.
         let file = import("notes.txt", "Plain text");

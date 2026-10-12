@@ -270,7 +270,8 @@ mod tests {
     fn later_rows_are_narrower_by_the_indent() {
         let line = "- the quick brown fox jumps";
         let chars: Vec<char> = line.chars().collect();
-        let rows: Vec<String> = wrap_line(line, 12, 2).into_iter().map(|r| chars[r].iter().collect()).collect();
+        let rows: Vec<String> =
+            wrap_line(line, 12, 2).into_iter().map(|r| chars[r].iter().collect()).collect();
         assert_eq!(rows, ["- the quick ", "brown fox ", "jumps"]);
 
         let rope = Rope::from_str(line);
