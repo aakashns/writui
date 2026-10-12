@@ -615,15 +615,18 @@ impl Editor {
             KeyCode::Tab => self.edit(Kind::Other, |b| b.insert(TAB)),
             KeyCode::Backspace => self.edit(Kind::Backspace, Buffer::backspace),
             KeyCode::Delete => self.edit(Kind::Delete, Buffer::delete),
-            // Like Home and End.
-            KeyCode::Left if ctrl || cmd => self.row_start(),
-            KeyCode::Right if ctrl || cmd => self.row_end(),
+            // Like Home and End, then on by sentence or row.
+            KeyCode::Left if ctrl || cmd => self.line_left(),
+            KeyCode::Right if ctrl || cmd => self.line_right(),
             KeyCode::Left if alt => self.step(Buffer::word_left),
             KeyCode::Right if alt => self.step(Buffer::word_right),
             KeyCode::Char('b') => self.step(Buffer::word_left),
             KeyCode::Char('f') => self.step(Buffer::word_right),
-            KeyCode::Up if ctrl || alt => self.step(Buffer::paragraph_left),
-            KeyCode::Down if ctrl || alt => self.step(Buffer::paragraph_right),
+            // Like Ctrl+Home and Ctrl+End.
+            KeyCode::Up if ctrl || cmd => self.step(|b| b.set_cursor(0)),
+            KeyCode::Down if ctrl || cmd => self.step(|b| b.set_cursor(b.len())),
+            KeyCode::Up if alt => self.step(Buffer::paragraph_left),
+            KeyCode::Down if alt => self.step(Buffer::paragraph_right),
             KeyCode::Left => self.step(Buffer::left),
             KeyCode::Right => self.step(Buffer::right),
             KeyCode::Up => self.move_rows(-1),
@@ -995,6 +998,34 @@ impl Editor {
         self.refresh();
         let row = self.rows[row_of(&self.rows, self.buffer.cursor())];
         self.step(|b| b.set_cursor(if row.last { row.end } else { b.prev_boundary(row.end) }));
+    }
+
+    /// The start of the row the cursor is on; or if it's there already,
+    /// the start of the sentence or of the row before, whichever is nearer.
+    fn line_left(&mut self) {
+        let pos = self.buffer.cursor();
+        self.row_start();
+        if self.buffer.cursor() != pos {
+            return;
+        }
+        let index = row_of(&self.rows, pos);
+        let row = index.checked_sub(1).map_or(0, |i| self.rows[i].start);
+        let sentence = self.buffer.sentence_start(pos);
+        self.step(|b| b.set_cursor(row.max(sentence)));
+    }
+
+    /// The end of the row the cursor is on; or if it's there already, the
+    /// end of the sentence or of the row after, whichever is nearer.
+    fn line_right(&mut self) {
+        let pos = self.buffer.cursor();
+        self.row_end();
+        if self.buffer.cursor() != pos {
+            return;
+        }
+        let index = row_of(&self.rows, pos);
+        let row = self.rows.get(index + 1).map_or(self.buffer.len(), |r| if r.last { r.end } else { self.buffer.prev_boundary(r.end) });
+        let sentence = self.buffer.sentence_end(pos);
+        self.step(|b| b.set_cursor(row.min(sentence)));
     }
 
     /// Put the cursor where the text was clicked. Beside a row means its
@@ -1452,6 +1483,57 @@ mod tests {
         h.with(KeyCode::Right, KeyModifiers::SUPER);
         let end = if cfg!(target_os = "macos") { LEFT + 11 } else { LEFT + 5 };
         assert_eq!(h.cursor(), (end, 2));
+    }
+
+    #[test]
+    fn ctrl_or_cmd_up_and_down_go_to_the_start_and_end() {
+        let mut h = Harness::new("# Title\nHello world\n\nBye");
+        // The start is after the title's "# ".
+        h.with(KeyCode::Up, KeyModifiers::CONTROL);
+        assert_eq!(h.cursor(), (LEFT + 2, 1));
+        h.with(KeyCode::Down, KeyModifiers::CONTROL);
+        assert_eq!(h.cursor(), (LEFT + 3, 4));
+        h.with(KeyCode::Up, KeyModifiers::CONTROL | KeyModifiers::SHIFT);
+        assert_eq!(selected(&h).as_deref(), Some("# Title\nHello world\n\nBye"));
+        // Option still moves by paragraph.
+        h.with(KeyCode::Down, KeyModifiers::ALT);
+        assert_eq!(h.cursor(), (LEFT + 7, 1));
+        // Cmd only on macOS: elsewhere it's the Windows key, left alone.
+        h.with(KeyCode::Down, KeyModifiers::SUPER);
+        let end = if cfg!(target_os = "macos") { (LEFT + 3, 4) } else { (LEFT + 7, 1) };
+        assert_eq!(h.cursor(), end);
+    }
+
+    #[test]
+    fn ctrl_left_and_right_go_on_by_sentence_or_row() {
+        let text = "# Title\nFirst one. The second sentence runs on and on, past the end of the row on screen, and stops. Third.\n\nNext.";
+        // Rows: "# Title" | "First one. The second … end of the " | "row on
+        // screen, and stops. Third." | "" | "Next."
+        let at = |s: &str| text.find(s).unwrap();
+        let mut h = Harness::at(text, Some(at("row on")));
+        let mut press = |code| {
+            h.with(code, KeyModifiers::CONTROL);
+            h.editor.buffer.cursor()
+        };
+        // At the start of a row: back to the start of the sentence, if
+        // that's nearer than the start of the row before…
+        assert_eq!(press(KeyCode::Left), at("The second"));
+        assert_eq!(press(KeyCode::Left), at("First"));
+        // …and here the title is.
+        assert_eq!(press(KeyCode::Left), buffer::MIN);
+        // At the end of a row: on to the end of the sentence, or of the row
+        // after, whichever is nearer.
+        assert_eq!(press(KeyCode::Right), at("\nFirst"));
+        assert_eq!(press(KeyCode::Right), at(" The second"));
+        assert_eq!(press(KeyCode::Right), at("row on") - 1);
+        assert_eq!(press(KeyCode::Right), at(" Third"));
+        assert_eq!(press(KeyCode::Right), at("\n\n"));
+        assert_eq!(press(KeyCode::Right), at("\nNext"));
+        assert_eq!(press(KeyCode::Right), text.len());
+        // The blank line between paragraphs is a row too.
+        assert_eq!(press(KeyCode::Left), at("Next"));
+        assert_eq!(press(KeyCode::Left), at("\nNext"));
+        assert_eq!(press(KeyCode::Left), at("Third"));
     }
 
     #[test]

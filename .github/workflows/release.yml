@@ -78,7 +78,10 @@ jobs:
     if: needs.check.outputs.release == 'true'
     runs-on: ubuntu-latest
     steps:
+      # All of history and the tags, for the release notes.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v5
         with:
           path: dist
@@ -90,5 +93,6 @@ jobs:
         run: |
           (cd dist && sha256sum writui-* > SHA256SUMS)
           cp install.sh dist/
+          .github/release-notes.sh "$VERSION" > notes.md
           gh release create "v$VERSION" dist/* --target "$GITHUB_SHA" \
-            --title "writui $VERSION" --generate-notes
+            --title "writui $VERSION" --notes-file notes.md
