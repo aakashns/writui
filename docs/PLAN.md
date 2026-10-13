@@ -15,8 +15,8 @@ file is the source of truth for what's next.
 Alongside development, focus promotion on regular users and useful feedback.
 The illustrated "Try a five-minute writing session" guide and GitHub
 feedback form landed in PR #24. The guide is linked from the demo caption
-and README and uses the reader's regular vault. Next, sharpen the homepage
-around the writing experience and actively recruit people to try a session.
+and README and uses the reader's regular vault. Homepage positioning landed
+in PR #25. Actively recruit people to try a session.
 Prepare suitable community placements together; do not wait two weeks for
 a directory listing before doing more outreach. Learn where new writers
 get stuck and whether they return on another day.
