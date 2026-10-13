@@ -1,29 +1,19 @@
 +++
 +++
 
-- **Private.** All your posts live in one file, encrypted with your
-  password. Without the password nobody can read them. Ctrl+O locks it
-  when you step away, and unlocking takes you back where you were.
-- **Plain markdown.** Each post starts with a `# Title`, and it stays plain
-  markdown on screen, formatted as you type: headings and bold in bold,
-  italics in italics, code in green, with the markdown symbols faded.
-- **Versions.** Save a named version whenever you like, look back through
-  them, and bring an old one back.
-- **Mouse and keyboard.** Click, scroll, select and press buttons with the
-  mouse, or use shortcuts. While writing, Ctrl+K opens a menu of
-  everything you can do.
-- **Fits your terminal.** It uses your terminal's own colours and font, and
-  works in any modern terminal: Alacritty, Ghostty, iTerm2, and others.
-- **Finds anything.** Type to search the full text of every post, front
-  matter and all, and sort the list by when posts were updated or created,
-  or by title, either way round.
-- **Gets out of the way.** A single centred column of text. The word count
-  and shortcuts show up while you hold Ctrl, and it opens where you left
-  off.
-- **Takes your writing anywhere.** Copy a post as markdown, or export it as
-  a file with front matter for your blog. Import a markdown or text file to
-  edit it here and export it back.
+- **Just you and your words.** One calm column, in your terminal's colours
+  and font. Markdown formats as you type, with its marks still visible.
+- **Pick up where you left off.** Your writing saves automatically. Reopen
+  a post and your cursor is right where you left it.
+- **Keep your writing private.** Your posts stay on your computer in a
+  password-encrypted vault. Lock it when you step away.
+- **Try another draft. Keep the first.** Save a named version before you
+  make changes. Read or restore it whenever you want.
+- **Use the controls you know.** Click, scroll and select, or use keyboard
+  shortcuts. Search your posts or find a command in the menu.
+- **Take your words with you.** Import Markdown or text files. Copy or
+  export your writing as Markdown, ready for your blog or another editor.
 
-writui is early, and built in the open, a small piece at a time. It's
-usable for writing now, but keep a copy of anything you can't afford to
-lose. And there is no way to recover a forgotten password.
+Free and [open source](https://github.com/aakashns/writui). Early, but usable
+for daily writing. Keep a backup of anything you can't afford to lose;
+forgotten passwords cannot be recovered.

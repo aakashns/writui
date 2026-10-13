@@ -759,6 +759,12 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   the browser allows copying; it says "Copied" for a moment). The landing
   page is kept up to date with each new feature (see AGENTS.md). "Changelog" in the menu links to the GitHub
   releases page.
+- Homepage copy leads with focused Markdown writing and automatic saving.
+  Six short feature descriptions cover focus, resuming a post, local
+  encryption, named versions, familiar controls, and Markdown portability,
+  in that order. Detailed shortcuts and sorting options belong in the
+  guide and README. Keep the free/open-source status and early-stage
+  backup/password caveats visible.
 - "Try a five-minute writing session" is the demo recording's clickable,
   centered caption. It opens a blog post with screenshots, guiding readers
   through

@@ -668,3 +668,21 @@ each step. Screenshot links open in a new tab, without a sentence telling
 readers to click them. The copyable example must retain its literal
 Markdown symbols and line breaks, rather than rendering headings or lists
 inside the code block.
+
+## Lead the homepage with the writing experience
+
+On 2026-10-13, the creator asked to reconsider the homepage feature order
+and wording for positioning and conversion. Address people who already
+use a terminal and want a place to write: lead with focus and automatic
+saving, then privacy, versions, familiar controls, and portable Markdown.
+Use six short benefit-led descriptions, with concrete behavior supporting
+each. Leave shortcut details and sorting options to the guide and README.
+The hero still identifies writui as a terminal writing app; its supporting
+line explains focus, autosave, and local encryption. Keep the demo caption
+as the invitation to try a writing session, and make free/open-source status
+explicit. Preserve the early-stage backup and password-recovery caveats.
+
+The creator also rejected a promotion plan that waited two weeks for a
+directory listing before attempting another placement. Prepare suitable
+opportunities concurrently and progress approved recruitment continuously;
+human response time must not block research, preparation, or improvements.

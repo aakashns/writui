@@ -13,10 +13,13 @@ file is the source of truth for what's next.
 ## Next up
 
 Alongside development, focus promotion on regular users and useful feedback.
-The first experiment is an illustrated "Try a five-minute writing session"
-blog post, linked in the site's demo caption and from the README, with a short
-GitHub feedback form. It guides people through using their regular vault.
-Learn where new writers get stuck and whether they return on another day.
+The illustrated "Try a five-minute writing session" guide and GitHub
+feedback form landed in PR #24. The guide is linked from the demo caption
+and README and uses the reader's regular vault. Next, sharpen the homepage
+around the writing experience and actively recruit people to try a session.
+Prepare suitable community placements together; do not wait two weeks for
+a directory listing before doing more outreach. Learn where new writers
+get stuck and whether they return on another day.
 Keep promotion work in separate PRs from the app milestones below.
 
 The site is on Cloudflare Workers: writui.com serves it (and
