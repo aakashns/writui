@@ -759,6 +759,11 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   the browser allows copying; it says "Copied" for a moment). The landing
   page is kept up to date with each new feature (see AGENTS.md). "Changelog" in the menu links to the GitHub
   releases page.
+- A "First session" guide, linked beside installation, uses a temporary
+  vault and sample text so visitors can try writing, the menu, and autosave.
+  The same guide is in the README. Both link to a short public GitHub
+  feedback form asking about the writing task, friction, and returning use,
+  without collecting private writing or vault files.
 - Posts live in the encrypted vault, but the blog lives in the public repo —
   so blog posts get into `site/content/blog/` via "export as markdown",
   with front matter (Zola reads YAML front matter), and are edited by

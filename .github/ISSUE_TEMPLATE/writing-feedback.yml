@@ -1,0 +1,46 @@
+name: Writing feedback
+description: Tell us how your first session went, or what makes you keep using writui.
+title: "Writing feedback: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for trying writui. A few sentences are enough, including if you couldn't get started.
+        This report is public. Please don't include private writing, passwords, or your vault file.
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What did you want to write?
+      description: Describe the kind of writing, not its private contents.
+      placeholder: For example, a blog draft, journal entry, or work notes.
+    validations:
+      required: true
+  - type: textarea
+    id: experience
+    attributes:
+      label: How did it go?
+      description: What worked well? Where did you get stuck, or what made you stop?
+    validations:
+      required: true
+  - type: dropdown
+    id: return-use
+    attributes:
+      label: Have you come back to write again?
+      options:
+        - This was my first attempt
+        - Yes, on another day
+        - No, I stopped using it
+        - I couldn't get it running
+    validations:
+      required: true
+  - type: textarea
+    id: next-session
+    attributes:
+      label: What would help you use writui again?
+      description: A change, something to keep as it is, or a reason it isn't for you.
+  - type: input
+    id: environment
+    attributes:
+      label: Your setup (optional)
+      description: Operating system, terminal, and writui version, if you know them.
+      placeholder: For example, macOS, Ghostty, writui 0.17.0.

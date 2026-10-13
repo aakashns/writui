@@ -2,6 +2,8 @@
 
 A writing app for the terminal. No nonsense. Markdown. Local. Encrypted.
 
+[![Writing in writui](site/static/demo.png)](https://writui.com)
+
 - **Private.** All your posts live in one file, encrypted with your password.
   Without the password nobody can read them.
 - **Plain markdown.** You write markdown. Each post starts with a `# Title`.
@@ -98,6 +100,32 @@ cargo clippy --all-targets -- -D warnings
 ```
 
 If both finish without errors, writui's tests pass on your computer.
+
+## Try a short writing session
+
+After installing on macOS or Linux, try writui with sample text in a
+temporary vault:
+
+```sh
+writui --db "$(mktemp -d)/writui.db"
+```
+
+Use `writui-dev` as the password for this throwaway vault. It is separate
+from your regular writing; your computer may clean it up later.
+
+1. Choose **New**, give the post a title, and write a few sample sentences.
+2. Add a heading, a list, and some **bold** text using markdown.
+3. Open the menu with Ctrl+K to explore versions and exporting.
+4. Close the menu with Esc, then press Esc again to return to the list.
+   Open the post again: your changes are saved automatically.
+
+[Tell us how it went](https://github.com/aakashns/writui/issues/new?template=writing-feedback.yml):
+what you wanted to write, what got in your way, and whether you'd use it
+again. Reports from returning writers are welcome too. GitHub feedback is
+public; don't include private writing or your vault password.
+
+When you're ready to keep writing, run `writui` normally and choose your
+own password for your regular vault.
 
 ## Use
 
