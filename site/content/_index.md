@@ -27,28 +27,3 @@
 writui is early, and built in the open, a small piece at a time. It's
 usable for writing now, but keep a copy of anything you can't afford to
 lose. And there is no way to recover a forgotten password.
-
-## First session
-
-After installing on macOS or Linux, try writing in a temporary vault:
-
-```sh
-writui --db "$(mktemp -d)/writui.db"
-```
-
-Use `writui-dev` as the password for this throwaway vault. Write only sample
-text here: your computer may clean up temporary files later.
-
-1. Choose **New**, add a title, and write a few sentences.
-2. Try a heading, a list, and some **bold** text using markdown.
-3. Open the menu with Ctrl+K to explore versions and exporting.
-4. Close the menu with Esc, then press Esc again to return to the list.
-   Open your post again: changes are saved automatically.
-
-[Tell us how it went](https://github.com/aakashns/writui/issues/new?template=writing-feedback.yml).
-What did you want to write? What got in your way? Would you use writui again?
-If you've been using it for a while, we'd like to hear that too. Feedback on
-GitHub is public; leave out private writing and passwords.
-
-Ready to keep writing? Run `writui` normally and choose your own password
-for your regular vault.

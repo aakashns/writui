@@ -759,11 +759,20 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   the browser allows copying; it says "Copied" for a moment). The landing
   page is kept up to date with each new feature (see AGENTS.md). "Changelog" in the menu links to the GitHub
   releases page.
-- A "First session" guide, linked beside installation, uses a temporary
-  vault and sample text so visitors can try writing, the menu, and autosave.
-  The same guide is in the README. Both link to a short public GitHub
-  feedback form asking about the writing task, friction, and returning use,
-  without collecting private writing or vault files.
+- "Try a five-minute writing session" is the demo recording's clickable,
+  centered caption. It opens a blog post with screenshots, guiding readers
+  through
+  installing the app, choosing their own vault password, writing a post,
+  saving a version, and returning to their writing. The guide uses normal
+  `writui`, with no temporary-vault setup. Screenshots are compressed WebP
+  images with explicit dimensions and a thin white border, and load upfront.
+  The Markdown example has a Copy button that briefly confirms "Copied".
+  The introduction links to each step, and screenshots open at full size
+  in a new tab when clicked.
+  The README links to the same post.
+  The guide ends with a short public GitHub feedback form asking about the
+  writing task, friction, and returning use, without collecting private
+  writing or vault files.
 - Posts live in the encrypted vault, but the blog lives in the public repo —
   so blog posts get into `site/content/blog/` via "export as markdown",
   with front matter (Zola reads YAML front matter), and are edited by

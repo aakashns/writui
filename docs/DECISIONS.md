@@ -641,3 +641,30 @@ development. Keep code and site changes reviewable through PRs, and leave
 merging to the creator. External community submissions need an approved
 destination and message; respect each community's current rules on
 promotion and AI assistance. The creator's blog posts remain theirs.
+
+## The first-session guide is a blog post using the regular vault
+
+Later on 2026-10-13, the creator moved the guide off the landing page into
+a new blog post, "Try a five-minute writing session". Its link belongs
+directly below the demo recording. Readers should install and use writui
+normally, choose their own password, and follow illustrated steps to write
+and return to a post; they should not be asked to set up a temporary vault.
+The README links to the same guide. Its screenshots are recorded from the
+debug app with synthetic writing and an isolated throwaway vault, following
+the existing development-data rules.
+
+The creator asked for aggressive image compression and for every screenshot
+to load upfront. Ship cropped, lossless WebP images with explicit dimensions
+and eager loading, so text stays sharp and the page does not shift as
+images arrive. Keep the raw screenshots and review GIF out of the site.
+
+The guide link is the demo recording's centered, clickable caption.
+A thin white border separates each terminal screenshot from the blog
+background.
+The Markdown example has a Copy button with a brief "Copied" confirmation,
+using the same clipboard behavior as the install command.
+The introduction ends with "Here are the steps we'll follow:" and links to
+each step. Screenshot links open in a new tab, without a sentence telling
+readers to click them. The copyable example must retain its literal
+Markdown symbols and line breaks, rather than rendering headings or lists
+inside the code block.

@@ -101,6 +101,12 @@ site/build.sh               # or build it into site/public, as Cloudflare does
 - **The demo video** on the landing page is recorded with
   [VHS](https://github.com/charmbracelet/vhs) from `site/demo.tape`; the
   tape's first lines say how to re-record it.
+- **The first-session guide's screenshots** come from
+  `site/first-session.tape`. From the repo root, run
+  `bash site/record-first-session.sh` with VHS and `cwebp` installed. It
+  records the debug app with synthetic writing in a new throwaway vault,
+  then crops and losslessly compresses the six screenshots as WebP. Raw
+  screenshots and the review GIF stay in `/tmp/writui-first-session-captures`.
 
 ## License
 

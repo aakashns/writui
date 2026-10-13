@@ -13,10 +13,11 @@ file is the source of truth for what's next.
 ## Next up
 
 Alongside development, focus promotion on regular users and useful feedback.
-The first experiment is a guided sample writing session, linked from the
-site and README, with a short GitHub feedback form. Learn where new writers
-get stuck and whether they return on another day. Keep promotion work in
-separate PRs from the app milestones below.
+The first experiment is an illustrated "Try a five-minute writing session"
+blog post, linked in the site's demo caption and from the README, with a short
+GitHub feedback form. It guides people through using their regular vault.
+Learn where new writers get stuck and whether they return on another day.
+Keep promotion work in separate PRs from the app milestones below.
 
 The site is on Cloudflare Workers: writui.com serves it (and
 `install.sh`), and www redirects. Still to do by hand: turn off GitHub
