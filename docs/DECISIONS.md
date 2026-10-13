@@ -624,3 +624,47 @@ Co-Authored-By lines. Commit bodies are wrapped at about 72 columns and
 GitHub shows every line break in release notes, so each paragraph or list
 item is joined back into one line. No "@user in #n" or "New
 contributors": it's one person's project so far.
+
+## Promotion starts with writing sessions and voluntary feedback
+
+On 2026-10-13, the creator chose regular users and useful feedback as the
+promotion priority. Start with people who already use the terminal and
+write in Markdown. The site and README offer a short session in a
+temporary vault with sample text, followed by a public GitHub feedback
+form. The form asks about the writing task, friction, and whether someone
+has returned on another day; it never asks for their actual writing or
+vault. Returning use is self-reported. Downloads, clones, and stars do not
+measure active writers.
+
+Promotion preparation and recurring research can proceed alongside app
+development. Keep code and site changes reviewable through PRs, and leave
+merging to the creator. External community submissions need an approved
+destination and message; respect each community's current rules on
+promotion and AI assistance. The creator's blog posts remain theirs.
+
+## The first-session guide is a blog post using the regular vault
+
+Later on 2026-10-13, the creator moved the guide off the landing page into
+a new blog post, "Try a five-minute writing session". Its link belongs
+directly below the demo recording. Readers should install and use writui
+normally, choose their own password, and follow illustrated steps to write
+and return to a post; they should not be asked to set up a temporary vault.
+The README links to the same guide. Its screenshots are recorded from the
+debug app with synthetic writing and an isolated throwaway vault, following
+the existing development-data rules.
+
+The creator asked for aggressive image compression and for every screenshot
+to load upfront. Ship cropped, lossless WebP images with explicit dimensions
+and eager loading, so text stays sharp and the page does not shift as
+images arrive. Keep the raw screenshots and review GIF out of the site.
+
+The guide link is the demo recording's centered, clickable caption.
+A thin white border separates each terminal screenshot from the blog
+background.
+The Markdown example has a Copy button with a brief "Copied" confirmation,
+using the same clipboard behavior as the install command.
+The introduction ends with "Here are the steps we'll follow:" and links to
+each step. Screenshot links open in a new tab, without a sentence telling
+readers to click them. The copyable example must retain its literal
+Markdown symbols and line breaks, rather than rendering headings or lists
+inside the code block.

@@ -2,6 +2,8 @@
 
 A writing app for the terminal. No nonsense. Markdown. Local. Encrypted.
 
+[![Writing in writui](site/static/demo.png)](https://writui.com)
+
 - **Private.** All your posts live in one file, encrypted with your password.
   Without the password nobody can read them.
 - **Plain markdown.** You write markdown. Each post starts with a `# Title`.
@@ -98,6 +100,12 @@ cargo clippy --all-targets -- -D warnings
 ```
 
 If both finish without errors, writui's tests pass on your computer.
+
+## Try a five-minute writing session
+
+[Follow the illustrated guide](https://writui.com/blog/try-a-five-minute-writing-session/)
+to create your vault, write your first post, and keep a version to come
+back to. Then [tell us how it went](https://github.com/aakashns/writui/issues/new?template=writing-feedback.yml).
 
 ## Use
 
