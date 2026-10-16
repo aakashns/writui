@@ -763,8 +763,16 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   Six short feature descriptions cover focus, resuming a post, local
   encryption, named versions, familiar controls, and Markdown portability,
   in that order. Detailed shortcuts and sorting options belong in the
-  guide and README. Keep the free/open-source status and early-stage
-  backup/password caveats visible.
+  guide and README. Keep the free/open-source status and the
+  no-recovery password warning visible.
+
+  > remove the note on the website about writui being early and asking the
+  > user to back up any important writing.
+
+  The "early, keep a backup" caveat is gone from the homepage and README:
+  saving is journaled and automatic, migrations are backed up and checked,
+  and the README says how to back up the vault file. The password warning
+  stays; it's a permanent property, not an early-stage one.
 - "Try a five-minute writing session" is the demo recording's clickable,
   centered caption. It opens a blog post with screenshots, guiding readers
   through

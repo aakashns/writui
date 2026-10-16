@@ -14,6 +14,5 @@
 - **Take your words with you.** Import Markdown or text files. Copy or
   export your writing as Markdown, ready for your blog or another editor.
 
-Free and [open source](https://github.com/aakashns/writui). Early, but usable
-for daily writing. Keep a backup of anything you can't afford to lose;
-forgotten passwords cannot be recovered.
+Free and [open source](https://github.com/aakashns/writui). Forgotten
+passwords cannot be recovered, so keep yours somewhere safe.

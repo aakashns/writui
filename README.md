@@ -17,10 +17,8 @@ A writing app for the terminal. No nonsense. Markdown. Local. Encrypted.
 - **Fits your terminal.** It uses your terminal's own colours and font, and
   works in any modern terminal (Alacritty, Ghostty, iTerm2, and others).
 
-> **Early days.** writui is being built in the open, a small piece at a time
-> ([what's planned](docs/PLAN.md)). It's usable for writing now, but keep a
-> copy of anything you can't afford to lose. And remember: **there is no way
-> to recover a forgotten password.**
+writui is built in the open ([what's planned](docs/PLAN.md)). Remember:
+**there is no way to recover a forgotten password.**
 
 ## Install
 
