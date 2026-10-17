@@ -15,6 +15,10 @@ we'll follow:
 5. [Keep a version](#5-keep-a-version)
 6. [Come back to it](#6-come-back-to-it)
 
+Before installing: your drafts live in a password-encrypted vault, not loose
+`.md` files. A forgotten password cannot be recovered. Exporting a post creates
+an ordinary, **unencrypted** Markdown file that other editors can open.
+
 ## 1. Install and open writui
 
 On macOS or Linux, paste this into your terminal and press Enter:
