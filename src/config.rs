@@ -65,3 +65,10 @@ fn expand_tilde(path: PathBuf) -> PathBuf {
         _ => path,
     }
 }
+
+/// Where Touch ID keeps what it needs to unlock each vault: next to the
+/// config file, as it's needed before unlocking and belongs to this Mac.
+pub fn touch_id_dir() -> Result<PathBuf> {
+    let config = config_path()?;
+    Ok(config.parent().unwrap_or(Path::new(".")).join("touch-id"))
+}

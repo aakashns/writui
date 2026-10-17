@@ -6,7 +6,8 @@
 - **Pick up where you left off.** Your writing saves automatically. Reopen
   a post and your cursor is right where you left it.
 - **Keep your writing private.** Your posts stay on your computer in a
-  password-encrypted vault. Lock it when you step away.
+  password-encrypted vault. Lock it when you step away; unlock with
+  Touch ID.
 - **Try another draft. Keep the first.** Save a named version before you
   make changes. Read or restore it whenever you want.
 - **Use the controls you know.** Click, scroll and select, or use keyboard

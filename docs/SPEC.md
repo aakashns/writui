@@ -207,7 +207,21 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
   So "Create your vault" no longer has its own paragraph about the
   password being unrecoverable: the Overview's first two points say it.
-- Change password — planned.
+
+  > can we make it so that the password can be stored in the mac keychain
+  > or whatever so that i can unlock with my fingerprint?
+
+- **Touch ID** (Macs with it): Settings has a "Touch ID" switch, shown only
+  where the Mac can use it. Once it's on, starting writui asks for a
+  fingerprint straight away; after locking (Ctrl+O), Enter, or the button
+  (labelled "Touch ID" until a password is typed), asks for one. Cancelling
+  the prompt leaves the password to type, which always works too. It's per
+  Mac and per vault, kept outside the vault, and survives upgrades. It's
+  never offered over SSH. If it stops working (e.g. a fingerprint was
+  added, which deliberately voids it), writui says so, and the next
+  password unlock sets it up again. Where it's available but off, the
+  unlock screen's Overview gets one more line pointing to Settings.
+- Change password — planned (it must set Touch ID up again).
 
 ## The screens
 

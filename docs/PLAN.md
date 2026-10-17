@@ -33,7 +33,8 @@ Ctrl/Cmd+arrow jumps in `0.15.0`, and in `0.16.0` the logo as a big banner
 on the password screens, boxed password fields, Esc to clear or quit, and
 the whole repo run through `cargo fmt` (checked in CI). `0.17.0` narrows
 the logo, adds an Unlock button, trims the setup screen, and makes Esc on
-the list quit without asking. Next:
+the list quit without asking. `0.18.0` unlocks with Touch ID on Macs
+(asked for out of order). Next:
 
 1. **Try online** (writui.com/try), below: the creator wants it next, and
    it must work on a phone. Probably two or three PRs, in the order listed.
@@ -193,6 +194,7 @@ The creator's batch of ideas, after M3.
 ## Later
 
 - [ ] Homebrew tap (maybe)
+- [x] Unlock with Touch ID on Macs (`0.18.0`)
 - [ ] Auto-lock after inactivity
 - [ ] Change password
 - [ ] Diffs between versions

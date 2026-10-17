@@ -686,3 +686,43 @@ The creator also rejected a promotion plan that waited two weeks for a
 directory listing before attempting another placement. Prepare suitable
 opportunities concurrently and progress approved recruitment continuously;
 human response time must not block research, preparation, or improvements.
+
+## Touch ID: a Secure Enclave key, not the keychain
+
+The creator asked to unlock with a fingerprint. The obvious route, the
+vault's key in the macOS keychain behind Touch ID, doesn't suit writui:
+keychain items with biometric protection need the app to be signed with
+an Apple developer identity and entitlements, and plain keychain items are
+tied to the binary's code signature. writui's releases are only ad-hoc
+signed, so every upgrade would make macOS ask for the Mac's password before
+the new binary could read the item. (Letting any app read it would avoid
+that, but then any program running as the user could read the key without
+a fingerprint.)
+
+Instead, turning Touch ID on makes a P-256 key in the Secure Enclave that's
+"not permanent" (so not in the keychain, needing no entitlements), with
+access control `privateKeyUsage | biometryCurrentSet`, and encrypts the
+vault's raw 32-byte SQLCipher key to it (ECIES, X9.63 SHA-256, AES-GCM).
+The Secure Enclave gives back an opaque reference to its key (attribute
+`toid`, Apple's `kSecAttrTokenOID`), which brings the same key back when
+passed to `SecKeyCreateRandomKey`; this is what CryptoKit's
+`SecureEnclave…PrivateKey(dataRepresentation:)` does. The reference and the
+encrypted key go in `<config dir>/touch-id/<first 16 bytes of SHA-256 of
+the vault's canonical path, hex>`, mode 0600. They're useless off this Mac,
+and decrypting needs a fingerprint every time, enforced by the Secure
+Enclave rather than by writui. Tested working from an unsigned binary, and
+across binaries (so across upgrades). Bindings: the `objc2-security` /
+`objc2-local-authentication` crates, macOS only; elsewhere Touch ID is
+simply unavailable.
+
+`biometryCurrentSet` (rather than `biometryAny` or `userPresence`) means
+adding a fingerprint voids the key, so someone who knows the Mac's password
+can't enrol their own finger to read the vault. The prompt has no "Use
+Password…" fallback: the vault's password goes into writui. When the key
+stops working, or doesn't open the vault (it was replaced), the next
+password unlock quietly makes a new one.
+
+`Vault` now keeps its key in memory while open (SQLCipher holds a copy
+anyway), so Touch ID can be turned on from Settings without retyping the
+password. Opening with the key skips Argon2, so Touch ID unlocks are
+instant. Changing the password, when it lands, must redo the Touch ID file.
