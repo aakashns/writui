@@ -226,7 +226,11 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
   "Create your vault" has a "[ ] Unlock with Touch ID" box under the
   password boxes, where the Mac can use it, unticked at first; a click or
-  Ctrl+T ticks it. The unlock screen keeps its "Unlock" button, with a
+  Ctrl+T ticks it.
+
+  > you know, i don't want an x in th echeckbox, i want a tick
+
+  Ticked, it reads "[✓] Unlock with Touch ID". The unlock screen keeps its "Unlock" button, with a
   separate "Touch ID" button right of it where Touch ID is on. It's per
   Mac and per vault, kept outside the vault, and survives upgrades. It's
   never offered over SSH. If it stops working (e.g. a fingerprint was

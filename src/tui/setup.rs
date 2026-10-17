@@ -87,7 +87,7 @@ impl Setup {
         ];
         let touch_id_line = rest.len();
         if let Some(on) = self.touch_id {
-            let label = format!("[{}] Unlock with Touch ID", if on { "x" } else { " " });
+            let label = format!("[{}] Unlock with Touch ID", if on { "✓" } else { " " });
             rest.extend([Line::from(label), Line::default()]);
         }
         rest.extend([
@@ -268,7 +268,7 @@ mod tests {
         let text = screen(&mut setup);
         assert!(text.contains("[ ] Unlock with Touch ID") && text.contains("Ctrl+T"), "{text}");
         press(&mut setup, KeyCode::Char('t'), KeyModifiers::CONTROL);
-        assert!(screen(&mut setup).contains("[x] Unlock with Touch ID"));
+        assert!(screen(&mut setup).contains("[✓] Unlock with Touch ID"));
         type_text(&mut setup, "password");
         press(&mut setup, KeyCode::Tab, KeyModifiers::NONE);
         type_text(&mut setup, "password");
