@@ -742,10 +742,10 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 **Details**
 
-- A Settings screen, reached with `s` on the list (it's on the hint bar). Each row is a setting and its value; Enter or a
-  click changes it in a dialog; Esc goes back to the list (its hint
-  just says "back"). Changes are
-  stored right away.
+- A Settings screen, reached with `s` on the list (it's on the hint bar).
+  Each row is a setting and its value; Enter or a click opens a dialog for
+  text fields or directly switches an on/off field. Esc goes back to the
+  list (its hint just says "back"). Changes are stored right away.
 - For now:
   - **Author**: suggested as `author` in the front matter of exports
     (after `title`), unless it's empty. Like the description and slug, it
@@ -753,6 +753,9 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
     front matter.
   - **Line width**: how wide the text is in the editor (and the history),
     from 40 to 120 characters; 68 by default.
+  - **Bold title**: on by default. Switch it off to show the post's first
+    `#` heading without bold; later headings and explicit `**bold**` stay
+    formatted. Enter or a click switches it, no dialog.
   - **Nerd Font**: on or off (off by default), for terminals whose font is
     a Nerd Font: writui uses its icons (so far, the search field's
     magnifier). Enter or a click switches it, no dialog; the hint says

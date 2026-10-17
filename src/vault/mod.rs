@@ -120,11 +120,18 @@ pub struct Settings {
     pub line_width: u16,
     /// The terminal's font is a Nerd Font: use its icons.
     pub nerd_font: bool,
+    /// Render the post's first Markdown heading in bold.
+    pub bold_title: bool,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { author: String::new(), line_width: DEFAULT_LINE_WIDTH, nerd_font: false }
+        Settings {
+            author: String::new(),
+            line_width: DEFAULT_LINE_WIDTH,
+            nerd_font: false,
+            bold_title: true,
+        }
     }
 }
 
@@ -487,10 +494,13 @@ impl Vault {
             .filter(|width| LINE_WIDTHS.contains(width))
             .unwrap_or(defaults.line_width);
         let nerd_font = self.value("nerd_font")?.map_or(defaults.nerd_font, |value| value == "on");
+        let bold_title =
+            self.value("bold_title")?.map_or(defaults.bold_title, |value| value == "on");
         Ok(Settings {
             author: self.value("author")?.unwrap_or(defaults.author),
             line_width,
             nerd_font,
+            bold_title,
         })
     }
 
@@ -499,6 +509,7 @@ impl Vault {
         self.set_value("author", &settings.author)?;
         self.set_value("line_width", &settings.line_width.to_string())?;
         self.set_value("nerd_font", if settings.nerd_font { "on" } else { "off" })?;
+        self.set_value("bold_title", if settings.bold_title { "on" } else { "off" })?;
         tx.commit()?;
         Ok(())
     }
@@ -949,7 +960,8 @@ mod tests {
         let vault = Vault::create(&path, "pw").unwrap();
         assert_eq!(vault.settings().unwrap(), Settings::default());
         assert_eq!(vault.last_screen().unwrap(), None);
-        let settings = Settings { author: "Ada".into(), line_width: 80, nerd_font: true };
+        let settings =
+            Settings { author: "Ada".into(), line_width: 80, nerd_font: true, bold_title: false };
         vault.set_settings(&settings).unwrap();
         vault.set_last_screen("post:3").unwrap();
         vault.set_list_sort("title").unwrap();

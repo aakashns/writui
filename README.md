@@ -9,7 +9,7 @@ A writing app for the terminal. No nonsense. Markdown. Local. Encrypted.
 - **Plain markdown.** You write markdown. Each post starts with a `# Title`.
   It stays plain markdown on screen, formatted as you type: headings and
   bold in bold, italics in italics, code in green, with the markdown
-  symbols faded.
+  symbols faded. The title can be plain instead of bold in Settings.
 - **Mouse and keyboard.** Click, scroll and press buttons with the mouse, or
   use shortcuts. The bar at the bottom of the screen shows the shortcuts
   for where you are, and you can click those too. While writing, Ctrl+K
@@ -197,8 +197,9 @@ can open it after a fingerprint, is kept in `~/.config/writui/touch-id/`.
   for 30 days.
 - **Settings** (`s` on the list): your name, added as the
   `author` in exported front matter, how wide the text is while
-  writing (68 characters unless you change it), and whether your
-  terminal's font is a [Nerd Font](https://www.nerdfonts.com), so writui
+  writing (68 characters unless you change it), whether the post's title
+  is bold, and whether your terminal's font is a
+  [Nerd Font](https://www.nerdfonts.com), so writui
   can use its icons.
 
 ### Cmd keys on a Mac

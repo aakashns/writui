@@ -166,6 +166,8 @@ pub struct Editor {
     context: Option<ContextMenu<Cmd>>,
     /// How wide the text is, at most (from Settings).
     line_width: usize,
+    /// Whether the post's title is bold (from Settings).
+    bold_title: bool,
     /// The author's name, for the front matter of exports (from Settings).
     author: String,
     /// The post's history, shown instead of the post while open.
@@ -222,6 +224,7 @@ impl Editor {
             menu: None,
             context: None,
             line_width: settings.line_width as usize,
+            bold_title: settings.bold_title,
             author: settings.author,
             history: None,
             hints: HintBar::default(),
@@ -1165,7 +1168,7 @@ impl Editor {
     fn refresh(&mut self) {
         if self.stale {
             self.rows = layout(self.buffer.rope(), self.width);
-            self.markup = Markup::new(self.buffer.rope());
+            self.markup = Markup::with_bold_title(self.buffer.rope(), self.bold_title);
             self.stale = false;
         }
     }

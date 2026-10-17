@@ -22,6 +22,7 @@ const MAX_AUTHOR: usize = 80;
 enum Field {
     Author,
     LineWidth,
+    BoldTitle,
     NerdFont,
     TouchId,
 }
@@ -51,7 +52,7 @@ pub struct Settings {
 
 impl Settings {
     pub fn new(values: Values, touch_id: Option<bool>) -> Self {
-        let mut fields = vec![Field::Author, Field::LineWidth, Field::NerdFont];
+        let mut fields = vec![Field::Author, Field::LineWidth, Field::BoldTitle, Field::NerdFont];
         if touch_id.is_some() {
             fields.push(Field::TouchId);
         }
@@ -90,7 +91,7 @@ impl Settings {
 
     /// Fields switched on or off, rather than changed in a dialog.
     fn switched(field: Field) -> bool {
-        matches!(field, Field::NerdFont | Field::TouchId)
+        matches!(field, Field::BoldTitle | Field::NerdFont | Field::TouchId)
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
@@ -121,6 +122,7 @@ impl Settings {
                     Field::LineWidth => {
                         ("Line width", Span::raw(format!("{} characters", self.values.line_width)))
                     }
+                    Field::BoldTitle => ("Bold title", on_off(self.values.bold_title)),
                     Field::NerdFont => ("Nerd Font", on_off(self.values.nerd_font)),
                     Field::TouchId => ("Touch ID", on_off(self.touch_id == Some(true))),
                 };
@@ -223,6 +225,11 @@ impl Settings {
             Cmd::Back => Action::BackToList(None),
             Cmd::Lock => Action::Lock,
             // On or off: no need to ask.
+            Cmd::Change if self.field() == Field::BoldTitle => {
+                let mut values = self.values.clone();
+                values.bold_title = !values.bold_title;
+                self.save(values)
+            }
             Cmd::Change if self.field() == Field::NerdFont => {
                 let mut values = self.values.clone();
                 values.nerd_font = !values.nerd_font;
@@ -254,7 +261,7 @@ impl Settings {
                             return Action::None;
                         }
                     },
-                    Field::NerdFont | Field::TouchId => {}
+                    Field::BoldTitle | Field::NerdFont | Field::TouchId => {}
                 }
                 self.save(values)
             }
@@ -310,7 +317,9 @@ impl Settings {
                 .with_input("68", 3)
                 .with_text(&self.values.line_width.to_string())
             }
-            Field::NerdFont | Field::TouchId => unreachable!("switched on or off, not asked"),
+            Field::BoldTitle | Field::NerdFont | Field::TouchId => {
+                unreachable!("switched on or off, not asked")
+            }
         }
     }
 }
@@ -376,6 +385,13 @@ mod tests {
             panic!("not saved")
         };
         assert_eq!((values.author.as_str(), values.line_width), ("Ada", 80));
+        // Bold title: Enter switches it, no dialog.
+        press(&mut settings, KeyCode::Down);
+        assert!(screen(&mut settings).contains("Bold title"));
+        let Action::SaveSettings(values) = press(&mut settings, KeyCode::Enter) else {
+            panic!("not saved")
+        };
+        assert!(!values.bold_title && settings.dialog.is_none());
         // Nerd Font: Enter switches it, no dialog.
         press(&mut settings, KeyCode::Down);
         let text = screen(&mut settings);
@@ -396,7 +412,7 @@ mod tests {
     fn touch_id_is_switched_where_the_mac_has_it() {
         assert!(!screen(&mut Settings::new(Values::default(), None)).contains("Touch ID"));
         let mut settings = Settings::new(Values::default(), Some(false));
-        for _ in 0..3 {
+        for _ in 0..4 {
             press(&mut settings, KeyCode::Down);
         }
         assert!(screen(&mut settings).contains("Touch ID"));

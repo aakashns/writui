@@ -1,8 +1,9 @@
 +++
 +++
 
-- **Just you and your words.** One calm column, in your terminal's colours
-  and font. Markdown formats as you type, with its marks still visible.
+- **Just you and your words.** One calm column in your terminal's colours
+  and font. Markdown formats as you type, with visible marks and optional
+  plain titles.
 - **Pick up where you left off.** Your writing saves automatically. Reopen
   a post and your cursor is right where you left it.
 - **Keep your writing private.** Your posts stay on your computer in a

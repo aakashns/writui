@@ -726,3 +726,14 @@ password unlock quietly makes a new one.
 anyway), so Touch ID can be turned on from Settings without retyping the
 password. Opening with the key skips Argon2, so Touch ID unlocks are
 instant. Changing the password, when it lands, must redo the Touch ID file.
+
+## Let writers turn off bold post titles
+
+On 2026-10-17, the first returning external writer reported that the bold
+title was uncomfortably bright in iTerm2's dark theme. Terminal bold can be
+shown with a brighter colour even when a bold font face is disabled. Keep the
+existing appearance by default, but add a vault-stored **Bold title** switch
+in Settings. Turning it off removes bold only from the post's first `#`
+heading; later headings and explicit Markdown emphasis retain their styles.
+An arbitrary brightness scalar would require nonstandard colour assumptions,
+so a plain-title switch works with writui's standard terminal colours.

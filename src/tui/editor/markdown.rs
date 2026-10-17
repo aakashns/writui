@@ -14,7 +14,7 @@
 
 use std::ops::Range;
 
-use pulldown_cmark::{Event, Options, Parser, Tag};
+use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag};
 use ratatui::style::Style;
 use ropey::Rope;
 
@@ -36,9 +36,19 @@ pub struct Markup {
 
 impl Markup {
     pub fn new(rope: &Rope) -> Self {
+        Self::with_bold_title(rope, true)
+    }
+
+    pub fn with_bold_title(rope: &Rope, bold_title: bool) -> Self {
         let text = rope.to_string();
-        let mut styler =
-            Styler { runs: Vec::new(), links: Vec::new(), stack: Vec::new(), pos: 0, text: None };
+        let mut styler = Styler {
+            runs: Vec::new(),
+            links: Vec::new(),
+            stack: Vec::new(),
+            pos: 0,
+            text: None,
+            bold_title,
+        };
         let options =
             Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS | Options::ENABLE_TABLES;
         for (event, range) in Parser::new_ext(&text, options).into_offset_iter() {
@@ -108,6 +118,7 @@ struct Styler {
     /// Plain text seen since the last other event, to look for web
     /// addresses in (the parser can split text into several pieces).
     text: Option<Range<usize>>,
+    bold_title: bool,
 }
 
 impl Styler {
@@ -119,6 +130,11 @@ impl Styler {
             Event::Start(tag) => {
                 self.gap(text, range.start);
                 let (style, link) = match tag {
+                    Tag::Heading { level: HeadingLevel::H1, .. }
+                        if range.start == 0 && !self.bold_title =>
+                    {
+                        (Style::new(), None)
+                    }
                     Tag::Heading { .. } | Tag::Strong | Tag::TableHead => {
                         (Style::new().bold(), None)
                     }
@@ -272,8 +288,12 @@ mod tests {
     /// italic, `[f:…]` faded, `[u:…]` underlined, `[s:…]` struck through,
     /// `[g:…]` green (combined, e.g. `[bf:…]`). Plain text is left as it is.
     fn marked(text: &str) -> String {
+        marked_with_bold_title(text, true)
+    }
+
+    fn marked_with_bold_title(text: &str, bold_title: bool) -> String {
         let rope = Rope::from_str(text);
-        let markup = Markup::new(&rope);
+        let markup = Markup::with_bold_title(&rope, bold_title);
         let mut out = String::new();
         for (range, style) in markup.styles(0..rope.len_chars()) {
             let piece = rope.slice(range).to_string();
@@ -306,6 +326,14 @@ mod tests {
         assert_eq!(
             marked("# Title\n\n## Part two\ntext"),
             "[f:#] [b:Title]\n\n[f:##] [b:Part two]\ntext"
+        );
+    }
+
+    #[test]
+    fn plain_title_leaves_later_headings_and_explicit_emphasis_intact() {
+        assert_eq!(
+            marked_with_bold_title("# Title\n\n## Part two\n\n# Another\n\n**strong**", false),
+            "[f:#] Title\n\n[f:##] [b:Part two]\n\n[f:#] [b:Another]\n\n[f:**][b:strong][f:**]"
         );
     }
 
