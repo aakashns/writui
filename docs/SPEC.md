@@ -213,9 +213,21 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 - **Touch ID** (Macs with it): Settings has a "Touch ID" switch, shown only
   where the Mac can use it. Once it's on, starting writui asks for a
-  fingerprint straight away; after locking (Ctrl+O), Enter, or the button
-  (labelled "Touch ID" until a password is typed), asks for one. Cancelling
-  the prompt leaves the password to type, which always works too. It's per
+  fingerprint straight away; after locking (Ctrl+O), Enter (with no
+  password typed) or the "Touch ID" button asks for one. Cancelling the
+  prompt says "Touch ID cancelled." and leaves the password to type, which
+  always works too.
+
+  > okay, just one more thing, i want a [ ] Unlock with Touch ID checkbox
+  > on the screen where you are setting up the password. And remove the
+  > "Enter tries again, or type your password" comment. Also, keep the
+  > "Unlock" button on the password page, looks like you just replaced it
+  > with "
+
+  "Create your vault" has a "[ ] Unlock with Touch ID" box under the
+  password boxes, where the Mac can use it, unticked at first; a click or
+  Ctrl+T ticks it. The unlock screen keeps its "Unlock" button, with a
+  separate "Touch ID" button right of it where Touch ID is on. It's per
   Mac and per vault, kept outside the vault, and survives upgrades. It's
   never offered over SSH. If it stops working (e.g. a fingerprint was
   added, which deliberately voids it), writui says so, and the next

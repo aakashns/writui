@@ -45,8 +45,9 @@ pub struct Unlock {
     busy: bool,
     /// Busy waiting for a fingerprint, rather than checking the password.
     waiting: bool,
-    /// Where the Unlock button was drawn, for clicks.
+    /// Where the Unlock and Touch ID buttons were drawn, for clicks.
     button: Rect,
+    touch_id_button: Rect,
     hints: HintBar<Cmd>,
 }
 
@@ -74,7 +75,7 @@ impl Unlock {
     pub fn touch_id_cancelled(&mut self) {
         self.busy = false;
         self.waiting = false;
-        self.notice = Some("Touch ID cancelled. Enter tries again, or type your password.");
+        self.notice = Some("Touch ID cancelled.");
     }
 
     pub fn touch_id_failed(&mut self, why: &str) {
@@ -90,8 +91,7 @@ impl Unlock {
         self.error = Some("Wrong password.".into());
     }
 
-    /// Enter (or the button) asks for a fingerprint, rather than trying
-    /// the password.
+    /// Enter asks for a fingerprint, rather than trying the password.
     fn uses_touch_id(&self) -> bool {
         self.touch_id == TouchId::On && self.field.is_empty()
     }
@@ -146,26 +146,23 @@ impl Unlock {
         }
 
         // The Unlock button, right of the password box and as tall as it,
-        // left out if the window is too narrow for all of it. Dimmed while
-        // there's no password for it to try, unless it's for Touch ID.
-        let button = Rect::new(field_area.right() + 2, field_area.y, 12, height);
-        self.button = if area.contains(Position::new(button.right() - 1, button.bottom() - 1)) {
-            button
-        } else {
-            Rect::default()
+        // then the Touch ID button where it's on. Each is left out if the
+        // window is too narrow for all of it. Unlock is dimmed while there's
+        // no password for it to try.
+        let fits = |button: Rect| {
+            let fits = area.contains(Position::new(button.right() - 1, button.bottom() - 1));
+            if fits { button } else { Rect::default() }
         };
-        if !self.button.is_empty() {
-            let style = if self.busy || (self.field.is_empty() && !self.uses_touch_id()) {
-                Style::new().dim()
-            } else {
-                Style::new().bold()
-            };
-            let label = if self.uses_touch_id() { "Touch ID" } else { "Unlock" };
-            let block = Block::bordered().border_style(style);
-            let label = Paragraph::new(Line::from(label).style(style)).centered();
-            frame.render_widget(label, block.inner(button));
-            frame.render_widget(block, button);
-        }
+        self.button = fits(Rect::new(field_area.right() + 2, field_area.y, 12, height));
+        let dim = self.busy || self.field.is_empty();
+        draw_button(frame, self.button, "Unlock", dim);
+        self.touch_id_button = match self.touch_id {
+            TouchId::On if !self.button.is_empty() => {
+                fits(Rect::new(self.button.right() + 2, field_area.y, 12, height))
+            }
+            _ => Rect::default(),
+        };
+        draw_button(frame, self.touch_id_button, "Touch ID", self.busy);
 
         // Esc clears the password, or quits if there's nothing to clear.
         let mut hints = vec![match self.uses_touch_id() {
@@ -185,7 +182,9 @@ impl Unlock {
             return Action::None;
         }
         match event {
-            Event::Key(key) if key.code == KeyCode::Enter => self.run(Cmd::Unlock),
+            Event::Key(key) if key.code == KeyCode::Enter => {
+                self.run(if self.uses_touch_id() { Cmd::TouchId } else { Cmd::Unlock })
+            }
             Event::Key(key) if key.code == KeyCode::Esc => {
                 self.run(if self.field.is_empty() { Cmd::Quit } else { Cmd::Clear })
             }
@@ -201,8 +200,12 @@ impl Unlock {
                 Action::None
             }
             Event::Mouse(mouse) if mouse.kind == MouseEventKind::Down(MouseButton::Left) => {
-                if self.button.contains(Position::new(mouse.column, mouse.row)) {
+                let pos = Position::new(mouse.column, mouse.row);
+                if self.button.contains(pos) {
                     return self.run(Cmd::Unlock);
+                }
+                if self.touch_id_button.contains(pos) {
+                    return self.run(Cmd::TouchId);
                 }
                 match self.hints.hit(mouse.column, mouse.row) {
                     Some(cmd) => self.run(cmd),
@@ -221,12 +224,24 @@ impl Unlock {
                 self.error = None;
                 Action::None
             }
-            Cmd::Unlock | Cmd::TouchId if self.uses_touch_id() => Action::UnlockTouchId,
+            Cmd::TouchId if self.touch_id == TouchId::On => Action::UnlockTouchId,
             Cmd::TouchId => Action::None,
             Cmd::Unlock if self.field.is_empty() => Action::None,
             Cmd::Unlock => Action::Unlock(self.field.value().clone()),
         }
     }
+}
+
+/// A button as tall as the password box, at `area` (if it's not empty).
+fn draw_button(frame: &mut Frame, area: Rect, label: &str, dim: bool) {
+    if area.is_empty() {
+        return;
+    }
+    let style = if dim { Style::new().dim() } else { Style::new().bold() };
+    let block = Block::bordered().border_style(style);
+    let label = Paragraph::new(Line::from(label).style(style)).centered();
+    frame.render_widget(label, block.inner(area));
+    frame.render_widget(block, area);
 }
 
 #[cfg(test)]
@@ -255,7 +270,12 @@ mod tests {
     fn enter_uses_touch_id_until_a_password_is_typed() {
         let mut unlock = Unlock::locked(TouchId::On);
         let text = screen(&mut unlock);
-        assert!(text.contains("Touch ID") && text.contains("Enter Touch ID"), "{text}");
+        assert!(
+            text.contains("Unlock")
+                && text.contains("│ Touch ID │")
+                && text.contains("Enter Touch ID"),
+            "{text}"
+        );
         assert!(matches!(press(&mut unlock, KeyCode::Enter), Action::UnlockTouchId));
         unlock.touch_id_cancelled();
         assert!(screen(&mut unlock).contains("Touch ID cancelled"));
