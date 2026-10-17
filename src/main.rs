@@ -1,5 +1,6 @@
 mod config;
 mod files;
+mod touch_id;
 mod tui;
 mod upgrade;
 mod vault;

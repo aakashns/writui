@@ -1,6 +1,6 @@
-//! The Settings screen: a few things to set, kept in the vault. Each row
-//! shows a setting's value; Enter (or a click) changes it in a dialog, or
-//! switches it on or off.
+//! The Settings screen: a few things to set, kept in the vault (but for
+//! Touch ID, which belongs to the Mac). Each row shows a setting's value;
+//! Enter (or a click) changes it in a dialog, or switches it on or off.
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{Event, KeyCode, MouseButton, MouseEventKind};
@@ -23,9 +23,8 @@ enum Field {
     Author,
     LineWidth,
     NerdFont,
+    TouchId,
 }
-
-const FIELDS: [Field; 3] = [Field::Author, Field::LineWidth, Field::NerdFont];
 
 #[derive(Clone, Copy)]
 enum Cmd {
@@ -38,6 +37,9 @@ enum Cmd {
 
 pub struct Settings {
     values: Values,
+    /// Whether Touch ID is on, where this Mac has it.
+    touch_id: Option<bool>,
+    fields: Vec<Field>,
     state: ListState,
     /// Changing the highlighted setting.
     dialog: Option<Dialog<Cmd>>,
@@ -48,9 +50,15 @@ pub struct Settings {
 }
 
 impl Settings {
-    pub fn new(values: Values) -> Self {
+    pub fn new(values: Values, touch_id: Option<bool>) -> Self {
+        let mut fields = vec![Field::Author, Field::LineWidth, Field::NerdFont];
+        if touch_id.is_some() {
+            fields.push(Field::TouchId);
+        }
         Settings {
             values,
+            touch_id,
+            fields,
             state: ListState::default().with_selected(Some(0)),
             dialog: None,
             notice: None,
@@ -66,8 +74,23 @@ impl Settings {
         self.error = Some(error);
     }
 
+    /// Touch ID was switched on or off.
+    pub fn touch_id_set(&mut self, on: bool) {
+        self.touch_id = Some(on);
+        self.error = None;
+        self.notice = Some(match on {
+            true => "Touch ID is on: writui asks for a fingerprint when it starts.".into(),
+            false => "Touch ID is off: unlocking takes the password.".into(),
+        });
+    }
+
     fn field(&self) -> Field {
-        FIELDS[self.state.selected().unwrap_or(0).min(FIELDS.len() - 1)]
+        self.fields[self.state.selected().unwrap_or(0).min(self.fields.len() - 1)]
+    }
+
+    /// Fields switched on or off, rather than changed in a dialog.
+    fn switched(field: Field) -> bool {
+        matches!(field, Field::NerdFont | Field::TouchId)
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
@@ -85,7 +108,9 @@ impl Settings {
 
         let col = column(rows, COLUMN_WIDTH);
         let width = col.width as usize;
-        let items: Vec<ListItem> = FIELDS
+        let on_off = |on| Span::raw(if on { "on" } else { "off" });
+        let items: Vec<ListItem> = self
+            .fields
             .iter()
             .map(|field| {
                 let (name, value) = match field {
@@ -96,9 +121,8 @@ impl Settings {
                     Field::LineWidth => {
                         ("Line width", Span::raw(format!("{} characters", self.values.line_width)))
                     }
-                    Field::NerdFont => {
-                        ("Nerd Font", Span::raw(if self.values.nerd_font { "on" } else { "off" }))
-                    }
+                    Field::NerdFont => ("Nerd Font", on_off(self.values.nerd_font)),
+                    Field::TouchId => ("Touch ID", on_off(self.touch_id == Some(true))),
                 };
                 let value = Span::styled(
                     truncate(&value.content, width.saturating_sub(name.len() + 2)),
@@ -112,7 +136,7 @@ impl Settings {
                 ]))
             })
             .collect();
-        self.rows_area = Rect { height: (FIELDS.len() as u16).min(col.height), ..col };
+        self.rows_area = Rect { height: (self.fields.len() as u16).min(col.height), ..col };
         frame.render_stateful_widget(
             ListWidget::new(items).highlight_style(Style::new().reversed()),
             self.rows_area,
@@ -134,7 +158,7 @@ impl Settings {
             self.hints.render(frame, hint_area, &hints);
             return;
         }
-        let change = if self.field() == Field::NerdFont { "switch" } else { "change" };
+        let change = if Self::switched(self.field()) { "switch" } else { "change" };
         self.hints.render(
             frame,
             hint_area,
@@ -189,7 +213,8 @@ impl Settings {
 
     fn move_by(&mut self, delta: isize) -> Action {
         let current = self.state.selected().unwrap_or(0) as isize;
-        self.state.select(Some((current + delta).clamp(0, FIELDS.len() as isize - 1) as usize));
+        self.state
+            .select(Some((current + delta).clamp(0, self.fields.len() as isize - 1) as usize));
         Action::None
     }
 
@@ -202,6 +227,9 @@ impl Settings {
                 let mut values = self.values.clone();
                 values.nerd_font = !values.nerd_font;
                 self.save(values)
+            }
+            Cmd::Change if self.field() == Field::TouchId => {
+                Action::SetTouchId(self.touch_id != Some(true))
             }
             Cmd::Change => {
                 self.dialog = Some(self.dialog_for(self.field()));
@@ -226,7 +254,7 @@ impl Settings {
                             return Action::None;
                         }
                     },
-                    Field::NerdFont => {}
+                    Field::NerdFont | Field::TouchId => {}
                 }
                 self.save(values)
             }
@@ -282,7 +310,7 @@ impl Settings {
                 .with_input("68", 3)
                 .with_text(&self.values.line_width.to_string())
             }
-            Field::NerdFont => unreachable!("switched on or off, not asked"),
+            Field::NerdFont | Field::TouchId => unreachable!("switched on or off, not asked"),
         }
     }
 }
@@ -317,7 +345,7 @@ mod tests {
 
     #[test]
     fn settings_are_changed_in_a_dialog() {
-        let mut settings = Settings::new(Values::default());
+        let mut settings = Settings::new(Values::default(), None);
         let text = screen(&mut settings);
         assert!(
             text.contains("Author") && text.contains("none") && text.contains("68 characters"),
@@ -362,5 +390,20 @@ mod tests {
         assert!(screen(&mut settings).contains("on"));
         // Esc goes back.
         assert!(matches!(press(&mut settings, KeyCode::Esc), Action::BackToList(None)));
+    }
+
+    #[test]
+    fn touch_id_is_switched_where_the_mac_has_it() {
+        assert!(!screen(&mut Settings::new(Values::default(), None)).contains("Touch ID"));
+        let mut settings = Settings::new(Values::default(), Some(false));
+        for _ in 0..3 {
+            press(&mut settings, KeyCode::Down);
+        }
+        assert!(screen(&mut settings).contains("Touch ID"));
+        assert!(matches!(press(&mut settings, KeyCode::Enter), Action::SetTouchId(true)));
+        settings.touch_id_set(true);
+        let text = screen(&mut settings);
+        assert!(text.contains("Touch ID is on"), "{text}");
+        assert!(matches!(press(&mut settings, KeyCode::Enter), Action::SetTouchId(false)));
     }
 }

@@ -117,6 +117,15 @@ The first time, writui asks you to choose a password (twice) and creates your
 vault: the encrypted file that holds all your posts. After that, it asks for
 the password each time it starts.
 
+On a Mac with Touch ID, you can unlock with your fingerprint instead: tick
+"Unlock with Touch ID" when you create your vault, or turn on "Touch ID" in
+Settings (`s` on the list) later. writui then asks for your fingerprint
+when it starts; after locking, press Enter or click "Touch ID". The
+password still works too. It applies to this Mac only, and adding a new
+fingerprint to the Mac turns it off until you next unlock with the
+password. Your vault's key, sealed so that only this Mac's Secure Enclave
+can open it after a fingerprint, is kept in `~/.config/writui/touch-id/`.
+
 - **Posts** are listed with the most recently changed first. Open one with
   Enter or a click, start a new one with `n` (or Enter: "New" is
   highlighted when the list opens). The list's shortcuts are single keys,
@@ -130,7 +139,7 @@ the password each time it starts.
   either way round: click "Sort" on the right of the search and pick one,
   or press Tab (Shift+Tab) to go through them.
 - **Lock** with Ctrl+O, wherever you are: writui asks for the password
-  again, then takes you back to where you were.
+  (or your fingerprint) again, then takes you back to where you were.
 - **Zen writing:** the editor shows only your words. Hold Ctrl to see the
   post's word count and when you started it. (This needs a terminal that can
   report Ctrl on its own, like Alacritty, Ghostty, kitty, WezTerm or a recent

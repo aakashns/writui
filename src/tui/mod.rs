@@ -32,14 +32,21 @@ use ratatui::{DefaultTerminal, Frame};
 use zeroize::Zeroizing;
 
 use crate::files;
+use crate::touch_id;
 use crate::vault::{ExportSettings, OpenError, Settings, Vault, title_from_first_line};
 
 /// What a screen asks the app to do in response to an event.
 pub enum Action {
     None,
     Quit,
-    CreateVault(Zeroizing<String>),
+    /// Create the vault, maybe with Touch ID on.
+    CreateVault {
+        password: Zeroizing<String>,
+        touch_id: bool,
+    },
     Unlock(Zeroizing<String>),
+    /// Unlock with a fingerprint.
+    UnlockTouchId,
     NewPost,
     OpenPost(i64),
     /// Move to the Trash, then highlight `select` in the list.
@@ -81,6 +88,8 @@ pub enum Action {
     SortBy(list::Sort),
     /// Lock writui: back to the password, then to the same screen.
     Lock,
+    /// Turn unlocking with Touch ID on or off.
+    SetTouchId(bool),
 }
 
 /// Which post an imported file goes into.
@@ -199,27 +208,39 @@ struct App {
     title: String,
     /// The screen last remembered in the vault (see `screen_name`).
     remembered: Option<String>,
+    /// Touch ID is on but didn't work: set it up again once the password
+    /// has unlocked the vault.
+    redo_touch_id: bool,
     quit: bool,
 }
 
 impl App {
     fn new(vault_path: PathBuf, ctrl_reported: bool) -> Self {
+        let mut pending = None;
         let screen = if vault_path.exists() {
-            Screen::Unlock(unlock::Unlock::default())
+            let touch_id = touch_id_here(&vault_path);
+            let mut screen = unlock::Unlock::new(touch_id);
+            // Ask for a fingerprint straight away, once the screen is up.
+            if touch_id == unlock::TouchId::On {
+                screen.wait_for_touch_id();
+                pending = Some(Action::UnlockTouchId);
+            }
+            Screen::Unlock(screen)
         } else {
-            Screen::Setup(setup::Setup::new(vault_path.clone()))
+            Screen::Setup(setup::Setup::new(vault_path.clone(), touch_id::available()))
         };
         App {
             vault_path,
             vault: None,
             screen,
-            pending: None,
+            pending,
             quit_unsaved: false,
             bar_cursor: false,
             ctrl_reported,
             ctrl_held: false,
             title: String::new(),
             remembered: None,
+            redo_touch_id: false,
             quit: false,
         }
     }
@@ -302,7 +323,7 @@ impl App {
         self.remember_screen();
         self.vault = None;
         self.quit_unsaved = false;
-        self.screen = Screen::Unlock(unlock::Unlock::locked());
+        self.screen = Screen::Unlock(unlock::Unlock::locked(touch_id_here(&self.vault_path)));
     }
 
     /// Right after unlocking: the screen writui was left on, if it's
@@ -409,13 +430,32 @@ impl App {
                     self.quit_unsaved = true;
                 }
             }
-            Action::CreateVault(_) | Action::Unlock(_) => {
+            Action::CreateVault { .. } | Action::Unlock(_) => {
                 match &mut self.screen {
                     Screen::Setup(screen) => screen.set_busy(true),
                     Screen::Unlock(screen) => screen.set_busy(true),
                     _ => {}
                 }
                 self.pending = Some(action);
+            }
+            Action::UnlockTouchId => {
+                if let Screen::Unlock(screen) = &mut self.screen {
+                    screen.wait_for_touch_id();
+                }
+                self.pending = Some(action);
+            }
+            Action::SetTouchId(on) => {
+                let vault = self.vault()?;
+                let result = match on {
+                    true => touch_id::turn_on(&self.vault_path, vault.key()),
+                    false => touch_id::turn_off(&self.vault_path),
+                };
+                if let Screen::Settings(screen) = &mut self.screen {
+                    match result {
+                        Ok(()) => screen.touch_id_set(on),
+                        Err(err) => screen.set_error(format!("Couldn't change Touch ID: {err:#}")),
+                    }
+                }
             }
             Action::NewPost => {
                 let id = self.vault()?.create_post()?;
@@ -512,12 +552,25 @@ impl App {
 
     fn perform(&mut self, action: Action) -> Result<()> {
         match action {
-            Action::CreateVault(password) => {
-                self.vault = Some(Vault::create(&self.vault_path, &password)?);
-                self.show_list(None, None)
+            Action::CreateVault { password, touch_id } => {
+                let vault = Vault::create(&self.vault_path, &password)?;
+                let notice = match touch_id {
+                    true => touch_id::turn_on(&self.vault_path, vault.key()).err().map(|err| {
+                        format!("Your vault is ready, but Touch ID couldn't be turned on: {err:#}")
+                    }),
+                    false => None,
+                };
+                self.vault = Some(vault);
+                self.show_list(None, notice)
             }
             Action::Unlock(password) => match Vault::open(&self.vault_path, &password) {
                 Ok(vault) => {
+                    // Only a convenience: the next unlock asks again if
+                    // this doesn't work either.
+                    if self.redo_touch_id {
+                        let _ = touch_id::turn_on(&self.vault_path, vault.key());
+                        self.redo_touch_id = false;
+                    }
                     self.vault = Some(vault);
                     self.resume()
                 }
@@ -529,6 +582,33 @@ impl App {
                 }
                 Err(OpenError::Other(err)) => Err(err),
             },
+            Action::UnlockTouchId => {
+                let failed = match touch_id::unlock(&self.vault_path) {
+                    Ok(key) => match Vault::open_with_key(&self.vault_path, key) {
+                        Ok(vault) => {
+                            self.vault = Some(vault);
+                            return self.resume();
+                        }
+                        // E.g. the vault was swapped for another one.
+                        Err(OpenError::WrongPassword) => {
+                            Some("its key doesn't open this vault".to_string())
+                        }
+                        Err(OpenError::Other(err)) => return Err(err),
+                    },
+                    Err(touch_id::Failure::Cancelled) => None,
+                    Err(touch_id::Failure::Other(why)) => Some(why),
+                };
+                if let Screen::Unlock(screen) = &mut self.screen {
+                    match failed {
+                        Some(why) => {
+                            screen.touch_id_failed(&why);
+                            self.redo_touch_id = true;
+                        }
+                        None => screen.touch_id_cancelled(),
+                    }
+                }
+                Ok(())
+            }
             _ => self.apply(action),
         }
     }
@@ -619,7 +699,8 @@ impl App {
 
     fn show_settings(&mut self) -> Result<()> {
         let values = self.vault()?.settings()?;
-        self.screen = Screen::Settings(Box::new(settings::Settings::new(values)));
+        let touch_id = touch_id::available().then(|| touch_id::is_on(&self.vault_path));
+        self.screen = Screen::Settings(Box::new(settings::Settings::new(values, touch_id)));
         Ok(())
     }
 
@@ -683,11 +764,24 @@ impl App {
     }
 }
 
+/// Whether the vault at `path` can be unlocked with Touch ID here.
+fn touch_id_here(path: &Path) -> unlock::TouchId {
+    match (touch_id::available(), touch_id::is_on(path)) {
+        (false, _) => unlock::TouchId::Unavailable,
+        (true, false) => unlock::TouchId::Off,
+        (true, true) => unlock::TouchId::On,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use ratatui::crossterm::event::KeyEvent;
 
     use super::*;
+
+    fn create_vault() -> Action {
+        Action::CreateVault { password: Zeroizing::new("pw".into()), touch_id: false }
+    }
 
     fn key(code: KeyCode, modifiers: KeyModifiers, kind: KeyEventKind) -> Event {
         Event::Key(KeyEvent::new_with_kind(code, modifiers, kind))
@@ -711,7 +805,7 @@ mod tests {
     fn imports_make_a_post_and_ask_before_updating_it() {
         let dir = tempfile::tempdir().unwrap();
         let mut app = App::new(dir.path().join("writui.db"), false);
-        app.perform(Action::CreateVault(Zeroizing::new("pw".into()))).unwrap();
+        app.perform(create_vault()).unwrap();
         let file = dir.path().join("hello.md");
         std::fs::write(&file, "+++\ntitle = \"Hello\"\ndate = 2026-01-01\n+++\n\nFirst text.\n")
             .unwrap();
@@ -784,7 +878,7 @@ mod tests {
             app
         };
         let mut app = App::new(path.clone(), false);
-        app.perform(Action::CreateVault(Zeroizing::new("pw".into()))).unwrap();
+        app.perform(create_vault()).unwrap();
         app.apply(Action::NewPost).unwrap();
         app.remember_screen();
         let Screen::Editor(editor) = &app.screen else { panic!("not opened") };
@@ -811,7 +905,7 @@ mod tests {
     fn ctrl_o_locks_and_unlocking_comes_back() {
         let dir = tempfile::tempdir().unwrap();
         let mut app = App::new(dir.path().join("writui.db"), false);
-        app.perform(Action::CreateVault(Zeroizing::new("pw".into()))).unwrap();
+        app.perform(create_vault()).unwrap();
         app.apply(Action::NewPost).unwrap();
         app.remember_screen();
         app.handle(key(KeyCode::Char('x'), KeyModifiers::NONE, KeyEventKind::Press));

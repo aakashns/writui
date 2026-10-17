@@ -5,7 +5,8 @@
 //! Encryption: the password goes through Argon2id with a random 16-byte salt
 //! to produce a 256-bit key, which is handed to SQLCipher as a raw key along
 //! with the salt. SQLCipher stores that salt in the first 16 bytes of the
-//! file, so the vault stays a single self-contained file.
+//! file, so the vault stays a single self-contained file. The key itself
+//! can also open the vault (Touch ID keeps it, see `touch_id`).
 
 mod migrations;
 
@@ -21,7 +22,10 @@ use rusqlite::{Connection, ErrorCode, OpenFlags, OptionalExtension, params};
 use zeroize::Zeroizing;
 
 const SALT_LEN: usize = 16;
-const KEY_LEN: usize = 32;
+pub const KEY_LEN: usize = 32;
+
+/// The key that opens a vault, derived from its password.
+pub type Key = Zeroizing<[u8; KEY_LEN]>;
 
 /// Argon2id cost: (memory in KiB, iterations, lanes). Changing this makes
 /// existing vaults unopenable unless the old values are kept as a fallback.
@@ -38,6 +42,9 @@ pub const DELETED_RETENTION_DAYS: i64 = 30;
 
 pub struct Vault {
     conn: Connection,
+    /// Kept while the vault is open, so Touch ID can be turned on without
+    /// asking for the password again. (SQLCipher holds a copy anyway.)
+    key: Key,
 }
 
 #[derive(Debug)]
@@ -149,16 +156,24 @@ impl Vault {
         let mut conn = Connection::open(path)
             .with_context(|| format!("creating vault at {}", path.display()))?;
         make_private(path)?;
-        apply_key(&conn, password, &salt)?;
+        let key = derive_key(password, &salt)?;
+        apply_key(&conn, &key, &salt)?;
         migrations::run(&mut conn, path)?;
-        Ok(Vault { conn })
+        Ok(Vault { conn, key })
     }
 
     /// Open an existing vault with its password.
     pub fn open(path: &Path, password: &str) -> Result<Vault, OpenError> {
+        let key = derive_key(password, &read_salt(path)?)?;
+        Vault::open_with_key(path, key)
+    }
+
+    /// Open an existing vault with its key, rather than the password the
+    /// key comes from. A key that doesn't fit is a wrong password.
+    pub fn open_with_key(path: &Path, key: Key) -> Result<Vault, OpenError> {
         let salt = read_salt(path)?;
         let mut conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
-        apply_key(&conn, password, &salt)?;
+        apply_key(&conn, &key, &salt)?;
         // SQLCipher only notices a wrong key on the first real read.
         match conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(())) {
             Ok(()) => {}
@@ -168,9 +183,14 @@ impl Vault {
             Err(err) => return Err(err.into()),
         }
         migrations::run(&mut conn, path)?;
-        let vault = Vault { conn };
+        let vault = Vault { conn, key };
         vault.purge_expired()?;
         Ok(vault)
+    }
+
+    /// The key that opens this vault.
+    pub fn key(&self) -> &Key {
+        &self.key
     }
 
     /// All posts (not counting the Trash), most recently updated first.
@@ -551,7 +571,7 @@ pub fn with_title_prefix(body: &str) -> String {
     format!("{TITLE_PREFIX}{rest}")
 }
 
-fn derive_key(password: &str, salt: &[u8]) -> Result<Zeroizing<[u8; KEY_LEN]>> {
+fn derive_key(password: &str, salt: &[u8]) -> Result<Key> {
     let (memory, iterations, lanes) = KDF_COST;
     let params = Params::new(memory, iterations, lanes, Some(KEY_LEN))
         .map_err(|err| anyhow!("invalid key derivation parameters: {err}"))?;
@@ -562,8 +582,7 @@ fn derive_key(password: &str, salt: &[u8]) -> Result<Zeroizing<[u8; KEY_LEN]>> {
     Ok(key)
 }
 
-fn apply_key(conn: &Connection, password: &str, salt: &[u8; SALT_LEN]) -> Result<()> {
-    let key = derive_key(password, salt)?;
+fn apply_key(conn: &Connection, key: &Key, salt: &[u8; SALT_LEN]) -> Result<()> {
     // Raw key + explicit salt: "x'<64 hex chars of key><32 hex chars of salt>'".
     let pragma = Zeroizing::new(format!(
         "PRAGMA key = \"x'{}{}'\";",
@@ -655,6 +674,21 @@ mod tests {
         vault.create_post().unwrap();
         drop(vault);
         assert!(matches!(Vault::open(&path, "battery staple"), Err(OpenError::WrongPassword)));
+    }
+
+    #[test]
+    fn the_key_opens_the_vault_too() {
+        let (_dir, path) = temp_vault();
+        let vault = Vault::create(&path, "correct horse").unwrap();
+        let id = vault.create_post().unwrap();
+        let key = vault.key().clone();
+        drop(vault);
+        assert_eq!(Vault::open(&path, "correct horse").unwrap().key(), &key);
+        let vault = Vault::open_with_key(&path, key).unwrap();
+        assert!(vault.post(id).is_ok());
+        drop(vault);
+        let wrong = Zeroizing::new([7; KEY_LEN]);
+        assert!(matches!(Vault::open_with_key(&path, wrong), Err(OpenError::WrongPassword)));
     }
 
     #[test]
