@@ -120,11 +120,46 @@ pub struct Settings {
     pub line_width: u16,
     /// The terminal's font is a Nerd Font: use its icons.
     pub nerd_font: bool,
+    /// How much markdown is formatted in the editor.
+    pub styling: Styling,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { author: String::new(), line_width: DEFAULT_LINE_WIDTH, nerd_font: false }
+        Settings {
+            author: String::new(),
+            line_width: DEFAULT_LINE_WIDTH,
+            nerd_font: false,
+            styling: Styling::Full,
+        }
+    }
+}
+
+/// How much markdown is formatted in the editor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Styling {
+    /// Plain text: no styles at all.
+    Off,
+    /// The markdown symbols faded, and nothing else.
+    Minimal,
+    /// Bold, italics, code and so on, with the symbols faded.
+    Full,
+}
+
+impl Styling {
+    pub const ALL: [Styling; 3] = [Styling::Off, Styling::Minimal, Styling::Full];
+
+    /// As stored in the vault (and shown in Settings).
+    pub fn name(self) -> &'static str {
+        match self {
+            Styling::Off => "off",
+            Styling::Minimal => "minimal",
+            Styling::Full => "full",
+        }
+    }
+
+    fn from_name(name: &str) -> Option<Styling> {
+        Styling::ALL.into_iter().find(|s| s.name() == name)
     }
 }
 
@@ -487,10 +522,15 @@ impl Vault {
             .filter(|width| LINE_WIDTHS.contains(width))
             .unwrap_or(defaults.line_width);
         let nerd_font = self.value("nerd_font")?.map_or(defaults.nerd_font, |value| value == "on");
+        let styling = self
+            .value("markdown_styling")?
+            .and_then(|value| Styling::from_name(&value))
+            .unwrap_or(defaults.styling);
         Ok(Settings {
             author: self.value("author")?.unwrap_or(defaults.author),
             line_width,
             nerd_font,
+            styling,
         })
     }
 
@@ -499,6 +539,7 @@ impl Vault {
         self.set_value("author", &settings.author)?;
         self.set_value("line_width", &settings.line_width.to_string())?;
         self.set_value("nerd_font", if settings.nerd_font { "on" } else { "off" })?;
+        self.set_value("markdown_styling", settings.styling.name())?;
         tx.commit()?;
         Ok(())
     }
@@ -949,7 +990,12 @@ mod tests {
         let vault = Vault::create(&path, "pw").unwrap();
         assert_eq!(vault.settings().unwrap(), Settings::default());
         assert_eq!(vault.last_screen().unwrap(), None);
-        let settings = Settings { author: "Ada".into(), line_width: 80, nerd_font: true };
+        let settings = Settings {
+            author: "Ada".into(),
+            line_width: 80,
+            nerd_font: true,
+            styling: Styling::Minimal,
+        };
         vault.set_settings(&settings).unwrap();
         vault.set_last_screen("post:3").unwrap();
         vault.set_list_sort("title").unwrap();

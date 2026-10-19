@@ -11,12 +11,17 @@
 //!
 //! Links are found here too, so they can be opened: markdown links, `<…>`
 //! links, and web addresses written out in the text.
+//!
+//! That's the full styling. Settings can make it minimal (the symbols
+//! faded, the text plain) or turn it off (all plain); links open either way.
 
 use std::ops::Range;
 
 use pulldown_cmark::{Event, Options, Parser, Tag};
-use ratatui::style::Style;
+use ratatui::style::{Modifier, Style};
 use ropey::Rope;
+
+use crate::vault::Styling;
 
 /// A link in the text: the chars it covers, and where it goes.
 #[derive(Clone, Debug, PartialEq)]
@@ -35,7 +40,7 @@ pub struct Markup {
 }
 
 impl Markup {
-    pub fn new(rope: &Rope) -> Self {
+    pub fn new(rope: &Rope, styling: Styling) -> Self {
         let text = rope.to_string();
         let mut styler =
             Styler { runs: Vec::new(), links: Vec::new(), stack: Vec::new(), pos: 0, text: None };
@@ -51,6 +56,11 @@ impl Markup {
         let mut runs: Vec<(usize, Style)> = Vec::with_capacity(styler.runs.len());
         for (start, style) in styler.runs {
             let start = rope.byte_to_char(start);
+            let style = match styling {
+                Styling::Full => style,
+                Styling::Minimal if style.add_modifier.contains(Modifier::DIM) => faded(),
+                Styling::Minimal | Styling::Off => Style::new(),
+            };
             match runs.last_mut() {
                 Some(last) if last.1 == style => {}
                 Some(last) if last.0 == start => last.1 = style,
@@ -272,13 +282,16 @@ mod tests {
     /// italic, `[f:…]` faded, `[u:…]` underlined, `[s:…]` struck through,
     /// `[g:…]` green (combined, e.g. `[bf:…]`). Plain text is left as it is.
     fn marked(text: &str) -> String {
+        marked_with(text, Styling::Full)
+    }
+
+    fn marked_with(text: &str, styling: Styling) -> String {
         let rope = Rope::from_str(text);
-        let markup = Markup::new(&rope);
+        let markup = Markup::new(&rope, styling);
         let mut out = String::new();
         for (range, style) in markup.styles(0..rope.len_chars()) {
             let piece = rope.slice(range).to_string();
             let m = style.add_modifier;
-            use ratatui::style::Modifier;
             let tag: String = [
                 (Modifier::BOLD, 'b'),
                 (Modifier::ITALIC, 'i'),
@@ -318,6 +331,19 @@ mod tests {
     }
 
     #[test]
+    fn minimal_styling_only_fades_the_symbols_and_off_shows_it_plain() {
+        let text = "# Title\n\n**bold** *it* `code` [link](https://x.com) https://y.com";
+        assert_eq!(
+            marked_with(text, Styling::Minimal),
+            "[f:#] Title\n\n[f:**]bold[f:**] [f:*]it[f:*] [f:`]code[f:`] [f:[]link[f:](https://x.com)] https://y.com"
+        );
+        assert_eq!(marked_with(text, Styling::Off), text);
+        // Links still open.
+        let markup = Markup::new(&Rope::from_str(text), Styling::Off);
+        assert_eq!(markup.links.len(), 2);
+    }
+
+    #[test]
     fn half_typed_formatting_stays_plain() {
         assert_eq!(marked("a **b"), "a **b");
         assert_eq!(marked("`code"), "`code");
@@ -350,7 +376,7 @@ mod tests {
             marked("see [this](https://x.com) now"),
             "see [f:[][u:this][f:](https://x.com)] now"
         );
-        let markup = Markup::new(&Rope::from_str("see [this](https://x.com) now"));
+        let markup = Markup::new(&Rope::from_str("see [this](https://x.com) now"), Styling::Full);
         assert_eq!(markup.link_at(4).map(|l| l.url.as_str()), Some("https://x.com"));
         assert_eq!(markup.link_at(24).map(|l| l.url.as_str()), Some("https://x.com"));
         assert_eq!(markup.link_at(25), None);
@@ -364,7 +390,7 @@ mod tests {
             marked(text),
             "Read [u:https://example.com/a_b(c)]. Or [u:http://x.org], or [f:<][u:https://y.net][f:>]."
         );
-        let markup = Markup::new(&Rope::from_str(text));
+        let markup = Markup::new(&Rope::from_str(text), Styling::Full);
         let urls: Vec<&str> = markup.links.iter().map(|l| l.url.as_str()).collect();
         assert_eq!(urls, ["https://example.com/a_b(c)", "http://x.org", "https://y.net"]);
         // Not in code.
@@ -379,7 +405,7 @@ mod tests {
 
     #[test]
     fn styles_cover_a_range_exactly() {
-        let markup = Markup::new(&Rope::from_str("ab **cd** ef"));
+        let markup = Markup::new(&Rope::from_str("ab **cd** ef"), Styling::Full);
         let pieces: Vec<Range<usize>> = markup.styles(1..6).into_iter().map(|p| p.0).collect();
         assert_eq!(pieces, [1..3, 3..5, 5..6]);
         assert_eq!(Markup::default().styles(0..3), [(0..3, Style::new())]);
@@ -397,7 +423,7 @@ mod tests {
         );
         let rope = Rope::from_str(&text);
         let start = std::time::Instant::now();
-        let markup = Markup::new(&rope);
+        let markup = Markup::new(&rope, Styling::Full);
         // ~260 KB. Generous, for slow CI machines and unoptimised builds.
         assert!(start.elapsed() < std::time::Duration::from_millis(500), "{:?}", start.elapsed());
         assert_eq!(markup.links.len(), 2000);

@@ -1,27 +1,33 @@
 //! The Settings screen: a few things to set, kept in the vault (but for
-//! Touch ID, which belongs to the Mac). Each row shows a setting's value;
-//! Enter (or a click) changes it in a dialog, or switches it on or off.
+//! Touch ID, which belongs to the Mac). Each setting shows its value, and
+//! below it, faded, what that value does; lines separate them. Enter (or a
+//! click) changes it in a dialog, or switches it to its next value.
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{Event, KeyCode, MouseButton, MouseEventKind};
 use ratatui::layout::{Constraint, Layout, Position, Rect};
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{List as ListWidget, ListItem, ListState, Paragraph};
+use ratatui::widgets::{ListState, Paragraph};
 
 use super::Action;
 use super::dialog::{Button, Dialog};
 use super::hints::{HintBar, hint};
 use super::widgets::{COLUMN_WIDTH, column, truncate};
-use crate::vault::{DEFAULT_LINE_WIDTH, LINE_WIDTHS, Settings as Values};
+use crate::vault::{DEFAULT_LINE_WIDTH, LINE_WIDTHS, Settings as Values, Styling};
 
 /// The longest author's name.
 const MAX_AUTHOR: usize = 80;
+
+/// Screen rows per setting: its name and value, what it does, and the line
+/// below it.
+const ROWS_EACH: u16 = 3;
 
 #[derive(Clone, Copy, PartialEq)]
 enum Field {
     Author,
     LineWidth,
+    Styling,
     NerdFont,
     TouchId,
 }
@@ -51,7 +57,7 @@ pub struct Settings {
 
 impl Settings {
     pub fn new(values: Values, touch_id: Option<bool>) -> Self {
-        let mut fields = vec![Field::Author, Field::LineWidth, Field::NerdFont];
+        let mut fields = vec![Field::Author, Field::LineWidth, Field::Styling, Field::NerdFont];
         if touch_id.is_some() {
             fields.push(Field::TouchId);
         }
@@ -88,9 +94,54 @@ impl Settings {
         self.fields[self.state.selected().unwrap_or(0).min(self.fields.len() - 1)]
     }
 
-    /// Fields switched on or off, rather than changed in a dialog.
+    /// Fields switched to their next value, rather than changed in a
+    /// dialog.
     fn switched(field: Field) -> bool {
-        matches!(field, Field::NerdFont | Field::TouchId)
+        matches!(field, Field::Styling | Field::NerdFont | Field::TouchId)
+    }
+
+    /// A field's name and value.
+    fn value(&self, field: Field) -> (&'static str, Span<'static>) {
+        let on_off = |on| Span::raw(if on { "on" } else { "off" });
+        match field {
+            Field::Author if self.values.author.is_empty() => {
+                ("Author", Span::raw("none").dim().italic())
+            }
+            Field::Author => ("Author", Span::raw(self.values.author.clone())),
+            Field::LineWidth => {
+                ("Line width", Span::raw(format!("{} characters", self.values.line_width)))
+            }
+            Field::Styling => ("Markdown styling", Span::raw(self.values.styling.name())),
+            Field::NerdFont => ("Nerd Font", on_off(self.values.nerd_font)),
+            Field::TouchId => ("Touch ID", on_off(self.touch_id == Some(true))),
+        }
+    }
+
+    /// What a field's value does, now.
+    fn describe(&self, field: Field) -> String {
+        match field {
+            Field::Author if self.values.author.is_empty() => {
+                "Exports leave the author out of their front matter.".into()
+            }
+            Field::Author => "Exports suggest you as the author in their front matter.".into(),
+            Field::LineWidth => {
+                format!("Text is at most {} characters wide as you write.", self.values.line_width)
+            }
+            Field::Styling => match self.values.styling {
+                Styling::Full => "Bold, italics and code are formatted; markdown symbols faded.",
+                Styling::Minimal => "Text stays plain; only the markdown symbols are faded.",
+                Styling::Off => "Markdown shows as plain text, with no formatting.",
+            }
+            .into(),
+            Field::NerdFont if self.values.nerd_font => {
+                "Uses the font's icons, like the search field's magnifier.".into()
+            }
+            Field::NerdFont => "No icons. Switch it on if your font is a Nerd Font.".into(),
+            Field::TouchId if self.touch_id == Some(true) => {
+                "Unlocks with your fingerprint when writui starts.".into()
+            }
+            Field::TouchId => "Unlocking takes the password.".into(),
+        }
     }
 
     pub fn render(&mut self, frame: &mut Frame) {
@@ -108,40 +159,39 @@ impl Settings {
 
         let col = column(rows, COLUMN_WIDTH);
         let width = col.width as usize;
-        let on_off = |on| Span::raw(if on { "on" } else { "off" });
-        let items: Vec<ListItem> = self
-            .fields
-            .iter()
-            .map(|field| {
-                let (name, value) = match field {
-                    Field::Author if self.values.author.is_empty() => {
-                        ("Author", Span::raw("none").dim().italic())
-                    }
-                    Field::Author => ("Author", Span::raw(self.values.author.clone())),
-                    Field::LineWidth => {
-                        ("Line width", Span::raw(format!("{} characters", self.values.line_width)))
-                    }
-                    Field::NerdFont => ("Nerd Font", on_off(self.values.nerd_font)),
-                    Field::TouchId => ("Touch ID", on_off(self.touch_id == Some(true))),
-                };
-                let value = Span::styled(
-                    truncate(&value.content, width.saturating_sub(name.len() + 2)),
-                    value.style,
-                );
-                let pad = width.saturating_sub(name.len() + value.width());
-                ListItem::new(Line::from(vec![
-                    Span::raw(name).bold(),
-                    Span::raw(" ".repeat(pad)),
-                    value,
-                ]))
-            })
-            .collect();
-        self.rows_area = Rect { height: (self.fields.len() as u16).min(col.height), ..col };
-        frame.render_stateful_widget(
-            ListWidget::new(items).highlight_style(Style::new().reversed()),
-            self.rows_area,
-            &mut self.state,
-        );
+        // Scroll, if the screen is too short for them all, to keep the
+        // selected one in view.
+        let fit = ((col.height + 1) / ROWS_EACH).max(1) as usize;
+        let selected = self.state.selected().unwrap_or(0);
+        let first =
+            (*self.state.offset_mut()).min(selected).max((selected + 1).saturating_sub(fit));
+        *self.state.offset_mut() = first;
+        let mut y = col.y;
+        for (i, &field) in self.fields.iter().enumerate().skip(first) {
+            if y >= col.bottom() {
+                break;
+            }
+            if i > first {
+                let rule = "─".repeat(width).dim();
+                frame.render_widget(Paragraph::new(rule), Rect { y, height: 1, ..col });
+                y += 1;
+            }
+            let (name, value) = self.value(field);
+            let value = Span::styled(
+                truncate(&value.content, width.saturating_sub(name.len() + 2)),
+                value.style,
+            );
+            let pad = width.saturating_sub(name.len() + value.width());
+            let lines = vec![
+                Line::from(vec![Span::raw(name).bold(), Span::raw(" ".repeat(pad)), value]),
+                Line::from(truncate(&self.describe(field), width).dim()),
+            ];
+            let style = if i == selected { Style::new().reversed() } else { Style::new() };
+            let area = Rect { y, height: 2, ..col }.intersection(col);
+            frame.render_widget(Paragraph::new(lines).style(style), area);
+            y += 2;
+        }
+        self.rows_area = Rect { height: y - col.y, ..col };
 
         let message = match (&self.error, &self.notice) {
             (Some(error), _) => Some(truncate(error, COLUMN_WIDTH as usize).red()),
@@ -202,7 +252,16 @@ impl Settings {
                     if !self.rows_area.contains(Position::new(mouse.column, mouse.row)) {
                         return Action::None;
                     }
-                    self.state.select(Some((mouse.row - self.rows_area.y) as usize));
+                    // Not on a line between them.
+                    let row = mouse.row - self.rows_area.y;
+                    if row % ROWS_EACH == ROWS_EACH - 1 {
+                        return Action::None;
+                    }
+                    let index = self.state.offset() + (row / ROWS_EACH) as usize;
+                    if index >= self.fields.len() {
+                        return Action::None;
+                    }
+                    self.state.select(Some(index));
                     self.run(Cmd::Change)
                 }
                 _ => Action::None,
@@ -222,7 +281,16 @@ impl Settings {
         match cmd {
             Cmd::Back => Action::BackToList(None),
             Cmd::Lock => Action::Lock,
-            // On or off: no need to ask.
+            // On or off, or one of three: no need to ask.
+            Cmd::Change if self.field() == Field::Styling => {
+                let mut values = self.values.clone();
+                values.styling = match values.styling {
+                    Styling::Full => Styling::Minimal,
+                    Styling::Minimal => Styling::Off,
+                    Styling::Off => Styling::Full,
+                };
+                self.save(values)
+            }
             Cmd::Change if self.field() == Field::NerdFont => {
                 let mut values = self.values.clone();
                 values.nerd_font = !values.nerd_font;
@@ -254,7 +322,7 @@ impl Settings {
                             return Action::None;
                         }
                     },
-                    Field::NerdFont | Field::TouchId => {}
+                    Field::Styling | Field::NerdFont | Field::TouchId => {}
                 }
                 self.save(values)
             }
@@ -310,7 +378,9 @@ impl Settings {
                 .with_input("68", 3)
                 .with_text(&self.values.line_width.to_string())
             }
-            Field::NerdFont | Field::TouchId => unreachable!("switched on or off, not asked"),
+            Field::Styling | Field::NerdFont | Field::TouchId => {
+                unreachable!("switched, not asked")
+            }
         }
     }
 }
@@ -376,6 +446,21 @@ mod tests {
             panic!("not saved")
         };
         assert_eq!((values.author.as_str(), values.line_width), ("Ada", 80));
+        // Markdown styling: Enter switches to the next of three, no dialog,
+        // and what it does shows below.
+        press(&mut settings, KeyCode::Down);
+        let text = screen(&mut settings);
+        assert!(text.contains("Markdown styling") && text.contains("full"), "{text}");
+        assert!(text.contains("Bold, italics and code are formatted"), "{text}");
+        let mut seen = Vec::new();
+        for _ in 0..3 {
+            let Action::SaveSettings(values) = press(&mut settings, KeyCode::Enter) else {
+                panic!("not saved")
+            };
+            assert!(settings.dialog.is_none());
+            seen.push(values.styling);
+        }
+        assert_eq!(seen, [Styling::Minimal, Styling::Off, Styling::Full]);
         // Nerd Font: Enter switches it, no dialog.
         press(&mut settings, KeyCode::Down);
         let text = screen(&mut settings);
@@ -393,10 +478,36 @@ mod tests {
     }
 
     #[test]
+    fn each_setting_says_what_it_does_with_lines_between_and_clicks_change_them() {
+        let mut settings = Settings::new(Values::default(), None);
+        let text = screen(&mut settings);
+        let rows: Vec<&str> = text.lines().map(str::trim).collect();
+        let author = rows.iter().position(|r| r.starts_with("Author")).unwrap();
+        assert!(rows[author + 1].starts_with("Exports leave the author out"), "{text}");
+        assert!(rows[author + 2].starts_with("────"), "{text}");
+        assert!(rows[author + 3].starts_with("Line width"), "{text}");
+        // A click on the styling setting's description switches it; one on
+        // a line between settings does nothing.
+        let y = (author + 7) as u16;
+        let click = |settings: &mut Settings, row| {
+            settings.handle(Event::Mouse(ratatui::crossterm::event::MouseEvent {
+                kind: MouseEventKind::Down(MouseButton::Left),
+                column: 20,
+                row,
+                modifiers: KeyModifiers::NONE,
+            }))
+        };
+        assert!(matches!(click(&mut settings, y - 2), Action::None));
+        let Action::SaveSettings(values) = click(&mut settings, y) else { panic!("not saved") };
+        assert_eq!(values.styling, Styling::Minimal);
+        assert!(screen(&mut settings).contains("only the markdown symbols are faded"));
+    }
+
+    #[test]
     fn touch_id_is_switched_where_the_mac_has_it() {
         assert!(!screen(&mut Settings::new(Values::default(), None)).contains("Touch ID"));
         let mut settings = Settings::new(Values::default(), Some(false));
-        for _ in 0..3 {
+        for _ in 0..4 {
             press(&mut settings, KeyCode::Down);
         }
         assert!(screen(&mut settings).contains("Touch ID"));
@@ -404,6 +515,7 @@ mod tests {
         settings.touch_id_set(true);
         let text = screen(&mut settings);
         assert!(text.contains("Touch ID is on"), "{text}");
+        assert!(text.contains("Unlocks with your fingerprint"), "{text}");
         assert!(matches!(press(&mut settings, KeyCode::Enter), Action::SetTouchId(false)));
     }
 }

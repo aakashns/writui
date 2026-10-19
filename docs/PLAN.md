@@ -34,7 +34,9 @@ on the password screens, boxed password fields, Esc to clear or quit, and
 the whole repo run through `cargo fmt` (checked in CI). `0.17.0` narrows
 the logo, adds an Unlock button, trims the setup screen, and makes Esc on
 the list quit without asking. `0.18.0` unlocks with Touch ID on Macs
-(asked for out of order). Next:
+(asked for out of order), and `0.19.0` adds the Markdown styling setting,
+list continuation and Cmd+C (also out of order; it replaces the closed
+PR #31's bold-title switch). Next:
 
 1. **Try online** (writui.com/try), below: the creator wants it next, and
    it must work on a phone. Probably two or three PRs, in the order listed.
@@ -190,6 +192,10 @@ The creator's batch of ideas, after M3.
       the right-click menu
 - [x] Tab / Shift+Tab cycle the sort; Ctrl/Cmd+Up/Down to the start / end
       of the post; Ctrl/Cmd+Left/Right on by sentence or row
+- [x] Markdown styling setting (full / minimal / off); each setting says
+      what it does, with lines between them; lists carry on with Enter,
+      Tab / Shift+Tab nest them; Cmd+C copies with no terminal setup
+      (`0.19.0`, asked for out of order)
 
 ## Later
 
