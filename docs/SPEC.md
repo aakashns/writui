@@ -621,10 +621,11 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
   > in the minimal setting, i stil want green for code
 
+  > keep italic in minimal mode
+
 - All of that is the **full** styling, the default. Settings can make it
-  **minimal** (the markdown symbols faded and code green, the rest plain:
-  no bold, italics or underlines) or turn it **off** (everything
-  plain). Links open the same either way. The history shows versions in
+  **minimal** (the markdown symbols faded, italics italic and code green;
+  no bold or underlines) or turn it **off** (everything plain). Links open the same either way. The history shows versions in
   the same styling.
 
 ## Web preview
@@ -800,12 +801,22 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
   > add a separator line between settings
 
+  > also, in the settings screen, there is too much color. maybe just keep
+  > a bar on the left to indicate which one wer'e one. also i want the
+  > selection to appear as on | off with the current selection
+  > highlighted, this way all options are shown
+
 - A Settings screen, reached with `s` on the list (it's on the hint bar).
   Each setting shows its name and value, and below that, faded, a line on
   what the current value does (it changes with the value); a faded line
-  separates one setting from the next. Enter or a click changes it in a
-  dialog, or switches it to its next value; Esc goes back to the list (its
-  hint just says "back"). Changes are stored right away. A short screen
+  separates one setting from the next. The selected setting has a bar
+  (`┃`) to its left; nothing else is highlighted. Settings with a few
+  options show them all on the right, like `on | off` or
+  `full | minimal | off`, the current one highlighted (reversed) and the
+  others faded. ←/→ or a click on an option picks it; Enter or a click
+  elsewhere on the setting goes to the next option. Others (Author, Line
+  width) show their value, and Enter or a click changes it in a dialog.
+  Esc goes back to the list (its hint just says "back"). Changes are stored right away. A short screen
   scrolls to keep the selected setting in view.
 - For now:
   - **Author**: suggested as `author` in the front matter of exports
@@ -815,12 +826,10 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   - **Line width**: how wide the text is in the editor (and the history),
     from 40 to 120 characters; 68 by default.
   - **Markdown styling**: full (the default), minimal or off (see Live
-    markdown formatting). Enter or a click switches to the next one, in
-    that order, no dialog.
+    markdown formatting), shown as `full | minimal | off`.
   - **Nerd Font**: on or off (off by default), for terminals whose font is
     a Nerd Font: writui uses its icons (so far, the search field's
-    magnifier). Enter or a click switches it, no dialog; the hint says
-    "Enter switch".
+    magnifier). Shown as `on | off`.
 - Later: what Tab types, default preview preset, API keys, default
   model, auto-lock timeout — all stored in the vault.
 - The vault file location has to be known *before* unlocking, so it lives

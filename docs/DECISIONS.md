@@ -732,8 +732,8 @@ instant. Changing the password, when it lands, must redo the Touch ID file.
 A three-way setting replaced the "bold title" switch proposed in PR #31
 (closed), which the creator didn't like as a one-off. The styling is still
 worked out in full by the CommonMark parser; minimal and off only map the
-styles at the end (minimal keeps the faded symbols and green code, off
-keeps nothing), so links are found, and open, the same in every mode. Stored in
+styles at the end (minimal keeps the faded symbols, italics and green
+code; off keeps nothing), so links are found, and open, the same in every mode. Stored in
 the vault's key/value table as `markdown_styling`, so no migration: a
 vault without it reads as `full`.
 
@@ -742,10 +742,12 @@ vault without it reads as `full`.
 Each setting takes two rows (name and value, then a faded line saying what
 the current value does) and a faded rule between settings. The screen is
 drawn by hand rather than with ratatui's `List`, so clicks on the rules do
-nothing and the description can be part of the highlighted block. Switched
-settings with more than two values (Markdown styling) go to the next value
-on Enter, rather than opening a dialog: the description shows straight
-away what that value means.
+nothing and each option can be clicked. A reversed block for the selected
+setting was too loud, so a bar (`┃`, box drawing, so any font has it) sits
+left of the column instead (inside it, moving the settings over, if the
+terminal is too narrow). Settings with a few options show them all
+(`on | off`), the current one reversed with a space either side and the
+rest faded; ←/→ and clicks pick one, Enter goes to the next.
 
 ## Lists carry on: from the line's own prefix
 

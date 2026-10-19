@@ -1,12 +1,14 @@
 //! The Settings screen: a few things to set, kept in the vault (but for
-//! Touch ID, which belongs to the Mac). Each setting shows its value, and
-//! below it, faded, what that value does; lines separate them. Enter (or a
-//! click) changes it in a dialog, or switches it to its next value.
+//! Touch ID, which belongs to the Mac). Each setting shows its value (or
+//! all its options, the current one highlighted), and below it, faded,
+//! what that value does; lines separate them, and a bar on the left marks
+//! the selected one. Enter (or a click) changes it in a dialog, or switches
+//! it to its next option; ←/→ or a click on an option picks one.
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{Event, KeyCode, MouseButton, MouseEventKind};
 use ratatui::layout::{Constraint, Layout, Position, Rect};
-use ratatui::style::{Style, Stylize};
+use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{ListState, Paragraph};
 
@@ -52,8 +54,16 @@ pub struct Settings {
     notice: Option<String>,
     error: Option<String>,
     rows_area: Rect,
+    /// Where each option was drawn: the field's index, and the option's.
+    option_hits: Vec<(Rect, usize, usize)>,
     hints: HintBar<Cmd>,
 }
+
+/// The bar beside the selected setting.
+const BAR: &str = "┃";
+
+/// Markdown styling's options, in order.
+const STYLINGS: [Styling; 3] = [Styling::Full, Styling::Minimal, Styling::Off];
 
 impl Settings {
     pub fn new(values: Values, touch_id: Option<bool>) -> Self {
@@ -70,6 +80,7 @@ impl Settings {
             notice: None,
             error: None,
             rows_area: Rect::default(),
+            option_hits: Vec::new(),
             hints: HintBar::default(),
         }
     }
@@ -94,27 +105,61 @@ impl Settings {
         self.fields[self.state.selected().unwrap_or(0).min(self.fields.len() - 1)]
     }
 
-    /// Fields switched to their next value, rather than changed in a
-    /// dialog.
-    fn switched(field: Field) -> bool {
-        matches!(field, Field::Styling | Field::NerdFont | Field::TouchId)
+    fn name(field: Field) -> &'static str {
+        match field {
+            Field::Author => "Author",
+            Field::LineWidth => "Line width",
+            Field::Styling => "Markdown styling",
+            Field::NerdFont => "Nerd Font",
+            Field::TouchId => "Touch ID",
+        }
     }
 
-    /// A field's name and value.
-    fn value(&self, field: Field) -> (&'static str, Span<'static>) {
-        let on_off = |on| Span::raw(if on { "on" } else { "off" });
+    /// The options of a field that's switched rather than changed in a
+    /// dialog, and which one it's on.
+    fn options(&self, field: Field) -> Option<(Vec<&'static str>, usize)> {
+        let on_off = |on: bool| (vec!["on", "off"], if on { 0 } else { 1 });
         match field {
-            Field::Author if self.values.author.is_empty() => {
-                ("Author", Span::raw("none").dim().italic())
-            }
-            Field::Author => ("Author", Span::raw(self.values.author.clone())),
-            Field::LineWidth => {
-                ("Line width", Span::raw(format!("{} characters", self.values.line_width)))
-            }
-            Field::Styling => ("Markdown styling", Span::raw(self.values.styling.name())),
-            Field::NerdFont => ("Nerd Font", on_off(self.values.nerd_font)),
-            Field::TouchId => ("Touch ID", on_off(self.touch_id == Some(true))),
+            Field::Author | Field::LineWidth => None,
+            Field::Styling => Some((
+                STYLINGS.iter().map(|s| s.name()).collect(),
+                STYLINGS.iter().position(|&s| s == self.values.styling).unwrap_or(0),
+            )),
+            Field::NerdFont => Some(on_off(self.values.nerd_font)),
+            Field::TouchId => Some(on_off(self.touch_id == Some(true))),
         }
+    }
+
+    /// The value of a field changed in a dialog.
+    fn value(&self, field: Field) -> Span<'static> {
+        match field {
+            Field::Author if self.values.author.is_empty() => Span::raw("none").dim().italic(),
+            Field::Author => Span::raw(self.values.author.clone()),
+            _ => Span::raw(format!("{} characters", self.values.line_width)),
+        }
+    }
+
+    /// Switch the selected field to option `i`.
+    fn choose(&mut self, i: usize) -> Action {
+        let field = self.field();
+        if self.options(field).is_none_or(|(_, current)| current == i) {
+            return Action::None;
+        }
+        let mut values = self.values.clone();
+        match field {
+            Field::Styling => values.styling = STYLINGS[i.min(STYLINGS.len() - 1)],
+            Field::NerdFont => values.nerd_font = i == 0,
+            Field::TouchId => return Action::SetTouchId(i == 0),
+            Field::Author | Field::LineWidth => {}
+        }
+        self.save(values)
+    }
+
+    /// ←/→: the option before or after the current one.
+    fn step_option(&mut self, delta: isize) -> Action {
+        let Some((options, current)) = self.options(self.field()) else { return Action::None };
+        let i = (current as isize + delta).clamp(0, options.len() as isize - 1);
+        self.choose(i as usize)
     }
 
     /// What a field's value does, now.
@@ -129,7 +174,7 @@ impl Settings {
             }
             Field::Styling => match self.values.styling {
                 Styling::Full => "Bold, italics and code are formatted; markdown symbols faded.",
-                Styling::Minimal => "Plain text, but code is green and markdown symbols faded.",
+                Styling::Minimal => "No bold: just italics, green code and faded markdown symbols.",
                 Styling::Off => "Markdown shows as plain text, with no formatting.",
             }
             .into(),
@@ -158,6 +203,12 @@ impl Settings {
         frame.render_widget(Paragraph::new("Settings".bold()), column(header, COLUMN_WIDTH));
 
         let col = column(rows, COLUMN_WIDTH);
+        // The bar goes left of the column, where there's room; otherwise
+        // the settings move over for it.
+        let (bar_x, col) = match col.x.checked_sub(2) {
+            Some(x) => (x, col),
+            None => (col.x, Rect { x: col.x + 2, width: col.width.saturating_sub(2), ..col }),
+        };
         let width = col.width as usize;
         // Scroll, if the screen is too short for them all, to keep the
         // selected one in view.
@@ -166,6 +217,7 @@ impl Settings {
         let first =
             (*self.state.offset_mut()).min(selected).max((selected + 1).saturating_sub(fit));
         *self.state.offset_mut() = first;
+        self.option_hits.clear();
         let mut y = col.y;
         for (i, &field) in self.fields.iter().enumerate().skip(first) {
             if y >= col.bottom() {
@@ -176,19 +228,49 @@ impl Settings {
                 frame.render_widget(Paragraph::new(rule), Rect { y, height: 1, ..col });
                 y += 1;
             }
-            let (name, value) = self.value(field);
-            let value = Span::styled(
-                truncate(&value.content, width.saturating_sub(name.len() + 2)),
-                value.style,
-            );
-            let pad = width.saturating_sub(name.len() + value.width());
+            let name = Self::name(field);
+            // On the right: the options, the current one highlighted (each
+            // with a space either side, so the highlight has some room), or
+            // the value.
+            let value: Vec<Span> = match self.options(field) {
+                Some((options, current)) => {
+                    let mut spans = Vec::new();
+                    let total: usize =
+                        options.iter().map(|o| o.len() + 2).sum::<usize>() + options.len() - 1;
+                    let mut x = col.right().saturating_sub(total as u16);
+                    for (n, option) in options.iter().enumerate() {
+                        if n > 0 {
+                            spans.push("|".dim());
+                            x += 1;
+                        }
+                        let text = format!(" {option} ");
+                        let w = text.len() as u16;
+                        spans.push(if n == current { text.reversed() } else { text.dim() });
+                        self.option_hits.push((Rect::new(x, y, w, 1), i, n));
+                        x += w;
+                    }
+                    spans
+                }
+                None => {
+                    let value = self.value(field);
+                    let text = truncate(&value.content, width.saturating_sub(name.len() + 2));
+                    vec![Span::styled(text, value.style)]
+                }
+            };
+            let used: usize = name.len() + value.iter().map(Span::width).sum::<usize>();
+            let mut first_line =
+                vec![Span::raw(name).bold(), Span::raw(" ".repeat(width.saturating_sub(used)))];
+            first_line.extend(value);
             let lines = vec![
-                Line::from(vec![Span::raw(name).bold(), Span::raw(" ".repeat(pad)), value]),
+                Line::from(first_line),
                 Line::from(truncate(&self.describe(field), width).dim()),
             ];
-            let style = if i == selected { Style::new().reversed() } else { Style::new() };
             let area = Rect { y, height: 2, ..col }.intersection(col);
-            frame.render_widget(Paragraph::new(lines).style(style), area);
+            frame.render_widget(Paragraph::new(lines), area);
+            if i == selected {
+                let bar = Paragraph::new(vec![Line::from(BAR), Line::from(BAR)]);
+                frame.render_widget(bar, Rect { x: bar_x, width: 1, ..area });
+            }
             y += 2;
         }
         self.rows_area = Rect { height: y - col.y, ..col };
@@ -208,16 +290,14 @@ impl Settings {
             self.hints.render(frame, hint_area, &hints);
             return;
         }
-        let change = if Self::switched(self.field()) { "switch" } else { "change" };
-        self.hints.render(
-            frame,
-            hint_area,
-            &[
-                hint("Enter", change, Cmd::Change),
-                hint("Esc", "back", Cmd::Back),
-                hint("Ctrl+O", "lock", Cmd::Lock),
-            ],
-        );
+        let mut hints = match self.options(self.field()) {
+            Some(_) => {
+                vec![hint("←/→", "choose", Cmd::Change), hint("Enter", "switch", Cmd::Change)]
+            }
+            None => vec![hint("Enter", "change", Cmd::Change)],
+        };
+        hints.extend([hint("Esc", "back", Cmd::Back), hint("Ctrl+O", "lock", Cmd::Lock)]);
+        self.hints.render(frame, hint_area, &hints);
     }
 
     pub fn handle(&mut self, event: Event) -> Action {
@@ -240,6 +320,8 @@ impl Settings {
                 KeyCode::Esc => self.run(Cmd::Back),
                 KeyCode::Up => self.move_by(-1),
                 KeyCode::Down => self.move_by(1),
+                KeyCode::Left => self.step_option(-1),
+                KeyCode::Right => self.step_option(1),
                 _ => Action::None,
             },
             Event::Mouse(mouse) => match mouse.kind {
@@ -248,6 +330,12 @@ impl Settings {
                 MouseEventKind::Down(MouseButton::Left) => {
                     if let Some(cmd) = self.hints.hit(mouse.column, mouse.row) {
                         return self.run(cmd);
+                    }
+                    let at = Position::new(mouse.column, mouse.row);
+                    let option = self.option_hits.iter().find(|(rect, ..)| rect.contains(at));
+                    if let Some(&(_, field, option)) = option {
+                        self.state.select(Some(field));
+                        return self.choose(option);
                     }
                     if !self.rows_area.contains(Position::new(mouse.column, mouse.row)) {
                         return Action::None;
@@ -281,28 +369,14 @@ impl Settings {
         match cmd {
             Cmd::Back => Action::BackToList(None),
             Cmd::Lock => Action::Lock,
-            // On or off, or one of three: no need to ask.
-            Cmd::Change if self.field() == Field::Styling => {
-                let mut values = self.values.clone();
-                values.styling = match values.styling {
-                    Styling::Full => Styling::Minimal,
-                    Styling::Minimal => Styling::Off,
-                    Styling::Off => Styling::Full,
-                };
-                self.save(values)
-            }
-            Cmd::Change if self.field() == Field::NerdFont => {
-                let mut values = self.values.clone();
-                values.nerd_font = !values.nerd_font;
-                self.save(values)
-            }
-            Cmd::Change if self.field() == Field::TouchId => {
-                Action::SetTouchId(self.touch_id != Some(true))
-            }
-            Cmd::Change => {
-                self.dialog = Some(self.dialog_for(self.field()));
-                Action::None
-            }
+            Cmd::Change => match self.options(self.field()) {
+                // A few options: no need to ask, just go to the next.
+                Some((options, current)) => self.choose((current + 1) % options.len()),
+                None => {
+                    self.dialog = Some(self.dialog_for(self.field()));
+                    Action::None
+                }
+            },
             Cmd::Cancel => {
                 self.dialog = None;
                 Action::None
@@ -481,7 +555,8 @@ mod tests {
     fn each_setting_says_what_it_does_with_lines_between_and_clicks_change_them() {
         let mut settings = Settings::new(Values::default(), None);
         let text = screen(&mut settings);
-        let rows: Vec<&str> = text.lines().map(str::trim).collect();
+        let rows: Vec<&str> =
+            text.lines().map(|r| r.trim().trim_start_matches(BAR).trim()).collect();
         let author = rows.iter().position(|r| r.starts_with("Author")).unwrap();
         assert!(rows[author + 1].starts_with("Exports leave the author out"), "{text}");
         assert!(rows[author + 2].starts_with("────"), "{text}");
@@ -500,7 +575,53 @@ mod tests {
         assert!(matches!(click(&mut settings, y - 2), Action::None));
         let Action::SaveSettings(values) = click(&mut settings, y) else { panic!("not saved") };
         assert_eq!(values.styling, Styling::Minimal);
-        assert!(screen(&mut settings).contains("but code is green"));
+        assert!(screen(&mut settings).contains("No bold: just italics"));
+    }
+
+    #[test]
+    fn options_show_side_by_side_and_can_be_picked() {
+        let mut settings = Settings::new(Values::default(), None);
+        press(&mut settings, KeyCode::Down);
+        press(&mut settings, KeyCode::Down);
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|frame| settings.render(frame)).unwrap();
+        let buffer = terminal.backend().buffer().clone();
+        let row = |y: u16| (0..80).map(|x| buffer[(x, y)].symbol()).collect::<String>();
+        // The cell where `text` starts on row `y`.
+        let at = |y: u16, text: &str| {
+            let row = row(y);
+            row[..row.find(text).unwrap()].chars().count() as u16
+        };
+        let y = (0..24).find(|&y| row(y).contains("Markdown styling")).unwrap();
+        assert!(row(y).trim_end().ends_with(" full | minimal | off"), "{}", row(y));
+        // The current option is highlighted, the others faded; a bar marks
+        // the selected setting, and nothing else is reversed.
+        let x = at(y, " full ") + 1;
+        assert!(buffer[(x, y)].modifier.contains(ratatui::style::Modifier::REVERSED));
+        assert!(buffer[(x + 7, y)].modifier.contains(ratatui::style::Modifier::DIM));
+        let name = at(y, "Markdown");
+        assert!(!buffer[(name, y)].modifier.contains(ratatui::style::Modifier::REVERSED));
+        assert_eq!(buffer[(name - 2, y)].symbol(), BAR);
+        assert_eq!(buffer[(name - 2, y + 1)].symbol(), BAR);
+        assert_ne!(buffer[(name - 2, y - 3)].symbol(), BAR);
+        // ←/→ pick the option before or after; past the ends, nothing.
+        let Action::SaveSettings(values) = press(&mut settings, KeyCode::Right) else {
+            panic!("not saved")
+        };
+        assert_eq!(values.styling, Styling::Minimal);
+        press(&mut settings, KeyCode::Right);
+        assert!(matches!(press(&mut settings, KeyCode::Right), Action::None));
+        // A click on an option picks it, on any setting.
+        let x = at(y + 3, " on ") + 1;
+        let click = settings.handle(Event::Mouse(ratatui::crossterm::event::MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: x,
+            row: y + 3,
+            modifiers: KeyModifiers::NONE,
+        }));
+        let Action::SaveSettings(values) = click else { panic!("not saved") };
+        assert!(values.nerd_font);
+        assert!(settings.field() == Field::NerdFont);
     }
 
     #[test]
