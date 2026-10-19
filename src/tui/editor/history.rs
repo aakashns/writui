@@ -21,7 +21,7 @@ use super::super::widgets::{COLUMN_WIDTH, column, truncate};
 use super::markdown::Markup;
 use super::row_line;
 use super::wrap::{Row, layout};
-use crate::vault::Version;
+use crate::vault::{Styling, Version};
 
 /// What the editor should do after an event.
 pub enum Outcome {
@@ -58,6 +58,8 @@ pub struct History {
     hints: HintBar<Cmd>,
     /// How wide a version's text is, as in the editor.
     line_width: usize,
+    /// How its markdown is formatted, as in the editor.
+    styling: Styling,
 }
 
 /// A version's full text, laid out like the editor does.
@@ -72,7 +74,13 @@ struct Reading {
 }
 
 impl History {
-    pub fn new(title: String, versions: Vec<Version>, changed: bool, line_width: usize) -> Self {
+    pub fn new(
+        title: String,
+        versions: Vec<Version>,
+        changed: bool,
+        line_width: usize,
+        styling: Styling,
+    ) -> Self {
         let state = ListState::default().with_selected((!versions.is_empty()).then_some(0));
         History {
             title,
@@ -84,13 +92,14 @@ impl History {
             dialog: None,
             hints: HintBar::default(),
             line_width,
+            styling,
         }
     }
 
     /// Open a version (with its text) to read.
     pub fn read(&mut self, version: Version) {
         let rope = Rope::from_str(&version.body);
-        let markup = Markup::new(&rope);
+        let markup = Markup::new(&rope, self.styling);
         self.reading =
             Some(Reading { version, rope, markup, rows: Vec::new(), width: 0, top: 0, height: 0 });
     }

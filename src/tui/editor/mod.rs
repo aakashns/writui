@@ -6,6 +6,7 @@ mod browser;
 mod buffer;
 mod clipboard;
 mod history;
+mod lists;
 mod markdown;
 mod undo;
 mod wrap;
@@ -33,7 +34,9 @@ use super::list::display_title;
 use super::menu::{self, Menu, item};
 use super::widgets::truncate;
 use crate::files::{self, front_matter};
-use crate::vault::{ExportSettings, Post, Settings, TITLE_PREFIX, Version, title_from_first_line};
+use crate::vault::{
+    ExportSettings, Post, Settings, Styling, TITLE_PREFIX, Version, title_from_first_line,
+};
 use autosave::Autosave;
 use buffer::Buffer;
 use clipboard::Clipboard;
@@ -166,6 +169,8 @@ pub struct Editor {
     context: Option<ContextMenu<Cmd>>,
     /// How wide the text is, at most (from Settings).
     line_width: usize,
+    /// How much of the markdown is formatted (from Settings).
+    styling: Styling,
     /// The author's name, for the front matter of exports (from Settings).
     author: String,
     /// The post's history, shown instead of the post while open.
@@ -222,6 +227,7 @@ impl Editor {
             menu: None,
             context: None,
             line_width: settings.line_width as usize,
+            styling: settings.styling,
             author: settings.author,
             history: None,
             hints: HintBar::default(),
@@ -286,6 +292,7 @@ impl Editor {
             versions,
             self.changed_since_version(),
             self.line_width,
+            self.styling,
         ));
     }
 
@@ -478,6 +485,16 @@ impl Editor {
     }
 
     pub fn handle(&mut self, event: Event) -> Action {
+        let action = self.handle_event(event);
+        // What's selected is on the clipboard (once a drag is over), for
+        // the terminal's own copy key.
+        if !self.dragging {
+            self.clipboard.select(self.buffer.selected_text().as_deref());
+        }
+        action
+    }
+
+    fn handle_event(&mut self, event: Event) -> Action {
         if let Some(history) = &mut self.history {
             return match history.handle(event) {
                 Outcome::None => Action::None,
@@ -554,7 +571,7 @@ impl Editor {
         match event {
             Event::Key(key) => return self.key(key),
             Event::Mouse(mouse) => return self.mouse(mouse),
-            Event::Paste(text) => self.edit(Kind::Other, |b| b.paste(&text)),
+            Event::Paste(text) => self.paste(text),
             _ => {}
         }
         Action::None
@@ -635,8 +652,23 @@ impl Editor {
                 let kind = Kind::Type { space: ch.is_whitespace() };
                 self.edit(kind, |b| b.insert(ch.encode_utf8(&mut [0; 4])))
             }
-            KeyCode::Enter => self.edit(Kind::Other, |b| b.insert("\n")),
-            KeyCode::Tab => self.edit(Kind::Other, |b| b.insert(TAB)),
+            // Shift+Enter (or Option+Enter) starts a plain line, even in a
+            // list.
+            KeyCode::Enter if shift || alt => self.edit(Kind::Other, |b| b.insert("\n")),
+            KeyCode::Enter => self.edit(Kind::Other, Buffer::newline),
+            // At the start of a list item, Tab and Shift+Tab nest it and
+            // bring it back out.
+            KeyCode::BackTab => self.edit(Kind::Other, |b| {
+                b.indent_item(false);
+            }),
+            KeyCode::Tab if shift => self.edit(Kind::Other, |b| {
+                b.indent_item(false);
+            }),
+            KeyCode::Tab => self.edit(Kind::Other, |b| {
+                if !b.indent_item(true) {
+                    b.insert(TAB)
+                }
+            }),
             KeyCode::Backspace => self.edit(Kind::Backspace, Buffer::backspace),
             KeyCode::Delete => self.edit(Kind::Delete, Buffer::delete),
             // Like Home and End, then on by sentence or row.
@@ -776,7 +808,7 @@ impl Editor {
             Cmd::Paste => {
                 let text = self.clipboard.paste();
                 if !text.is_empty() {
-                    self.edit(Kind::Other, |b| b.paste(&text));
+                    self.paste(text);
                 }
             }
             Cmd::Deselect => self.buffer.clear_selection(),
@@ -979,12 +1011,27 @@ impl Editor {
         });
     }
 
+    /// Paste `text` at the cursor, or over the selection.
+    fn paste(&mut self, text: String) {
+        // The selection is on the clipboard, so that's what the terminal
+        // pastes: put what was there before it instead.
+        let text = match self.buffer.selection() {
+            Some(_) => self.clipboard.over_selection(text),
+            None => text,
+        };
+        self.edit(Kind::Other, |b| b.paste(&text));
+    }
+
     /// Change the text (recording it for undo), then re-wrap and scroll to
     /// the cursor.
     fn edit(&mut self, kind: Kind, f: impl FnOnce(&mut Buffer)) {
         let before = self.buffer.clone();
         // Replacing a selection is a step of its own.
         let replacing = before.selection().is_some();
+        if replacing {
+            // It wasn't selected to be copied.
+            self.clipboard.restore();
+        }
         let kind = if replacing { Kind::Other } else { kind };
         f(&mut self.buffer);
         // Every edit changes the length, unless it replaced a selection; if
@@ -1111,10 +1158,12 @@ impl Editor {
                 self.dragging = true;
             }
             2 => {
+                self.dragging = false;
                 let word = self.buffer.word_at(pos);
                 self.buffer.select(word.start, word.end);
             }
             _ => {
+                self.dragging = false;
                 let line = self.buffer.line_at(pos);
                 self.buffer.select(line.start, line.end);
             }
@@ -1165,7 +1214,7 @@ impl Editor {
     fn refresh(&mut self) {
         if self.stale {
             self.rows = layout(self.buffer.rope(), self.width);
-            self.markup = Markup::new(self.buffer.rope());
+            self.markup = Markup::new(self.buffer.rope(), self.styling);
             self.stale = false;
         }
     }
@@ -1460,6 +1509,63 @@ mod tests {
         let mut h = Harness::new("# Title\n");
         h.key(KeyCode::Tab);
         assert_eq!(h.editor.text(), "# Title\n  ");
+    }
+
+    #[test]
+    fn enter_carries_lists_on_and_an_empty_item_ends_them() {
+        let mut h = Harness::new("# Title\n");
+        h.typed("- milk\neggs\n\n\nThen:\n1. [ ] call\nwrite\n\n");
+        assert_eq!(
+            h.editor.text(),
+            "# Title\n- milk\n- eggs\n\nThen:\n1. [ ] call\n2. [ ] write\n"
+        );
+        // Undo takes back the ending as one step.
+        h.ctrl('z');
+        assert_eq!(
+            h.editor.text(),
+            "# Title\n- milk\n- eggs\n\nThen:\n1. [ ] call\n2. [ ] write\n3. [ ] "
+        );
+        // Enter mid-item splits it; before the bullet, it's a plain line.
+        let mut h = Harness::new("# Title\n> - one two");
+        for _ in 0..4 {
+            h.key(KeyCode::Left);
+        }
+        h.key(KeyCode::Enter);
+        assert_eq!(h.editor.text(), "# Title\n> - one\n> -  two");
+        h.key(KeyCode::Home);
+        h.key(KeyCode::Enter);
+        assert_eq!(h.editor.text(), "# Title\n> - one\n\n> -  two");
+        // Shift+Enter is always a plain line.
+        let mut h = Harness::new("# Title\n- one");
+        let shift =
+            KeyEvent::new_with_kind(KeyCode::Enter, KeyModifiers::SHIFT, KeyEventKind::Press);
+        h.editor.handle(Event::Key(shift));
+        assert_eq!(h.editor.text(), "# Title\n- one\n");
+    }
+
+    #[test]
+    fn tab_and_shift_tab_nest_list_items() {
+        let mut h = Harness::new("# Title\n- one\n");
+        h.typed("- two\n");
+        h.key(KeyCode::Tab);
+        h.typed("nested\n");
+        assert_eq!(h.editor.text(), "# Title\n- one\n- two\n  - nested\n  - ");
+        // Enter on an empty nested item brings it out a level.
+        h.key(KeyCode::Enter);
+        h.typed("three");
+        assert_eq!(h.editor.text(), "# Title\n- one\n- two\n  - nested\n- three");
+        // At the start of the item (or in its bullet), Tab nests it, and
+        // Shift+Tab brings it out; the cursor stays put in the text.
+        h.key(KeyCode::Home);
+        h.key(KeyCode::Tab);
+        assert_eq!(h.editor.text(), "# Title\n- one\n- two\n  - nested\n  - three");
+        h.key(KeyCode::BackTab);
+        assert_eq!(h.editor.text(), "# Title\n- one\n- two\n  - nested\n- three");
+        // Elsewhere, Tab types spaces and Shift+Tab does nothing.
+        h.key(KeyCode::End);
+        h.key(KeyCode::Tab);
+        h.key(KeyCode::BackTab);
+        assert_eq!(h.editor.text(), "# Title\n- one\n- two\n  - nested\n- three  ");
     }
 
     #[test]
@@ -2010,6 +2116,35 @@ mod tests {
             h.editor.handle(Event::Key(KeyEvent::from(KeyCode::Enter))),
             Action::Quit
         ));
+    }
+
+    #[test]
+    fn selected_text_is_on_the_clipboard_for_the_terminals_copy_key() {
+        let mut h = Harness::new("# Title\nhello world");
+        h.editor.clipboard.copy("a link");
+        let click = MouseEventKind::Down(MouseButton::Left);
+        // Double-click "world": it's on the clipboard, for Cmd+C.
+        h.mouse(click, LEFT + 8, 2);
+        h.mouse(click, LEFT + 8, 2);
+        assert_eq!(h.editor.clipboard.paste(), "world");
+        // Cmd+V over it (the terminal pastes the clipboard): it's replaced
+        // by what was copied before, which is back on the clipboard.
+        h.editor.handle(Event::Paste("world".into()));
+        assert_eq!(h.editor.text(), "# Title\nhello a link");
+        assert_eq!(h.editor.clipboard.paste(), "a link");
+        // Selected, then left alone: it stays on the clipboard.
+        h.mouse(click, LEFT + 2, 3);
+        h.mouse(click, LEFT + 2, 2);
+        h.mouse(click, LEFT + 2, 2);
+        h.key(KeyCode::Right);
+        assert_eq!(h.editor.clipboard.paste(), "hello");
+        // Selected and typed over: what was there comes back.
+        h.mouse(click, LEFT + 8, 2);
+        h.mouse(click, LEFT + 8, 2);
+        assert_eq!(h.editor.clipboard.paste(), "link");
+        h.typed("note");
+        assert_eq!(h.editor.text(), "# Title\nhello a note");
+        assert_eq!(h.editor.clipboard.paste(), "hello");
     }
 
     #[test]

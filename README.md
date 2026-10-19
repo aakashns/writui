@@ -9,7 +9,9 @@ A writing app for the terminal. No nonsense. Markdown. Local. Encrypted.
 - **Plain markdown.** You write markdown. Each post starts with a `# Title`.
   It stays plain markdown on screen, formatted as you type: headings and
   bold in bold, italics in italics, code in green, with the markdown
-  symbols faded.
+  symbols faded. (Settings can tone that down to faded symbols, italics
+  and green code, or turn it off.) Lists carry on as you press Enter, and Tab nests an
+  item.
 - **Mouse and keyboard.** Click, scroll and press buttons with the mouse, or
   use shortcuts. The bar at the bottom of the screen shows the shortcuts
   for where you are, and you can click those too. While writing, Ctrl+K
@@ -197,9 +199,10 @@ can open it after a fingerprint, is kept in `~/.config/writui/touch-id/`.
   for 30 days.
 - **Settings** (`s` on the list): your name, added as the
   `author` in exported front matter, how wide the text is while
-  writing (68 characters unless you change it), and whether your
+  writing (68 characters unless you change it), how much markdown
+  styling you see (full, minimal or off), and whether your
   terminal's font is a [Nerd Font](https://www.nerdfonts.com), so writui
-  can use its icons.
+  can use its icons. Under each setting is a line saying what it does now.
 
 ### Cmd keys on a Mac
 
@@ -207,29 +210,12 @@ In the editor, Cmd works like Ctrl (Cmd+Z undoes, Cmd+X cuts, Cmd+A
 selects all, Cmd+K opens the menu) wherever your terminal passes Cmd on to
 programs. Cmd+V is your terminal's paste, which writui understands.
 
-Cmd+C is different: terminals keep it to copy *their own* selection, and
-writui draws its own selection, so there's nothing for the terminal to
-copy. Ctrl+C always works. To make Cmd+C copy in writui too, tell your
-terminal to pass it on:
-
-- **Alacritty**, in `~/.config/alacritty/alacritty.toml`:
-
-  ```toml
-  [[keyboard.bindings]]
-  key = "C"
-  mods = "Command"
-  action = "ReceiveChar"
-  ```
-
-- **Ghostty**, in its config (it still copies the terminal's own selection
-  when there is one):
-
-  ```
-  keybind = performable:super+c=copy_to_clipboard
-  ```
-
-- **iTerm2** (not tried yet): Settings → Keys → Key Bindings, add Cmd+C
-  with the action "Send Escape Sequence" and `[99;9u`.
+Cmd+C works too, in any terminal, with nothing to set up: whatever you
+select in writui goes on the clipboard right away, so it's there when you
+press Cmd+C (which the terminal keeps for itself). It doesn't get in the
+way of what you'd copied before: typing or pasting over a selection puts
+that back on the clipboard, and Cmd+V over a selection pastes it, not
+the selection. Ctrl+C copies too.
 
 Cmd+K needs nothing in Alacritty (it sends Ctrl+L, which also opens the
 menu). In Ghostty and iTerm2 it clears the screen unless you pass it on

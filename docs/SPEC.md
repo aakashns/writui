@@ -125,8 +125,10 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   paste, so it just works. Cmd+C is the terminal's copy of *its own*
   selection; in nano that's what you see, because nano leaves the mouse
   to the terminal, but writui draws its own selection (to know what's
-  selected), so the terminal has nothing to copy. The README shows the
-  one line of terminal config that passes Cmd+C on to writui. Alacritty
+  selected), so the terminal has nothing to copy of its own. So writui
+  puts whatever is selected on the clipboard as soon as it's selected
+  (see Editing), and Cmd+C works with no setup. Passing Cmd+C on to
+  writui (the README's terminal config) still works too. Alacritty
   sends Ctrl+L for Cmd+K, so Ctrl+L opens (and closes) the menu too, and
   Cmd+K works there without any config.
 
@@ -453,7 +455,31 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   - Home/End go to the start/end of the row on screen, and so do
     Ctrl+Left/Right (and Cmd+Left/Right on macOS); Ctrl+Home/Ctrl+End
     to the start/end of the post. PageUp/PageDown move a screenful.
-  - Tab types two spaces (to be configurable in settings).
+  - Tab types two spaces (to be configurable in settings), except at the
+    start of a list item (below).
+
+  > in the editor itself, i want automatic continuation for bullet points,
+  > checkboxes, numbered lists etc. on pressing enter. i also want tab and
+  > shift+tab to do the right thing at the start of a list line i.e. indent
+  > or unindent the item. it doesn't have to be perfect covering every
+  > case, just good enough for the common cases
+
+- Lists carry on: Enter in a list item starts the next one with the same
+  bullet (`-`, `*`, `+`), the next number (`1.` → `2.`, `1)` → `2)`), and
+  an unticked `[ ] ` if it's a task, at the same indent. Quotes (`> `)
+  carry on the same way. Enter mid-item splits it; with the cursor before
+  the bullet, it's a plain new line.
+  - Enter on an empty item ends the list: the bullet goes, leaving a blank
+    line to type on. A nested empty item comes out a level instead.
+  - Shift+Enter (or Option+Enter) is always a plain new line.
+  - With the cursor at the start of an item (anywhere up to the end of its
+    bullet, number or task box), Tab nests it under the item above, lined
+    up with that item's text; Shift+Tab brings it back out to its parent's
+    level. Elsewhere Tab types two spaces, and Shift+Tab does nothing.
+  - A numbered item nested this way starts again at 1 (markdown only
+    takes a nested numbered list that starts at 1 as a list); brought back
+    out, it carries on from the number above it. Other numbers aren't
+    redone.
 - Opening a post puts the cursor back where it was when the post was last
   closed, as near the middle of the screen as the text allows. A post that
   has never been opened starts with the cursor at the end.
@@ -473,6 +499,21 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - Copy / cut / paste with the system clipboard: Ctrl+C / Ctrl+X / Ctrl+V.
   If there's no system clipboard (e.g. no display), they still work inside
   writui. Pasting from the terminal (Cmd+V) also works.
+
+  > finally, please make Cmd+c and Cmd+v work on mac for copy and paste. i
+  > mean, if it works on nano, why doesn't it work here?
+
+- Selecting text puts it on the clipboard straight away (once a drag ends),
+  so Cmd+C needs no terminal setup: the terminal's own Cmd+C finds nothing
+  of its own to copy, and the selection is already there. Until it's
+  copied for real (Ctrl+C, Cut, the menu), that copy is provisional:
+  - Typing, Backspace or Delete over the selection, or pasting over it,
+    puts back what was on the clipboard before it was selected (unless
+    something else was copied since).
+  - Cmd+V (or Ctrl+V) over a selection pastes what was on the clipboard
+    before it, not the selection itself.
+  - Moving on from the selection (a click, an arrow key, Esc) leaves it on
+    the clipboard, as if copied.
 
   > add a context menu for when i right click on a selection to cut, copy,
   > paste (disabled if clipboard is empty)
@@ -573,6 +614,19 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 - List items and quotes wrap with a hanging indent: later rows line up under
   the text, not the bullet. On screen only; no spaces are added to the text.
 - Later: syntax highlighting in code blocks, per language.
+
+  > add a new setting called markdown styling with values "off", "minimal"
+  > (no bold text, just markdown markers are muted), and "full" (default,
+  > current)
+
+  > in the minimal setting, i stil want green for code
+
+  > keep italic in minimal mode
+
+- All of that is the **full** styling, the default. Settings can make it
+  **minimal** (the markdown symbols faded, italics italic and code green;
+  no bold or underlines) or turn it **off** (everything plain). Links open the same either way. The history shows versions in
+  the same styling.
 
 ## Web preview
 
@@ -742,10 +796,28 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
 
 **Details**
 
-- A Settings screen, reached with `s` on the list (it's on the hint bar). Each row is a setting and its value; Enter or a
-  click changes it in a dialog; Esc goes back to the list (its hint
-  just says "back"). Changes are
-  stored right away.
+  > for each setting add a line below explaning what the currnet behavior
+  > is in lighter text
+
+  > add a separator line between settings
+
+  > also, in the settings screen, there is too much color. maybe just keep
+  > a bar on the left to indicate which one wer'e one. also i want the
+  > selection to appear as on | off with the current selection
+  > highlighted, this way all options are shown
+
+- A Settings screen, reached with `s` on the list (it's on the hint bar).
+  Each setting shows its name and value, and below that, faded, a line on
+  what the current value does (it changes with the value); a faded line
+  separates one setting from the next. The selected setting has a bar
+  (`┃`) to its left; nothing else is highlighted. Settings with a few
+  options show them all on the right, like `on | off` or
+  `full | minimal | off`, the current one highlighted (reversed) and the
+  others faded. ←/→ or a click on an option picks it; Enter or a click
+  elsewhere on the setting goes to the next option. Others (Author, Line
+  width) show their value, and Enter or a click changes it in a dialog.
+  Esc goes back to the list (its hint just says "back"). Changes are stored right away. A short screen
+  scrolls to keep the selected setting in view.
 - For now:
   - **Author**: suggested as `author` in the front matter of exports
     (after `title`), unless it's empty. Like the description and slug, it
@@ -753,10 +825,11 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
     front matter.
   - **Line width**: how wide the text is in the editor (and the history),
     from 40 to 120 characters; 68 by default.
+  - **Markdown styling**: full (the default), minimal or off (see Live
+    markdown formatting), shown as `full | minimal | off`.
   - **Nerd Font**: on or off (off by default), for terminals whose font is
     a Nerd Font: writui uses its icons (so far, the search field's
-    magnifier). Enter or a click switches it, no dialog; the hint says
-    "Enter switch".
+    magnifier). Shown as `on | off`.
 - Later: what Tab types, default preview preset, API keys, default
   model, auto-lock timeout — all stored in the vault.
 - The vault file location has to be known *before* unlocking, so it lives

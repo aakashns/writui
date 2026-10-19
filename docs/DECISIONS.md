@@ -726,3 +726,62 @@ password unlock quietly makes a new one.
 anyway), so Touch ID can be turned on from Settings without retyping the
 password. Opening with the key skips Argon2, so Touch ID unlocks are
 instant. Changing the password, when it lands, must redo the Touch ID file.
+
+## Markdown styling: full, minimal, off
+
+A three-way setting replaced the "bold title" switch proposed in PR #31
+(closed), which the creator didn't like as a one-off. The styling is still
+worked out in full by the CommonMark parser; minimal and off only map the
+styles at the end (minimal keeps the faded symbols, italics and green
+code; off keeps nothing), so links are found, and open, the same in every mode. Stored in
+the vault's key/value table as `markdown_styling`, so no migration: a
+vault without it reads as `full`.
+
+## Settings say what each value does
+
+Each setting takes two rows (name and value, then a faded line saying what
+the current value does) and a faded rule between settings. The screen is
+drawn by hand rather than with ratatui's `List`, so clicks on the rules do
+nothing and each option can be clicked. A reversed block for the selected
+setting was too loud, so a bar (`┃`, box drawing, so any font has it) sits
+left of the column instead (inside it, moving the settings over, if the
+terminal is too narrow). Settings with a few options show them all
+(`on | off`), the current one reversed with a space either side and the
+rest faded; ←/→ and clicks pick one, Enter goes to the next.
+
+## Lists carry on: from the line's own prefix
+
+Enter, Tab and Shift+Tab look only at the current line's prefix (any `>`
+quote markers, indent, `-`/`*`/`+` or `1.`/`1)`, an optional task box),
+like the hanging indent does, not the markdown parser: it's what the
+writer sees, and it works on half-typed lists. Nesting lines an item up
+with the text of the item above at its level (2 columns after `- `, 3
+after `1. `), which is what CommonMark needs to make it a child; outdenting
+goes back to the nearest item above with a smaller indent. It only looks
+back within the paragraph (to the last blank line). A nested numbered item
+is renumbered 1: CommonMark only lets a numbered list starting at 1
+interrupt a paragraph, so `3.` nested under an item is just text. Brought
+out, it takes the number after the item above at its new level. Nothing
+else is renumbered. Enter on an empty item ends the list (or outdents a
+nested one), as in most editors. Shift+Enter arrives as Shift+Enter with
+the kitty protocol, and as Alt+Enter where the terminal sends ESC CR (the
+creator's Alacritty config does), so both are a plain new line.
+
+## Cmd+C: the selection goes on the clipboard as it's made
+
+Terminals keep Cmd+C to copy their own selection, and writui (which draws
+its own) never sees it, so Cmd+C couldn't work without terminal config.
+Mouse capture can't be given up (everything is clickable), and there's no
+escape sequence to set the terminal's selection. So selecting text in the
+editor puts it on the system clipboard straight away (after a drag ends,
+not on every mouse move). To keep that from clobbering what was copied
+before, it's provisional: writui remembers the clipboard's text from
+before the selection. Typing, deleting or pasting over the selection puts
+that back; a paste over the selection whose text is the selection itself
+(the terminal's Cmd+V reading the clipboard) pastes the earlier text
+instead. Leaving the selection (click, arrow, Esc) keeps it on the
+clipboard, as Cmd+C would. Nothing is put back if something else was
+copied in the meantime. The trade-off: "select, Cmd+C, then type over the
+selection" loses the copy (Cmd+X is the way to do that). Non-text clipboard
+contents (an image) can't be remembered, so selecting text replaces them.
+Tests use a per-thread fake clipboard rather than the real one.

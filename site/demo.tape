@@ -56,11 +56,13 @@ Type "I write every morning, and lately I do it in a **terminal**. "
 Type "It's *quiet*: one column of text, nothing else."
 Enter
 Enter
+# Enter carries the list on; on an empty item, it ends it.
 Type "- Plain `markdown`, formatted as I type"
 Enter
-Type "- Encrypted with my password"
+Type "Encrypted with my password"
 Enter
-Type "- Versions whenever I want them"
+Type "Versions whenever I want them"
+Enter
 Enter
 Enter
 Type "> The best tool is the one that gets out of the way."

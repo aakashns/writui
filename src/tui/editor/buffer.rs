@@ -9,6 +9,7 @@ use std::ops::Range;
 use ropey::Rope;
 use unicode_segmentation::UnicodeSegmentation;
 
+use super::lists;
 use crate::vault::{TITLE_PREFIX, with_title_prefix};
 
 /// The first position the cursor can be at: just after `# `.
@@ -139,6 +140,62 @@ impl Buffer {
             }
             _ => self.insert(&text),
         }
+    }
+
+    /// Enter: a new line, which carries on the list item or quote the
+    /// cursor is in. On an empty item, it ends the list instead (or, if it's
+    /// nested, brings it a level out).
+    pub fn newline(&mut self) {
+        let line = self.rope.char_to_line(self.cursor);
+        let start = self.rope.line_to_char(line);
+        let text = self.line_text(line);
+        let prefix = lists::prefix(&text).filter(|p| self.cursor >= start + p.len);
+        match prefix {
+            Some(prefix) if line > 0 && self.selection().is_none() => {
+                if !prefix.empty(&text) {
+                    self.insert(&format!("\n{}", prefix.next(&text)));
+                } else if !self.reindent(line, false) {
+                    self.rope.remove(start..start + text.chars().count());
+                    self.cursor = start;
+                }
+            }
+            _ => self.insert("\n"),
+        }
+    }
+
+    /// Tab or Shift+Tab with the cursor at the start of a list item (in its
+    /// bullet, number or task box, or before them): nest the item under the
+    /// one above, or bring it a level out. False if the cursor isn't there.
+    pub fn indent_item(&mut self, deeper: bool) -> bool {
+        let line = self.rope.char_to_line(self.cursor);
+        let start = self.rope.line_to_char(line);
+        let at_start = lists::prefix(&self.line_text(line))
+            .is_some_and(|p| p.is_item() && self.cursor <= start + p.len);
+        line > 0 && self.selection().is_none() && at_start && self.reindent(line, deeper)
+    }
+
+    /// Nest the list item on `line` deeper, or bring it out a level.
+    fn reindent(&mut self, line: usize, deeper: bool) -> bool {
+        // The lines of its paragraph, up to it.
+        let mut first = line;
+        while first > 1 && !self.line_text(first - 1).trim().is_empty() {
+            first -= 1;
+        }
+        let lines: Vec<String> = (first..=line).map(|l| self.line_text(l)).collect();
+        let Some((range, indent)) = lists::reindent(&lines, line - first, deeper) else {
+            return false;
+        };
+        let start = self.rope.line_to_char(line);
+        let (from, to) = (start + range.start, start + range.end);
+        self.rope.remove(from..to);
+        self.rope.insert(from, &indent);
+        let new_to = from + indent.chars().count();
+        if self.cursor >= to {
+            self.cursor = self.cursor - to + new_to;
+        } else if self.cursor > from {
+            self.cursor = new_to.min(self.cursor);
+        }
+        true
     }
 
     /// Delete the selection, or the grapheme before the cursor (joining
