@@ -128,6 +128,13 @@ fingerprint to the Mac turns it off until you next unlock with the
 password. Your vault's key, sealed so that only this Mac's Secure Enclave
 can open it after a fingerprint, is kept in `~/.config/writui/touch-id/`.
 
+To change the password, open Settings and choose "Change password": type
+your current password, then the new one twice. writui re-encrypts the
+vault with the new password, keeping a backup of it until the vault has
+reopened with the new password and passed its checks; if anything goes
+wrong, the old password keeps working. Touch ID is set up again for the
+new password on its own.
+
 - **Posts** are listed with the most recently changed first. Open one with
   Enter or a click, start a new one with `n` (or Enter: "New" is
   highlighted when the list opens). The list's shortcuts are single keys,

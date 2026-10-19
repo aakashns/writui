@@ -239,7 +239,37 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   added, which deliberately voids it), writui says so, and the next
   password unlock sets it up again. Where it's available but off, the
   unlock screen's Overview gets one more line pointing to Settings.
-- Change password — planned (it must set Touch ID up again).
+
+  > Add a "Change password" setting. On the Settings screen it's a row
+  > like the others (with a faded line under it, e.g. "Asks for your
+  > current password, then a new one twice."). Enter or a click opens a
+  > dialog with three boxed password fields, like the setup screen's:
+  > current password, new password, confirm new password. Tab moves
+  > between them, Enter submits, Esc cancels. A wrong current password or
+  > a confirmation that doesn't match says so in the dialog and keeps the
+  > dialog open. Show a short "Changing the password…" while it works
+  > (Argon2 is slow), then "Password changed." on the Settings screen.
+  >
+  > This touches my real writing, so be careful. Re-encrypt the vault in
+  > place with SQLCipher's rekey: a new random salt and the new Argon2
+  > key. Back up the vault file first, and delete the backup only after
+  > the vault reopens with the new password and passes its integrity
+  > check. If anything fails, the old password must still work and
+  > nothing may be lost. If Touch ID is on, redo its key file for the new
+  > key (DECISIONS says this is needed), or turn Touch ID off and say so.
+
+- **Change password**: the last row of Settings. Its dialog has three
+  boxed fields (current, new, confirm new) under a reminder that there's
+  no recovery. Tab / ↑↓ move between the fields; Enter goes on to the
+  next empty one, then changes the password; Esc or "Cancel" closes it;
+  fields and buttons can be clicked. The new password needs at least 8
+  characters, like the first one. Mistakes (wrong current password, the
+  confirmation not matching, too short) are said in red in the dialog,
+  which stays open. While it works the dialog says "Changing the
+  password…"; then Settings says "Password changed." If Touch ID is on,
+  it's set up again for the new password; if that fails, Touch ID is
+  turned off and Settings says so. If the change fails, Settings says why
+  and that the old password still works.
 
 ## The screens
 
