@@ -13,7 +13,8 @@
 //! links, and web addresses written out in the text.
 //!
 //! That's the full styling. Settings can make it minimal (the symbols
-//! faded, the text plain) or turn it off (all plain); links open either way.
+//! faded and code green, the rest plain) or turn it off (all plain); links
+//! open either way.
 
 use std::ops::Range;
 
@@ -59,6 +60,7 @@ impl Markup {
             let style = match styling {
                 Styling::Full => style,
                 Styling::Minimal if style.add_modifier.contains(Modifier::DIM) => faded(),
+                Styling::Minimal if style.fg == code().fg => code(),
                 Styling::Minimal | Styling::Off => Style::new(),
             };
             match runs.last_mut() {
@@ -335,7 +337,7 @@ mod tests {
         let text = "# Title\n\n**bold** *it* `code` [link](https://x.com) https://y.com";
         assert_eq!(
             marked_with(text, Styling::Minimal),
-            "[f:#] Title\n\n[f:**]bold[f:**] [f:*]it[f:*] [f:`]code[f:`] [f:[]link[f:](https://x.com)] https://y.com"
+            "[f:#] Title\n\n[f:**]bold[f:**] [f:*]it[f:*] [f:`][g:code][f:`] [f:[]link[f:](https://x.com)] https://y.com"
         );
         assert_eq!(marked_with(text, Styling::Off), text);
         // Links still open.

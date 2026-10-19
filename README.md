@@ -9,8 +9,8 @@ A writing app for the terminal. No nonsense. Markdown. Local. Encrypted.
 - **Plain markdown.** You write markdown. Each post starts with a `# Title`.
   It stays plain markdown on screen, formatted as you type: headings and
   bold in bold, italics in italics, code in green, with the markdown
-  symbols faded. (Settings can tone that down to just the faded symbols,
-  or turn it off.) Lists carry on as you press Enter, and Tab nests an
+  symbols faded. (Settings can tone that down to just faded symbols and
+  green code, or turn it off.) Lists carry on as you press Enter, and Tab nests an
   item.
 - **Mouse and keyboard.** Click, scroll and press buttons with the mouse, or
   use shortcuts. The bar at the bottom of the screen shows the shortcuts

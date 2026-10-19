@@ -129,7 +129,7 @@ impl Settings {
             }
             Field::Styling => match self.values.styling {
                 Styling::Full => "Bold, italics and code are formatted; markdown symbols faded.",
-                Styling::Minimal => "Text stays plain; only the markdown symbols are faded.",
+                Styling::Minimal => "Plain text, but code is green and markdown symbols faded.",
                 Styling::Off => "Markdown shows as plain text, with no formatting.",
             }
             .into(),
@@ -500,7 +500,7 @@ mod tests {
         assert!(matches!(click(&mut settings, y - 2), Action::None));
         let Action::SaveSettings(values) = click(&mut settings, y) else { panic!("not saved") };
         assert_eq!(values.styling, Styling::Minimal);
-        assert!(screen(&mut settings).contains("only the markdown symbols are faded"));
+        assert!(screen(&mut settings).contains("but code is green"));
     }
 
     #[test]

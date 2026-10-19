@@ -619,9 +619,11 @@ in [DECISIONS.md](DECISIONS.md); the build order lives in [PLAN.md](PLAN.md).
   > (no bold text, just markdown markers are muted), and "full" (default,
   > current)
 
+  > in the minimal setting, i stil want green for code
+
 - All of that is the **full** styling, the default. Settings can make it
-  **minimal** (the markdown symbols faded, the text plain: no bold,
-  italics, underlines or green code) or turn it **off** (everything
+  **minimal** (the markdown symbols faded and code green, the rest plain:
+  no bold, italics or underlines) or turn it **off** (everything
   plain). Links open the same either way. The history shows versions in
   the same styling.
 

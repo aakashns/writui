@@ -732,8 +732,8 @@ instant. Changing the password, when it lands, must redo the Touch ID file.
 A three-way setting replaced the "bold title" switch proposed in PR #31
 (closed), which the creator didn't like as a one-off. The styling is still
 worked out in full by the CommonMark parser; minimal and off only map the
-styles at the end (minimal keeps just the faded symbols, off keeps
-nothing), so links are found, and open, the same in every mode. Stored in
+styles at the end (minimal keeps the faded symbols and green code, off
+keeps nothing), so links are found, and open, the same in every mode. Stored in
 the vault's key/value table as `markdown_styling`, so no migration: a
 vault without it reads as `full`.
 
