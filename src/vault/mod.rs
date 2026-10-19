@@ -6,7 +6,8 @@
 //! to produce a 256-bit key, which is handed to SQLCipher as a raw key along
 //! with the salt. SQLCipher stores that salt in the first 16 bytes of the
 //! file, so the vault stays a single self-contained file. The key itself
-//! can also open the vault (Touch ID keeps it, see `touch_id`).
+//! can also open the vault (Touch ID keeps it, see `touch_id`). Changing
+//! the password re-encrypts the file in place with a new salt and key.
 
 mod migrations;
 
@@ -18,7 +19,9 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, anyhow, bail};
 use argon2::{Algorithm, Argon2, Params};
 use jiff::Timestamp;
+use rusqlite::types::ValueRef;
 use rusqlite::{Connection, ErrorCode, OpenFlags, OptionalExtension, params};
+use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
 const SALT_LEN: usize = 16;
@@ -41,6 +44,7 @@ pub const TITLE_PREFIX: &str = "# ";
 pub const DELETED_RETENTION_DAYS: i64 = 30;
 
 pub struct Vault {
+    path: PathBuf,
     conn: Connection,
     /// Kept while the vault is open, so Touch ID can be turned on without
     /// asking for the password again. (SQLCipher holds a copy anyway.)
@@ -74,6 +78,19 @@ impl From<rusqlite::Error> for OpenError {
     fn from(err: rusqlite::Error) -> Self {
         OpenError::Other(err.into())
     }
+}
+
+/// Why the password wasn't changed.
+#[derive(Debug)]
+pub enum ChangeError {
+    /// The current password given isn't the vault's.
+    WrongPassword,
+    /// Something went wrong, but the vault is as it was: the old password
+    /// still opens it.
+    Unchanged(anyhow::Error),
+    /// Something went wrong and the vault couldn't be put back as it was;
+    /// the error says where the backup is. The vault is closed.
+    Broken(anyhow::Error),
 }
 
 #[derive(Debug, Clone)]
@@ -194,7 +211,7 @@ impl Vault {
         let key = derive_key(password, &salt)?;
         apply_key(&conn, &key, &salt)?;
         migrations::run(&mut conn, path)?;
-        Ok(Vault { conn, key })
+        Ok(Vault { path: path.to_path_buf(), conn, key })
     }
 
     /// Open an existing vault with its password.
@@ -206,19 +223,9 @@ impl Vault {
     /// Open an existing vault with its key, rather than the password the
     /// key comes from. A key that doesn't fit is a wrong password.
     pub fn open_with_key(path: &Path, key: Key) -> Result<Vault, OpenError> {
-        let salt = read_salt(path)?;
-        let mut conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
-        apply_key(&conn, &key, &salt)?;
-        // SQLCipher only notices a wrong key on the first real read.
-        match conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(())) {
-            Ok(()) => {}
-            Err(rusqlite::Error::SqliteFailure(err, _)) if err.code == ErrorCode::NotADatabase => {
-                return Err(OpenError::WrongPassword);
-            }
-            Err(err) => return Err(err.into()),
-        }
+        let mut conn = connect(path, &key)?;
         migrations::run(&mut conn, path)?;
-        let vault = Vault { conn, key };
+        let vault = Vault { path: path.to_path_buf(), conn, key };
         vault.purge_expired()?;
         Ok(vault)
     }
@@ -226,6 +233,107 @@ impl Vault {
     /// The key that opens this vault.
     pub fn key(&self) -> &Key {
         &self.key
+    }
+
+    /// Change the password from `current` to `new`: re-encrypt the vault in
+    /// place (SQLCipher's rekey) with a new random salt and the key `new`
+    /// makes with it. The file is backed up first, and the backup deleted
+    /// once the vault opens from scratch with `new`, passes its integrity
+    /// checks and holds just what it held before. If anything fails, the
+    /// vault is left (or put back from the backup) as it was. Gives back
+    /// the backup if it couldn't be deleted: the old password opens it.
+    pub fn change_password(
+        &mut self,
+        current: &str,
+        new: &str,
+    ) -> Result<Option<PathBuf>, ChangeError> {
+        self.change_password_checked(current, new, |_| Ok(()))
+    }
+
+    /// `change_password`, with `after_rekey` run on the vault's path right
+    /// after re-encrypting it (tests use it to make things go wrong).
+    fn change_password_checked(
+        &mut self,
+        current: &str,
+        new: &str,
+        after_rekey: impl FnOnce(&Path) -> Result<()>,
+    ) -> Result<Option<PathBuf>, ChangeError> {
+        let unchanged = ChangeError::Unchanged;
+        let old_salt = read_salt(&self.path).map_err(unchanged)?;
+        if derive_key(current, &old_salt).map_err(unchanged)? != self.key {
+            return Err(ChangeError::WrongPassword);
+        }
+        let mut new_salt = [0u8; SALT_LEN];
+        rand::fill(&mut new_salt);
+        let new_key = derive_key(new, &new_salt).map_err(unchanged)?;
+        let before = fingerprint(&self.conn).map_err(unchanged)?;
+        let backup = migrations::backup(&self.path, "password").map_err(unchanged)?;
+
+        let changed = rekey(&self.conn, &new_key, &new_salt)
+            .and_then(|()| after_rekey(&self.path))
+            .and_then(|()| {
+                // Just as unlocking will: the salt from the file, and the
+                // key from the new password.
+                let key = derive_key(new, &read_salt(&self.path)?)?;
+                let conn = connect(&self.path, &key).context("reopening with the new password")?;
+                check(&conn, &before)?;
+                Ok(conn)
+            });
+        // Close the vault as it was opened, before reopening it.
+        let old = std::mem::replace(&mut self.conn, closed());
+        drop(old);
+        match changed {
+            Ok(conn) => {
+                self.conn = conn;
+                self.key = new_key;
+                Ok(fs::remove_file(&backup).err().map(|_| backup))
+            }
+            Err(err) => match self.reopen_as_before(&old_salt, &backup, &before) {
+                Ok(conn) => {
+                    self.conn = conn;
+                    let _ = fs::remove_file(&backup);
+                    Err(ChangeError::Unchanged(err))
+                }
+                Err(restore_err) => Err(ChangeError::Broken(anyhow!(
+                    "{err:#}; putting the vault back failed too ({restore_err:#}). \
+                     A copy from before, which the old password opens, is at {}",
+                    backup.display()
+                ))),
+            },
+        }
+    }
+
+    /// After a failed password change: the vault opened as it was before,
+    /// with the old key. Either the change was undone (SQLCipher rolls a
+    /// failed rekey back), or the vault is put back from the backup.
+    fn reopen_as_before(
+        &self,
+        old_salt: &[u8; SALT_LEN],
+        backup: &Path,
+        before: &[u8],
+    ) -> Result<Connection> {
+        let as_before = || -> Result<Connection> {
+            if read_salt(&self.path)? != *old_salt {
+                bail!("the vault has a new salt");
+            }
+            let conn = connect(&self.path, &self.key)?;
+            check(&conn, before)?;
+            Ok(conn)
+        };
+        if let Ok(conn) = as_before() {
+            return Ok(conn);
+        }
+        // A journal left over is the failed change's, not the backup's.
+        let journal = self.path.with_file_name(format!(
+            "{}-journal",
+            self.path.file_name().context("vault path has no file name")?.to_string_lossy()
+        ));
+        if journal.exists() {
+            fs::remove_file(&journal).with_context(|| format!("removing {}", journal.display()))?;
+        }
+        fs::copy(backup, &self.path)
+            .with_context(|| format!("copying {} back", backup.display()))?;
+        as_before()
     }
 
     /// All posts (not counting the Trash), most recently updated first.
@@ -623,15 +731,88 @@ fn derive_key(password: &str, salt: &[u8]) -> Result<Key> {
     Ok(key)
 }
 
+/// Open the vault at `path` with `key`. A key that doesn't fit is a wrong
+/// password.
+fn connect(path: &Path, key: &Key) -> Result<Connection, OpenError> {
+    let salt = read_salt(path)?;
+    let conn = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)?;
+    apply_key(&conn, key, &salt)?;
+    // SQLCipher only notices a wrong key on the first real read.
+    match conn.query_row("SELECT count(*) FROM sqlite_master", [], |_| Ok(())) {
+        Ok(()) => Ok(conn),
+        Err(rusqlite::Error::SqliteFailure(err, _)) if err.code == ErrorCode::NotADatabase => {
+            Err(OpenError::WrongPassword)
+        }
+        Err(err) => Err(err.into()),
+    }
+}
+
+/// A connection to nothing, standing in for the vault while it's reopened.
+fn closed() -> Connection {
+    Connection::open_in_memory().expect("an in-memory database always opens")
+}
+
 fn apply_key(conn: &Connection, key: &Key, salt: &[u8; SALT_LEN]) -> Result<()> {
-    // Raw key + explicit salt: "x'<64 hex chars of key><32 hex chars of salt>'".
-    let pragma = Zeroizing::new(format!(
-        "PRAGMA key = \"x'{}{}'\";",
+    conn.execute_batch(&key_pragma("key", key, salt))?;
+    Ok(())
+}
+
+/// Re-encrypt the whole vault with `key` and `salt`, all or nothing.
+fn rekey(conn: &Connection, key: &Key, salt: &[u8; SALT_LEN]) -> Result<()> {
+    conn.execute_batch(&key_pragma("rekey", key, salt)).context("re-encrypting the vault")
+}
+
+/// `PRAGMA key` or `rekey` with a raw key and explicit salt:
+/// "x'<64 hex chars of key><32 hex chars of salt>'".
+fn key_pragma(pragma: &str, key: &Key, salt: &[u8; SALT_LEN]) -> Zeroizing<String> {
+    Zeroizing::new(format!(
+        "PRAGMA {pragma} = \"x'{}{}'\";",
         hex(key.as_ref()).as_str(),
         hex(salt).as_str()
-    ));
-    conn.execute_batch(&pragma)?;
+    ))
+}
+
+/// Check the vault opened by `conn` passes its integrity checks and holds
+/// just what it did when `before` was its fingerprint.
+fn check(conn: &Connection, before: &[u8]) -> Result<()> {
+    migrations::verify(conn)?;
+    if fingerprint(conn)? != before {
+        bail!("the vault doesn't hold what it did before");
+    }
     Ok(())
+}
+
+/// A digest of everything in the vault: its schema version and every row
+/// of every table.
+fn fingerprint(conn: &Connection) -> Result<Vec<u8>> {
+    let mut hasher = Sha256::new();
+    let version: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    hasher.update(version.to_le_bytes());
+    let tables: Vec<String> = conn
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")?
+        .query_map([], |row| row.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    for table in tables {
+        hasher.update(table.as_bytes());
+        let mut stmt = conn.prepare(&format!("SELECT * FROM \"{table}\" ORDER BY rowid"))?;
+        let columns = stmt.column_count();
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            for i in 0..columns {
+                let (tag, bytes) = match row.get_ref(i)? {
+                    ValueRef::Null => (0u8, Vec::new()),
+                    ValueRef::Integer(n) => (1, n.to_le_bytes().to_vec()),
+                    ValueRef::Real(x) => (2, x.to_le_bytes().to_vec()),
+                    ValueRef::Text(text) => (3, text.to_vec()),
+                    ValueRef::Blob(blob) => (4, blob.to_vec()),
+                };
+                hasher.update([tag]);
+                hasher.update((bytes.len() as u64).to_le_bytes());
+                hasher.update(&bytes);
+            }
+        }
+    }
+    Ok(hasher.finalize().to_vec())
 }
 
 fn hex(bytes: &[u8]) -> Zeroizing<String> {
@@ -1007,6 +1188,130 @@ mod tests {
         // A width out of range is the default.
         vault.set_value("line_width", "7").unwrap();
         assert_eq!(vault.settings().unwrap().line_width, DEFAULT_LINE_WIDTH);
+    }
+
+    /// A vault with a post, a version, an export and settings in it, and
+    /// its fingerprint.
+    fn full_vault(path: &Path) -> (Vault, Vec<u8>) {
+        let vault = Vault::create(path, "old password").unwrap();
+        let id = vault.create_post().unwrap();
+        vault.update_post_body(id, "# Dear diary\n\nToday I wrote.").unwrap();
+        vault.create_version(id, "First", "# Dear diary").unwrap();
+        let settings = Settings { author: "Ada".into(), ..Settings::default() };
+        vault.set_settings(&settings).unwrap();
+        let fingerprint = fingerprint(&vault.conn).unwrap();
+        (vault, fingerprint)
+    }
+
+    fn files(path: &Path) -> Vec<String> {
+        let mut names: Vec<_> = fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn changing_the_password_keeps_everything_and_the_old_one_stops_working() {
+        let (_dir, path) = temp_vault();
+        let (mut vault, before) = full_vault(&path);
+        let old_salt = read_salt(&path).unwrap();
+        let old_key = vault.key().clone();
+        assert_eq!(vault.change_password("old password", "new password").unwrap(), None);
+        // A new salt and key, and the open vault carries on with them.
+        assert_ne!(read_salt(&path).unwrap(), old_salt);
+        assert_ne!(vault.key(), &old_key);
+        assert_eq!(fingerprint(&vault.conn).unwrap(), before);
+        vault.update_post_body(1, "# Dear diary\n\nStill writing.").unwrap();
+        drop(vault);
+        // The backup is gone.
+        assert_eq!(files(&path), ["writui.db"]);
+        assert!(matches!(Vault::open(&path, "old password"), Err(OpenError::WrongPassword)));
+        assert!(matches!(Vault::open_with_key(&path, old_key), Err(OpenError::WrongPassword)));
+        let vault = Vault::open(&path, "new password").unwrap();
+        assert_eq!(vault.post(1).unwrap().body, "# Dear diary\n\nStill writing.");
+        assert_eq!(vault.list_versions(1).unwrap()[0].name, "First");
+        assert_eq!(vault.settings().unwrap().author, "Ada");
+        migrations::verify(&vault.conn).unwrap();
+    }
+
+    #[test]
+    fn a_wrong_current_password_changes_nothing() {
+        let (_dir, path) = temp_vault();
+        let (mut vault, before) = full_vault(&path);
+        let bytes = fs::read(&path).unwrap();
+        assert!(matches!(
+            vault.change_password("not it", "new password"),
+            Err(ChangeError::WrongPassword)
+        ));
+        assert_eq!(fs::read(&path).unwrap(), bytes);
+        assert_eq!(fingerprint(&vault.conn).unwrap(), before);
+        assert_eq!(files(&path), ["writui.db"]);
+    }
+
+    /// After a failed change: the old password opens the vault, which holds
+    /// what it did, the new one doesn't, and the backup is gone.
+    fn as_before(vault: Vault, path: &Path, before: &[u8]) {
+        assert_eq!(fingerprint(&vault.conn).unwrap(), before);
+        vault.update_post_body(1, "# Dear diary\n\nCarrying on.").unwrap();
+        drop(vault);
+        assert_eq!(files(path), ["writui.db"]);
+        assert!(matches!(Vault::open(path, "new password"), Err(OpenError::WrongPassword)));
+        let vault = Vault::open(path, "old password").unwrap();
+        assert_eq!(vault.post(1).unwrap().body, "# Dear diary\n\nCarrying on.");
+        migrations::verify(&vault.conn).unwrap();
+    }
+
+    #[test]
+    fn a_failed_check_after_the_change_puts_the_vault_back() {
+        let (_dir, path) = temp_vault();
+        let (mut vault, before) = full_vault(&path);
+        let old_key = vault.key().clone();
+        let err = vault
+            .change_password_checked("old password", "new password", |_| bail!("check failed"))
+            .unwrap_err();
+        let ChangeError::Unchanged(err) = err else { panic!("{err:?}") };
+        assert!(format!("{err:#}").contains("check failed"));
+        assert_eq!(vault.key(), &old_key);
+        as_before(vault, &path, &before);
+    }
+
+    #[test]
+    fn a_vault_damaged_by_the_change_is_put_back_from_the_backup() {
+        let (_dir, path) = temp_vault();
+        let (mut vault, before) = full_vault(&path);
+        let damage = |path: &Path| {
+            let mut bytes = fs::read(path)?;
+            bytes[4096 + 200] ^= 0xff;
+            fs::write(path, bytes)?;
+            Ok(())
+        };
+        let err = vault.change_password_checked("old password", "new password", damage);
+        assert!(matches!(err, Err(ChangeError::Unchanged(_))), "{err:?}");
+        as_before(vault, &path, &before);
+    }
+
+    #[test]
+    fn if_the_vault_cant_be_put_back_the_backup_is_kept() {
+        let (_dir, path) = temp_vault();
+        let (mut vault, _) = full_vault(&path);
+        // Damage the vault, and the backup too, so neither will do.
+        let damage = |path: &Path| {
+            for name in files(path) {
+                let file = path.with_file_name(name);
+                let mut bytes = fs::read(&file)?;
+                bytes[4096 + 200] ^= 0xff;
+                fs::write(&file, bytes)?;
+            }
+            Ok(())
+        };
+        let err = vault.change_password_checked("old password", "new password", damage);
+        let Err(ChangeError::Broken(err)) = err else { panic!("{err:?}") };
+        let backups: Vec<_> = files(&path).into_iter().filter(|n| n.ends_with(".bak")).collect();
+        assert_eq!(backups.len(), 1);
+        assert!(backups[0].starts_with("writui.db.password-"));
+        assert!(format!("{err:#}").contains(&backups[0]), "{err:#}");
     }
 
     #[test]

@@ -13,11 +13,10 @@ use ratatui::widgets::Paragraph;
 use super::Action;
 use super::hints::{HintBar, hint};
 use super::widgets::{
-    COLUMN_WIDTH, PASSWORD_BOX, PasswordField, centered, dev_password_note, overview, title,
-    truncate,
+    COLUMN_WIDTH, MIN_PASSWORD_LEN, PASSWORD_BOX, PasswordField, centered, dev_password_note,
+    overview, title, truncate,
 };
 
-const MIN_PASSWORD_LEN: usize = 8;
 const LABELS: [&str; 2] = ["Password", "Confirm password"];
 
 #[derive(Clone, Copy)]

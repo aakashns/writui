@@ -785,3 +785,39 @@ copied in the meantime. The trade-off: "select, Cmd+C, then type over the
 selection" loses the copy (Cmd+X is the way to do that). Non-text clipboard
 contents (an image) can't be remembered, so selecting text replaces them.
 Tests use a per-thread fake clipboard rather than the real one.
+
+## Changing the password: rekey in place, checked end to end
+
+`Vault::change_password` checks the current password (Argon2 with the
+file's salt must give the open vault's key), makes a new random salt and
+the new password's key, takes a fingerprint (SHA-256 over the schema
+version and every row of every table), backs the file up next to itself
+(`writui.db.password-<time>.bak`), then runs `PRAGMA rekey` with the raw
+key and new salt. SQLCipher rewrites every page in one transaction and
+puts the new salt in the file's first 16 bytes. The change counts only
+once the vault opens from scratch just as an unlock would (salt read from
+the file, key from the new password), passes `cipher_integrity_check` and
+`integrity_check`, and has the same fingerprint; then the backup is
+deleted. (If deleting it fails, Settings names it: the old password opens
+it.)
+
+If anything fails after the backup, the old connection is closed and the
+vault reopened with the old key, checking the salt, integrity and
+fingerprint; if that doesn't pass (the rekey went through, or left a
+damaged file), any `-journal` is removed (it belongs to the failed
+change, not the backup) and the backup copied back over the vault, then
+checked the same way. Only if that fails too is the vault left closed:
+writui stops with an error naming the backup. Tests break the change
+after the rekey (a failing check, a damaged vault, a damaged vault and
+backup) through a hook, and check the old password still works each time.
+
+Rekeying in place was the creator's choice over `sqlcipher_export` into a
+new file and renaming it. A second writui open on the same vault would
+lose access when the key changes under it; nothing stops two from running
+today, and this doesn't make that worse in a way worth a lock file yet.
+
+Touch ID holds the vault's key, so after a change that went through, its
+file is made again with the new key (sealing needs no fingerprint); if
+that fails it's turned off, and Settings says so. The dialog (three boxed
+password fields, stacked) is its own small screen, `tui::change_password`,
+since the general dialog only has one plain text field.

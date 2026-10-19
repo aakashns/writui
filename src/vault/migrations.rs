@@ -78,7 +78,7 @@ fn run_list(
         // A brand new vault: nothing to back up or check.
         return apply(conn, migrations, current);
     }
-    let backup = backup(path, current)?;
+    let backup = backup(path, &format!("v{current}"))?;
     match apply(conn, migrations, current).and_then(|()| verify(conn)) {
         Ok(()) => {
             // Not worth failing over: the vault itself is fine.
@@ -104,7 +104,7 @@ fn apply(conn: &mut Connection, migrations: &[&str], current: usize) -> Result<(
 
 /// SQLCipher's check that every page decrypts and is untampered (no rows
 /// when all is well), then SQLite's own structural check (a single "ok").
-fn verify(conn: &Connection) -> Result<()> {
+pub(super) fn verify(conn: &Connection) -> Result<()> {
     let cipher = pragma_rows(conn, "PRAGMA cipher_integrity_check")?;
     if !cipher.is_empty() {
         bail!("the vault failed its encryption check: {}", cipher.join("; "));
@@ -122,12 +122,12 @@ fn pragma_rows(conn: &Connection, sql: &str) -> Result<Vec<String>> {
     Ok(rows.collect::<rusqlite::Result<_>>()?)
 }
 
-/// Copy the (still encrypted) vault file next to itself, e.g.
-/// `writui.db.v1-20261003-142501.bak`.
-fn backup(path: &Path, version: usize) -> Result<PathBuf> {
+/// Copy the (still encrypted) vault file next to itself, named for what
+/// it's backed up before, e.g. `writui.db.v1-20261003-142501.bak`.
+pub(super) fn backup(path: &Path, before: &str) -> Result<PathBuf> {
     let stamp = jiff::Zoned::now().strftime("%Y%m%d-%H%M%S");
     let name = path.file_name().context("vault path has no file name")?;
-    let backup = path.with_file_name(format!("{}.v{version}-{stamp}.bak", name.to_string_lossy()));
+    let backup = path.with_file_name(format!("{}.{before}-{stamp}.bak", name.to_string_lossy()));
     fs::copy(path, &backup).with_context(|| format!("backing up vault to {}", backup.display()))?;
     Ok(backup)
 }

@@ -3,7 +3,8 @@
 //! all its options, the current one highlighted), and below it, faded,
 //! what that value does; lines separate them, and a bar on the left marks
 //! the selected one. Enter (or a click) changes it in a dialog, or switches
-//! it to its next option; ←/→ or a click on an option picks one.
+//! it to its next option; ←/→ or a click on an option picks one. The last
+//! row isn't a setting but changes the password, in its own dialog.
 
 use ratatui::Frame;
 use ratatui::crossterm::event::{Event, KeyCode, MouseButton, MouseEventKind};
@@ -13,6 +14,7 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{ListState, Paragraph};
 
 use super::Action;
+use super::change_password::{self, ChangePassword, Outcome};
 use super::dialog::{Button, Dialog};
 use super::hints::{HintBar, hint};
 use super::widgets::{COLUMN_WIDTH, column, truncate};
@@ -32,6 +34,7 @@ enum Field {
     Styling,
     NerdFont,
     TouchId,
+    Password,
 }
 
 #[derive(Clone, Copy)]
@@ -51,6 +54,8 @@ pub struct Settings {
     state: ListState,
     /// Changing the highlighted setting.
     dialog: Option<Dialog<Cmd>>,
+    password: Option<ChangePassword>,
+    password_hints: HintBar<change_password::Cmd>,
     notice: Option<String>,
     error: Option<String>,
     rows_area: Rect,
@@ -71,12 +76,15 @@ impl Settings {
         if touch_id.is_some() {
             fields.push(Field::TouchId);
         }
+        fields.push(Field::Password);
         Settings {
             values,
             touch_id,
             fields,
             state: ListState::default().with_selected(Some(0)),
             dialog: None,
+            password: None,
+            password_hints: HintBar::default(),
             notice: None,
             error: None,
             rows_area: Rect::default(),
@@ -101,6 +109,54 @@ impl Settings {
         });
     }
 
+    /// The new password is being worked out (Argon2 is slow).
+    pub fn changing_password(&mut self) {
+        if let Some(dialog) = &mut self.password {
+            dialog.set_busy();
+        }
+    }
+
+    /// The current password typed into the dialog was wrong.
+    pub fn wrong_password(&mut self) {
+        if let Some(dialog) = &mut self.password {
+            dialog.wrong_password();
+        }
+    }
+
+    /// The password was changed. Touch ID had to be turned off if
+    /// `touch_id_off`; `backup` is a backup of the vault that couldn't be
+    /// deleted.
+    pub fn password_changed(&mut self, touch_id_off: bool, backup: Option<&std::path::Path>) {
+        self.password = None;
+        self.error = None;
+        let mut notice = String::from("Password changed.");
+        if touch_id_off {
+            self.touch_id = Some(false);
+            notice.push_str(" Touch ID is off: switch it on again to use it.");
+        }
+        if let Some(backup) = backup {
+            notice.push_str(&format!(" Delete {}: the old one opens it.", backup.display()));
+        }
+        self.notice = Some(notice);
+    }
+
+    /// Changing the password failed, saying why.
+    pub fn password_unchanged(&mut self, error: String) {
+        self.password = None;
+        self.set_error(error);
+    }
+
+    /// The Change password dialog is open.
+    #[cfg(test)]
+    pub fn changing_the_password(&self) -> bool {
+        self.password.is_some()
+    }
+
+    #[cfg(test)]
+    pub fn notice(&self) -> Option<&str> {
+        self.notice.as_deref()
+    }
+
     fn field(&self) -> Field {
         self.fields[self.state.selected().unwrap_or(0).min(self.fields.len() - 1)]
     }
@@ -112,6 +168,7 @@ impl Settings {
             Field::Styling => "Markdown styling",
             Field::NerdFont => "Nerd Font",
             Field::TouchId => "Touch ID",
+            Field::Password => "Change password",
         }
     }
 
@@ -120,7 +177,7 @@ impl Settings {
     fn options(&self, field: Field) -> Option<(Vec<&'static str>, usize)> {
         let on_off = |on: bool| (vec!["on", "off"], if on { 0 } else { 1 });
         match field {
-            Field::Author | Field::LineWidth => None,
+            Field::Author | Field::LineWidth | Field::Password => None,
             Field::Styling => Some((
                 STYLINGS.iter().map(|s| s.name()).collect(),
                 STYLINGS.iter().position(|&s| s == self.values.styling).unwrap_or(0),
@@ -135,6 +192,7 @@ impl Settings {
         match field {
             Field::Author if self.values.author.is_empty() => Span::raw("none").dim().italic(),
             Field::Author => Span::raw(self.values.author.clone()),
+            Field::Password => Span::raw(""),
             _ => Span::raw(format!("{} characters", self.values.line_width)),
         }
     }
@@ -150,7 +208,7 @@ impl Settings {
             Field::Styling => values.styling = STYLINGS[i.min(STYLINGS.len() - 1)],
             Field::NerdFont => values.nerd_font = i == 0,
             Field::TouchId => return Action::SetTouchId(i == 0),
-            Field::Author | Field::LineWidth => {}
+            Field::Author | Field::LineWidth | Field::Password => {}
         }
         self.save(values)
     }
@@ -186,6 +244,7 @@ impl Settings {
                 "Unlocks with your fingerprint when writui starts.".into()
             }
             Field::TouchId => "Unlocking takes the password.".into(),
+            Field::Password => "Asks for your current password, then a new one twice.".into(),
         }
     }
 
@@ -290,6 +349,12 @@ impl Settings {
             self.hints.render(frame, hint_area, &hints);
             return;
         }
+        if let Some(dialog) = &mut self.password {
+            dialog.render(frame);
+            let hints = dialog.hints();
+            self.password_hints.render(frame, hint_area, &hints);
+            return;
+        }
         let mut hints = match self.options(self.field()) {
             Some(_) => {
                 vec![hint("←/→", "choose", Cmd::Change), hint("Enter", "switch", Cmd::Change)]
@@ -301,6 +366,24 @@ impl Settings {
     }
 
     pub fn handle(&mut self, event: Event) -> Action {
+        if let Some(dialog) = &mut self.password {
+            let mut outcome = dialog.handle(event.clone());
+            if outcome.is_none()
+                && let Event::Mouse(mouse) = event
+                && mouse.kind == MouseEventKind::Down(MouseButton::Left)
+                && let Some(cmd) = self.password_hints.hit(mouse.column, mouse.row)
+            {
+                outcome = dialog.run(cmd);
+            }
+            return match outcome {
+                Some(Outcome::Change { current, new }) => Action::ChangePassword { current, new },
+                Some(Outcome::Cancel) => {
+                    self.password = None;
+                    Action::None
+                }
+                None => Action::None,
+            };
+        }
         if let Some(dialog) = &mut self.dialog {
             let mut cmd = dialog.handle(event.clone());
             if cmd.is_none()
@@ -372,6 +455,11 @@ impl Settings {
             Cmd::Change => match self.options(self.field()) {
                 // A few options: no need to ask, just go to the next.
                 Some((options, current)) => self.choose((current + 1) % options.len()),
+                None if self.field() == Field::Password => {
+                    self.error = None;
+                    self.password = Some(ChangePassword::default());
+                    Action::None
+                }
                 None => {
                     self.dialog = Some(self.dialog_for(self.field()));
                     Action::None
@@ -396,7 +484,7 @@ impl Settings {
                             return Action::None;
                         }
                     },
-                    Field::Styling | Field::NerdFont | Field::TouchId => {}
+                    Field::Styling | Field::NerdFont | Field::TouchId | Field::Password => {}
                 }
                 self.save(values)
             }
@@ -452,8 +540,8 @@ impl Settings {
                 .with_input("68", 3)
                 .with_text(&self.values.line_width.to_string())
             }
-            Field::Styling | Field::NerdFont | Field::TouchId => {
-                unreachable!("switched, not asked")
+            Field::Styling | Field::NerdFont | Field::TouchId | Field::Password => {
+                unreachable!("switched, not asked here")
             }
         }
     }

@@ -12,6 +12,9 @@ use zeroize::Zeroizing;
 /// The comfortable reading/writing width, in columns.
 pub const COLUMN_WIDTH: u16 = 68;
 
+/// The shortest password a vault can have.
+pub const MIN_PASSWORD_LEN: usize = 8;
+
 /// A boxed password field: wide enough for a long password, and two fit
 /// side by side in the column.
 pub const PASSWORD_BOX: (u16, u16) = (33, 3);

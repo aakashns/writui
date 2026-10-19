@@ -1,5 +1,6 @@
 //! The terminal UI: terminal setup, the event loop, and switching screens.
 
+mod change_password;
 mod context_menu;
 mod dialog;
 mod editor;
@@ -33,7 +34,9 @@ use zeroize::Zeroizing;
 
 use crate::files;
 use crate::touch_id;
-use crate::vault::{ExportSettings, OpenError, Settings, Vault, title_from_first_line};
+use crate::vault::{
+    ChangeError, ExportSettings, OpenError, Settings, Vault, title_from_first_line,
+};
 
 /// What a screen asks the app to do in response to an event.
 pub enum Action {
@@ -90,6 +93,11 @@ pub enum Action {
     Lock,
     /// Turn unlocking with Touch ID on or off.
     SetTouchId(bool),
+    /// Change the vault's password.
+    ChangePassword {
+        current: Zeroizing<String>,
+        new: Zeroizing<String>,
+    },
 }
 
 /// Which post an imported file goes into.
@@ -444,6 +452,12 @@ impl App {
                 }
                 self.pending = Some(action);
             }
+            Action::ChangePassword { .. } => {
+                if let Screen::Settings(screen) = &mut self.screen {
+                    screen.changing_password();
+                }
+                self.pending = Some(action);
+            }
             Action::SetTouchId(on) => {
                 let vault = self.vault()?;
                 let result = match on {
@@ -609,8 +623,39 @@ impl App {
                 }
                 Ok(())
             }
+            Action::ChangePassword { current, new } => self.change_password(&current, &new),
             _ => self.apply(action),
         }
+    }
+
+    /// Change the vault's password (see `Vault::change_password`), and set
+    /// Touch ID up again for the new key, or turn it off if that fails.
+    fn change_password(&mut self, current: &str, new: &str) -> Result<()> {
+        let vault = self.vault.as_mut().context("the vault is locked")?;
+        let old_key = vault.key().clone();
+        let result = vault.change_password(current, new);
+        // Touch ID keeps the vault's key, which has changed.
+        let mut touch_id_off = false;
+        if vault.key() != &old_key && touch_id::is_on(&self.vault_path) {
+            touch_id_off = touch_id::turn_on(&self.vault_path, vault.key()).is_err();
+            if touch_id_off {
+                let _ = touch_id::turn_off(&self.vault_path);
+            }
+        }
+        let Screen::Settings(screen) = &mut self.screen else { return Ok(()) };
+        match result {
+            Ok(None) => screen.password_changed(touch_id_off, None),
+            Ok(Some(backup)) => screen.password_changed(touch_id_off, Some(&backup)),
+            Err(ChangeError::WrongPassword) => screen.wrong_password(),
+            Err(ChangeError::Unchanged(err)) => screen.password_unchanged(format!(
+                "Couldn't change the password ({err:#}). The old one still works."
+            )),
+            // The vault is closed: there's nothing more writui can do.
+            Err(ChangeError::Broken(err)) => {
+                return Err(err.context("changing the password failed"));
+            }
+        }
+        Ok(())
     }
 
     /// Import the file at `path` (see `Action::Import`), then open the
@@ -925,6 +970,56 @@ mod tests {
         app.perform(Action::Unlock(Zeroizing::new("pw".into()))).unwrap();
         let Screen::Editor(editor) = &app.screen else { panic!("not reopened") };
         assert_eq!((editor.post_id(), editor.text().as_str()), (id, "# x"));
+    }
+
+    #[test]
+    fn the_password_is_changed_from_settings() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("writui.db");
+        let mut app = App::new(path.clone(), false);
+        app.perform(create_vault()).unwrap();
+        app.apply(Action::NewPost).unwrap();
+        app.handle(key(KeyCode::Char('x'), KeyModifiers::NONE, KeyEventKind::Press));
+        app.store_post(Leaving::Yes);
+        app.show_settings().unwrap();
+        let press = |app: &mut App, code: KeyCode| {
+            let action = app.handle(key(code, KeyModifiers::NONE, KeyEventKind::Press));
+            app.apply(action).unwrap();
+        };
+        let type_text = |app: &mut App, text: &str| {
+            text.chars().for_each(|ch| press(app, KeyCode::Char(ch)));
+        };
+        // Change password is the last row.
+        for _ in 0..10 {
+            press(&mut app, KeyCode::Down);
+        }
+        press(&mut app, KeyCode::Enter);
+        // A wrong current password: said in the dialog, nothing changed.
+        for text in ["nope", "new password", "new password"] {
+            type_text(&mut app, text);
+            press(&mut app, KeyCode::Enter);
+        }
+        let action = app.pending.take().expect("waits for a draw first");
+        app.perform(action).unwrap();
+        let Screen::Settings(screen) = &app.screen else { panic!("left settings") };
+        assert!(screen.changing_the_password());
+        // The new password is still typed in: Enter after the right
+        // current one changes it.
+        type_text(&mut app, "pw");
+        press(&mut app, KeyCode::Enter);
+        let action = app.pending.take().unwrap();
+        app.perform(action).unwrap();
+        let Screen::Settings(screen) = &app.screen else { panic!("left settings") };
+        assert!(!screen.changing_the_password());
+        assert_eq!(screen.notice(), Some("Password changed."));
+        // Only the new password opens it now, with the post still there.
+        app.lock();
+        app.perform(Action::Unlock(Zeroizing::new("pw".into()))).unwrap();
+        assert!(app.vault.is_none());
+        app.perform(Action::Unlock(Zeroizing::new("new password".into()))).unwrap();
+        let posts = app.vault.as_ref().unwrap().list_posts().unwrap();
+        assert_eq!(posts[0].title, "x");
+        assert!(matches!(app.screen, Screen::Settings(_)));
     }
 
     #[test]

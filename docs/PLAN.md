@@ -36,7 +36,8 @@ the logo, adds an Unlock button, trims the setup screen, and makes Esc on
 the list quit without asking. `0.18.0` unlocks with Touch ID on Macs
 (asked for out of order), and `0.19.0` adds the Markdown styling setting,
 list continuation and Cmd+C (also out of order; it replaces the closed
-PR #31's bold-title switch). Next:
+PR #31's bold-title switch). `0.20.0` adds Change password in Settings
+(out of order too). Next:
 
 1. **Try online** (writui.com/try), below: the creator wants it next, and
    it must work on a phone. Probably two or three PRs, in the order listed.
@@ -141,6 +142,7 @@ writui in the browser at writui.com/try, phones included (see the spec's
 ## M6 — LLM chat sidebar
 
 - [x] Settings screen, stored in the vault: author (for front matter), line width
+- [x] Change password (in Settings), with Touch ID set up again
 - [ ] More settings: what Tab types, and the rest listed in the spec
 - [ ] API keys for OpenAI + Anthropic in settings (or prompt on first open)
 - [ ] Sidebar that fits next to the editor (or takes over on narrow terminals)
